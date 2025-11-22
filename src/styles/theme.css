@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global */
+@layer base {
+  html, body, #root { height: 100%; }
+  body { @apply bg-slate-50 text-slate-900 antialiased; }
+}
+
+/* Reusable primitives */
+@layer components {
+  .btn        { @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60 disabled:pointer-events-none; }
+  .btn-primary{ @apply btn bg-teal-600 text-white hover:bg-teal-700 focus:ring-teal-600; }
+  .btn-ghost  { @apply btn bg-white border border-slate-200 hover:bg-slate-50 focus:ring-slate-300; }
+  .btn-danger { @apply btn bg-rose-600 text-white hover:bg-rose-700 focus:ring-rose-600; }
+
+  .card       { @apply bg-white rounded-2xl shadow-sm border border-slate-200; }
+  .card-body  { @apply p-4 md:p-6; }
+  .card-title { @apply text-sm font-semibold text-slate-600; }
+  .stat       { @apply text-2xl font-bold tracking-tight; }
+
+  .input      { @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-teal-600 focus:ring-2 focus:ring-teal-600 focus:ring-offset-1; }
+  .select     { @apply input pr-8; }
+
+  .pill       { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium; }
+  .pill-ok    { @apply pill bg-emerald-100 text-emerald-800; }
+  .pill-warn  { @apply pill bg-amber-100 text-amber-800; }
+  .pill-bad   { @apply pill bg-rose-100 text-rose-800; }
+}
