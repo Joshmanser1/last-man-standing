@@ -407,6 +407,29 @@ const mockService = {
   async syncTeams(leagueId: ID) {
     return syncTeamsFromFpl(leagueId);
   },
+
+  /* ---------- NEW: delete a league with cascade ---------- */
+  async deleteLeague(leagueId: ID): Promise<void> {
+    const s = load();
+
+    const roundIds = (s.rounds || [])
+      .filter(r => r.league_id === leagueId)
+      .map(r => r.id);
+
+    s.leagues      = (s.leagues || []).filter(l => l.id !== leagueId);
+    s.rounds       = (s.rounds || []).filter(r => r.league_id !== leagueId);
+    s.teams        = (s.teams  || []).filter(t => t.league_id !== leagueId);
+    s.memberships  = (s.memberships || []).filter(m => m.league_id !== leagueId);
+    s.picks        = (s.picks || []).filter(p => !roundIds.includes(p.round_id));
+    s.fixtures     = (s.fixtures || []).filter(f => !roundIds.includes(f.round_id));
+
+    // clear active selection if it referenced the deleted league
+    if (localStorage.getItem("active_league_id") === leagueId) {
+      localStorage.removeItem("active_league_id");
+    }
+
+    save(s);
+  },
 };
 
 export default mockService;

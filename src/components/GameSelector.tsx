@@ -1,126 +1,104 @@
 // src/components/GameSelector.tsx
-import React, { useEffect, useState } from "react";
-import { dataService } from "../data/service";
+import { useEffect, useState } from "react";
+import { dataService, subscribeStore } from "../data/service";
 
-type LeagueLite = {
-  id: string;
-  name: string;
-  current_round: number;
-  status: string;
-  fpl_start_event?: number;
-};
-
-type GameSelectorProps = {
-  /** Optional controlled value – falls back to localStorage / first league */
+type Props = {
+  /** Controlled selected id. If omitted we read/write localStorage('active_league_id') */
   value?: string;
-  /** Fired when user switches game */
-  onChange?: (leagueId: string, league?: LeagueLite) => void;
-  /** Small label shown to the left/top */
-  label?: string;
-  /** Styling variant: header (dark) vs default (light) */
+  /** Called when user picks a league (id). Also writes active_league_id. */
+  onChange?: (leagueId: string) => void;
+  /** Visual tweaks for header vs default usage */
   variant?: "header" | "default";
-  className?: string;
+  /** Optional label text (hidden in header variant) */
+  label?: string;
 };
 
-const STORAGE_KEY = "active_league_id";
+type LeagueLite = { id: string; name: string };
 
 export function GameSelector({
   value,
   onChange,
-  label = "Game",
   variant = "default",
-  className = "",
-}: GameSelectorProps) {
+  label = "Game",
+}: Props) {
   const [leagues, setLeagues] = useState<LeagueLite[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
+  const [selected, setSelected] = useState<string>(
+    value ?? localStorage.getItem("active_league_id") ?? ""
+  );
 
-  // Load leagues once
-  useEffect(() => {
-    let isMounted = true;
-    (async () => {
-      try {
-        const ls = (await (dataService as any).listLeagues?.()) as LeagueLite[] | undefined;
-        if (!isMounted) return;
-        if (Array.isArray(ls) && ls.length) {
-          setLeagues(ls);
+  async function reload() {
+    const ls = (await (dataService as any).listLeagues?.()) as
+      | LeagueLite[]
+      | undefined;
+    const list = ls ?? [];
+    setLeagues(list);
 
-          // Initial selected: prop -> localStorage -> first league
-          const stored = localStorage.getItem(STORAGE_KEY) || "";
-          const initial =
-            value ||
-            (stored && ls.some((l) => l.id === stored) ? stored : "") ||
-            ls[0].id;
-
-          setSelectedId(initial);
-          if (!localStorage.getItem(STORAGE_KEY)) {
-            localStorage.setItem(STORAGE_KEY, initial);
-          }
-        } else {
-          setLeagues([]);
-        }
-      } catch (e) {
-        console.warn("GameSelector: failed to load leagues", e);
+    // keep selection valid
+    const active = localStorage.getItem("active_league_id");
+    const valid = active && list.some((l) => l.id === active);
+    if (!value) {
+      setSelected(valid ? (active as string) : list[0]?.id ?? "");
+      if (!valid && list[0]?.id) {
+        localStorage.setItem("active_league_id", list[0].id);
       }
-    })();
-    return () => {
-      isMounted = false;
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Sync when parent drives the value
-  useEffect(() => {
-    if (value && value !== selectedId) {
-      setSelectedId(value);
+      if (!valid && !list.length) {
+        localStorage.removeItem("active_league_id");
+      }
     }
+  }
+
+  useEffect(() => {
+    reload();
+    const unsub = subscribeStore(reload);
+    const onFocus = () => reload();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      unsub();
+      window.removeEventListener("focus", onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (value !== undefined) setSelected(value);
   }, [value]);
 
-  function handleChange(id: string) {
-    setSelectedId(id);
-    localStorage.setItem(STORAGE_KEY, id);
-
-    const league = leagues.find((l) => l.id === id);
-    onChange?.(id, league);
+  function change(id: string) {
+    if (!id) return;
+    localStorage.setItem("active_league_id", id);
+    setSelected(id);
+    onChange?.(id);
   }
 
-  if (!leagues.length) {
-    return null;
-  }
-
-  const baseSelectCls =
+  // Header select: compact, white background (so the native dropdown is readable),
+  // fixed width + truncate to avoid pushing into the Logout button.
+  const cls =
     variant === "header"
-      ? "rounded-lg bg-white/10 text-white px-2 py-1 text-sm outline-none hover:bg-white/15"
-      : "border rounded-lg px-3 py-2 text-sm text-slate-800 bg-white outline-none hover:bg-slate-50";
+      ? "h-9 w-[220px] max-w-[260px] truncate border border-white/20 rounded-md bg-white text-slate-900 px-3 py-1 shadow-sm focus:outline-none"
+      : "input !w-full";
 
   return (
-    <div
-      className={
-        "flex items-center gap-2 " +
-        (variant === "header" ? "text-white/80" : "text-slate-700") +
-        " " +
-        className
-      }
-    >
-      {label && (
-        <span
-          className={
-            "text-xs " +
-            (variant === "header" ? "text-white/70" : "text-slate-500")
-          }
-        >
-          {label}
-        </span>
-      )}
+    <div className={variant === "header" ? "flex items-center gap-2" : ""}>
+      {variant !== "header" && label ? (
+        <span className="label mb-1">{label}</span>
+      ) : null}
       <select
-        className={baseSelectCls}
-        value={selectedId}
-        onChange={(e) => handleChange(e.target.value)}
+        className={cls}
+        value={selected}
+        onChange={(e) => change(e.target.value)}
+        title={
+          leagues.find((l) => l.id === selected)?.name ??
+          "Select a game"
+        }
       >
         {leagues.map((l) => (
           <option key={l.id} value={l.id}>
-            {l.name} (R{l.current_round})
+            {l.name}
           </option>
         ))}
       </select>
     </div>
   );
 }
+
+export default GameSelector;

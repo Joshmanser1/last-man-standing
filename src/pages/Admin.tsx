@@ -4,6 +4,7 @@ import { dataService } from "../data/service";
 import { FplGwSelect } from "../components/FplGwSelect";
 
 const STORE_KEY = "lms_store_v1";
+const SEED_SENTINEL = "lms_seed_done"; // ← NEW
 
 type Store = {
   leagues: any[];
@@ -37,19 +38,27 @@ export function Admin() {
   const [sortKey, setSortKey] = useState<SortKey>("kickoff");
   const [sortAsc, setSortAsc] = useState<boolean>(true);
 
-  // load leagues on mount
+  // load leagues on mount (with first-run-only seed)
   useEffect(() => {
     (async () => {
       const ls = await (dataService as any).listLeagues?.();
       if (ls && Array.isArray(ls) && ls.length) {
         setAllLeagues(ls);
         setSelectedLeagueId((prev) => prev || ls[0].id);
-      } else {
-        // seed fallback then reload
+        return;
+      }
+
+      // Only seed on true first run
+      if (!localStorage.getItem(SEED_SENTINEL)) {
         await (dataService as any).seed?.();
+        localStorage.setItem(SEED_SENTINEL, "1");
         const after = await (dataService as any).listLeagues?.();
         setAllLeagues(after || []);
         setSelectedLeagueId(after?.[0]?.id || "");
+      } else {
+        // user has intentionally deleted all leagues – do not reseed
+        setAllLeagues([]);
+        setSelectedLeagueId("");
       }
     })();
   }, []);
@@ -115,7 +124,7 @@ export function Admin() {
     [roundPicks]
   );
 
-  // Derived FPL GW mapping label (if this game was created via Admin with a start date)
+  // Derived FPL GW mapping label
   const mappedFplEvent = useMemo(() => {
     if (!league || !round) return null;
     const base: number | undefined = (league as any).fpl_start_event;
@@ -133,7 +142,8 @@ export function Admin() {
 
   function resetAll() {
     localStorage.removeItem(STORE_KEY);
-    location.assign("/"); // reseed
+    localStorage.removeItem(SEED_SENTINEL);
+    location.assign("/"); // reseed on truly fresh start
   }
 
   async function lockNow() {
@@ -194,7 +204,7 @@ export function Admin() {
     }
   }
 
-  // Create next round using FPL GW deadline rather than manual datetime
+  // Create next round using FPL GW deadline
   async function createNext() {
     if (!league) return;
     if (!nextDeadlineISO || !nextFplEvent) {
@@ -203,7 +213,6 @@ export function Admin() {
     }
     setLoading(true);
     try {
-      // You can still use the FPL GW id inside dataService.createNextRound if needed.
       await dataService.createNextRound(league.id, nextDeadlineISO);
       toast(`Next round created from FPL GW ${nextFplEvent}.`);
       setNextFplEvent(null);
@@ -212,6 +221,35 @@ export function Admin() {
       setRefreshTick((x) => x + 1);
     } catch (e: any) {
       toast(e.message ?? String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ---------- Delete League ----------
+  async function handleDeleteLeague() {
+    if (!selectedLeagueId || !league) return;
+    const ok = window.confirm(
+      `Are you sure you want to permanently delete “${league.name}”? This will remove its rounds, fixtures, picks and memberships.`
+    );
+    if (!ok) return;
+
+    setLoading(true);
+    try {
+      if ((dataService as any).deleteLeague) {
+        await (dataService as any).deleteLeague(selectedLeagueId);
+      }
+      setAllLeagues((prev) => prev.filter((l) => l.id !== selectedLeagueId));
+      if (localStorage.getItem("active_league_id") === selectedLeagueId) {
+        localStorage.removeItem("active_league_id");
+      }
+      setRefreshTick((x) => x + 1);
+      const next = allLeagues.find((l) => l.id !== selectedLeagueId);
+      setSelectedLeagueId(next?.id || "");
+      toast("League deleted.");
+    } catch (e: any) {
+      console.error(e);
+      toast(e?.message ?? "Failed to delete league.");
     } finally {
       setLoading(false);
     }
@@ -368,12 +406,9 @@ export function Admin() {
       } else if (sortKey === "away") {
         av = a.awayName;
         bv = b.awayName;
-      } else if (sortKey === "kickoff") {
+      } else {
         av = a.kickoffTs;
         bv = b.kickoffTs;
-      } else {
-        av = a.resultText;
-        bv = b.resultText;
       }
       if (av < bv) return sortAsc ? -1 : 1;
       if (av > bv) return sortAsc ? 1 : -1;
@@ -481,13 +516,26 @@ export function Admin() {
             </div>
           </div>
 
-          <button
-            onClick={resetAll}
-            className="text-sm rounded-lg border px-3 py-1.5 hover:bg-slate-50"
-            title="Clear local data and reseed (dev only)"
-          >
-            Reset (Dev)
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={resetAll}
+              className="text-sm rounded-lg border px-3 py-1.5 hover:bg-slate-50"
+              title="Clear local data and reseed (dev only)"
+            >
+              Reset (Dev)
+            </button>
+
+            {/* Delete league */}
+            <button
+              type="button"
+              disabled={loading}
+              onClick={handleDeleteLeague}
+              className="text-sm rounded-lg border border-rose-300 px-3 py-1.5 text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+              title="Permanently delete this league"
+            >
+              Delete league
+            </button>
+          </div>
         </div>
 
         {/* Admin actions */}

@@ -2,7 +2,14 @@
   command = "npm run build"
   publish = "dist"
 
-# Single Page App -> always serve index.html
+# --- PROXY: send FPL requests to the real API in production ---
+[[redirects]]
+  from = "/fpl/*"
+  to = "https://fantasy.premierleague.com/:splat"
+  status = 200
+  force = true
+
+# --- SPA fallback (must come AFTER the proxy) ---
 [[redirects]]
   from = "/*"
   to = "/index.html"

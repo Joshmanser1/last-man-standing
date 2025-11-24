@@ -10,10 +10,9 @@ type PrivateLeague = {
   name: string;
   ownerId: string;
   createdAt: string;
-  // We now store BOTH the FPL GW id and the official deadline
-  startDateUtc?: string; // FPL GW deadline_time
-  fplStartEvent?: number; // FPL event id (1–38)
-  inviteCode: string; // unique, human-friendly
+  startDateUtc?: string;      // FPL GW deadline_time
+  fplStartEvent?: number;     // FPL event id (1–38)
+  inviteCode: string;         // unique, human-friendly
 };
 
 type PrivateMembership = {
@@ -48,14 +47,11 @@ function saveStore(store: PrivateStore) {
   localStorage.setItem(PRIVATE_STORE_KEY, JSON.stringify(store));
 }
 
-// simple 6-char alphanumeric invite code
 function generateInviteCode(existing: Set<string>): string {
   const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I
   while (true) {
     let code = "";
-    for (let i = 0; i < 6; i++) {
-      code += alphabet[Math.floor(Math.random() * alphabet.length)];
-    }
+    for (let i = 0; i < 6; i++) code += alphabet[Math.floor(Math.random() * alphabet.length)];
     if (!existing.has(code)) return code;
   }
 }
@@ -89,7 +85,6 @@ export function PrivateLeagueCreate() {
   const [store, setStore] = useState<PrivateStore>(() => loadStore());
 
   const [name, setName] = useState("");
-  // new FPL-based start selection for creating a league
   const [startEventId, setStartEventId] = useState<number | null>(null);
   const [startDeadlineISO, setStartDeadlineISO] = useState<string | null>(null);
 
@@ -100,51 +95,48 @@ export function PrivateLeagueCreate() {
   const playerId = getPlayerId();
   const playerName = getPlayerName();
 
-  // Prefill join code from ?code=ABC123
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     if (code) setJoinCode(code.toUpperCase());
   }, []);
 
-  // persist on every change
   useEffect(() => {
     saveStore(store);
   }, [store]);
 
   const myLeagues = useMemo(() => {
     const ids = new Set(
-      store.memberships
-        .filter((m) => m.playerId === playerId)
-        .map((m) => m.leagueId)
+      store.memberships.filter(m => m.playerId === playerId).map(m => m.leagueId)
     );
-    const leagues = store.leagues.filter((l) => ids.has(l.id));
-    // default active league
-    if (!activeLeagueId && leagues.length) {
-      setActiveLeagueId(leagues[0].id);
-    }
+    const leagues = store.leagues.filter(l => ids.has(l.id));
+    if (!activeLeagueId && leagues.length) setActiveLeagueId(leagues[0].id);
     return leagues;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store, playerId]);
 
   const activeLeague = useMemo(
-    () => store.leagues.find((l) => l.id === activeLeagueId) || null,
+    () => store.leagues.find(l => l.id === activeLeagueId) || null,
     [store.leagues, activeLeagueId]
   );
 
   const membersForActive = useMemo(() => {
     if (!activeLeague) return [];
-    return store.memberships.filter((m) => m.leagueId === activeLeague.id);
+    return store.memberships.filter(m => m.leagueId === activeLeague.id);
   }, [store.memberships, activeLeague]);
 
   // --------- actions ---------
 
-  function showFeedback(msg: string, variant: "info" | "success" | "error" = "info") {
+  function showFeedback(
+    msg: string,
+    variant: "info" | "success" | "error" = "info"
+  ) {
     setFeedback(msg);
     toast(msg, { variant });
     setTimeout(() => setFeedback(""), 4000);
   }
 
+  // Create: allow if player does NOT already own a league (they may still have joined one).
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
@@ -152,11 +144,16 @@ export function PrivateLeagueCreate() {
       return;
     }
 
+    const alreadyOwner = store.leagues.some(l => l.ownerId === playerId);
+    if (alreadyOwner) {
+      showFeedback("You’ve already created a private league. Limit is one owned league per player.", "error");
+      return;
+    }
+
     const now = new Date().toISOString();
-    const inviteCodes = new Set(store.leagues.map((l) => l.inviteCode));
+    const inviteCodes = new Set(store.leagues.map(l => l.inviteCode));
     const code = generateInviteCode(inviteCodes);
 
-    // Start GW is optional. If selected, we use the official FPL deadline.
     const league: PrivateLeague = {
       id: uuid(),
       name: name.trim(),
@@ -167,6 +164,7 @@ export function PrivateLeagueCreate() {
       inviteCode: code,
     };
 
+    // Owner auto-membership (this should NOT block joining one other league later)
     const membership: PrivateMembership = {
       leagueId: league.id,
       playerId,
@@ -192,27 +190,39 @@ export function PrivateLeagueCreate() {
     );
   }
 
+  // Join: allow if player has NOT already joined a non-owned league (they may own one).
   function handleJoin(e: React.FormEvent) {
     e.preventDefault();
+
+    // Check if user already joined a league they don't own
+    const joinedNonOwned = store.memberships.some(m => {
+      if (m.playerId !== playerId) return false;
+      const league = store.leagues.find(l => l.id === m.leagueId);
+      return league ? league.ownerId !== playerId : false;
+    });
+    if (joinedNonOwned) {
+      showFeedback("You’ve already joined a private league. Limit is one joined league per player (plus one you own).", "error");
+      return;
+    }
+
     const code = joinCode.trim().toUpperCase();
     if (!code) {
       showFeedback("Enter an invite code first.", "error");
       return;
     }
-    const league = store.leagues.find(
-      (l) => l.inviteCode.toUpperCase() === code
-    );
+    const league = store.leagues.find(l => l.inviteCode.toUpperCase() === code);
     if (!league) {
       showFeedback("No league found for that code.", "error");
       return;
     }
 
+    // If they’re already a member of THIS league, just surface info
     const already = store.memberships.some(
-      (m) => m.leagueId === league.id && m.playerId === playerId
+      m => m.leagueId === league.id && m.playerId === playerId
     );
     if (already) {
       setActiveLeagueId(league.id);
-      showFeedback("You’re already in that private league.");
+      showFeedback("You’re already in that private league.", "info");
       return;
     }
 
@@ -244,24 +254,18 @@ export function PrivateLeagueCreate() {
     const updated: PrivateLeague = { ...activeLeague, ...patch };
     const next: PrivateStore = {
       ...store,
-      leagues: store.leagues.map((l) =>
-        l.id === activeLeague.id ? updated : l
-      ),
+      leagues: store.leagues.map(l => (l.id === activeLeague.id ? updated : l)),
     };
     setStore(next);
   }
 
   function handleDeleteActive() {
     if (!activeLeague) return;
-    const ok = window.confirm(
-      `Delete private league "${activeLeague.name}" for everyone?`
-    );
+    const ok = window.confirm(`Delete private league "${activeLeague.name}" for everyone?`);
     if (!ok) return;
     const next: PrivateStore = {
-      leagues: store.leagues.filter((l) => l.id !== activeLeague.id),
-      memberships: store.memberships.filter(
-        (m) => m.leagueId !== activeLeague.id
-      ),
+      leagues: store.leagues.filter(l => l.id !== activeLeague.id),
+      memberships: store.memberships.filter(m => m.leagueId !== activeLeague.id),
     };
     setStore(next);
     setActiveLeagueId(null);
@@ -278,9 +282,7 @@ export function PrivateLeagueCreate() {
         <div>
           <h1 className="text-2xl font-bold">Private Leagues</h1>
           <p className="text-sm text-slate-600">
-            This is your hub for invite-only LMS mini-leagues — mates, office,
-            Telegram groups. Everything here is stored locally in this browser
-            for now.
+            Limit: <b>own 1</b> + <b>join 1</b> (max two total).
           </p>
         </div>
       </header>
@@ -299,8 +301,7 @@ export function PrivateLeagueCreate() {
             <div>
               <h2 className="text-lg font-semibold">Create a private league</h2>
               <p className="text-xs text-slate-600">
-                You’ll be the league owner. We’ll generate a unique invite code
-                and share link for you.
+                You can <b>own one</b> private league.
               </p>
             </div>
 
@@ -339,8 +340,7 @@ export function PrivateLeagueCreate() {
             <div>
               <h2 className="text-lg font-semibold">Join by invite code</h2>
               <p className="text-xs text-slate-600">
-                Ask your league admin for their 6-character code, then paste it
-                here.
+                You can <b>join one</b> private league (in addition to one you own).
               </p>
             </div>
 
@@ -369,9 +369,7 @@ export function PrivateLeagueCreate() {
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-semibold">My private leagues</h2>
               {myLeagues.length > 0 && (
-                <span className="text-xs text-slate-500">
-                  {myLeagues.length} total
-                </span>
+                <span className="text-xs text-slate-500">{myLeagues.length} total</span>
               )}
             </div>
 
@@ -407,45 +405,23 @@ export function PrivateLeagueCreate() {
                   <div className="space-y-4 border-t pt-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-sm font-semibold">
-                          {activeLeague.name}
-                        </div>
+                        <div className="text-sm font-semibold">{activeLeague.name}</div>
                         <div className="text-xs text-slate-600 mt-1 space-y-0.5">
                           <div>
-                            Owner:{" "}
-                            {activeLeague.ownerId === playerId
-                              ? "You"
-                              : "Another manager"}
+                            Owner: {activeLeague.ownerId === playerId ? "You" : "Another manager"}
                           </div>
-                          <div>
-                            Created:{" "}
-                            {new Date(
-                              activeLeague.createdAt
-                            ).toLocaleString()}
-                          </div>
-                          {activeLeague.fplStartEvent &&
-                            activeLeague.startDateUtc && (
-                              <div>
-                                Start FPL GW:{" "}
-                                <b>GW {activeLeague.fplStartEvent}</b>{" "}
-                                <span className="text-[11px] text-slate-500">
-                                  (
-                                  {new Date(
-                                    activeLeague.startDateUtc
-                                  ).toLocaleString()}
-                                  )
-                                </span>
-                              </div>
-                            )}
-                          {!activeLeague.fplStartEvent &&
-                            activeLeague.startDateUtc && (
-                              <div>
-                                Start date:{" "}
-                                {new Date(
-                                  activeLeague.startDateUtc
-                                ).toLocaleString()}
-                              </div>
-                            )}
+                          <div>Created: {new Date(activeLeague.createdAt).toLocaleString()}</div>
+                          {activeLeague.fplStartEvent && activeLeague.startDateUtc && (
+                            <div>
+                              Start FPL GW: <b>GW {activeLeague.fplStartEvent}</b>{" "}
+                              <span className="text-[11px] text-slate-500">
+                                ({new Date(activeLeague.startDateUtc).toLocaleString()})
+                              </span>
+                            </div>
+                          )}
+                          {!activeLeague.fplStartEvent && activeLeague.startDateUtc && (
+                            <div>Start date: {new Date(activeLeague.startDateUtc).toLocaleString()}</div>
+                          )}
                           <div>Invite code: {activeLeague.inviteCode}</div>
                         </div>
                       </div>
@@ -454,49 +430,30 @@ export function PrivateLeagueCreate() {
                         <button
                           type="button"
                           className="btn btn-ghost text-xs"
-                          onClick={() =>
-                            handleCopy(
-                              activeLeague.inviteCode,
-                              "Invite code"
-                            )
-                          }
+                          onClick={() => handleCopy(activeLeague.inviteCode, "Invite code")}
                         >
                           Copy code
                         </button>
                         <button
                           type="button"
                           className="btn btn-ghost text-xs"
-                          onClick={() =>
-                            handleCopy(
-                              getShareUrl(activeLeague.inviteCode),
-                              "Share link"
-                            )
-                          }
+                          onClick={() => handleCopy(getShareUrl(activeLeague.inviteCode), "Share link")}
                         >
                           Copy share link
                         </button>
                       </div>
                     </div>
 
-                    {/* Owner-only controls */}
                     {isOwner && (
                       <div className="space-y-3 border-t pt-3">
-                        <div className="text-xs font-semibold text-slate-700">
-                          Owner tools
-                        </div>
+                        <div className="text-xs font-semibold text-slate-700">Owner tools</div>
                         <div className="space-y-3">
                           <div>
-                            <label className="label text-xs">
-                              Rename league
-                            </label>
+                            <label className="label text-xs">Rename league</label>
                             <input
                               className="input mt-1 text-xs"
                               value={activeLeague.name}
-                              onChange={(e) =>
-                                updateActiveLeague({
-                                  name: e.target.value,
-                                })
-                              }
+                              onChange={(e) => updateActiveLeague({ name: e.target.value })}
                             />
                           </div>
 
@@ -505,18 +462,16 @@ export function PrivateLeagueCreate() {
                               label="Start FPL Gameweek (optional)"
                               onlyUpcoming={false}
                               value={activeLeague.fplStartEvent ?? undefined}
-                              onChange={(id, ev) => {
+                              onChange={(id, ev) =>
                                 updateActiveLeague({
                                   fplStartEvent: id || undefined,
-                                  startDateUtc:
-                                    ev?.deadline_time ?? undefined,
-                                });
-                              }}
+                                  startDateUtc: ev?.deadline_time ?? undefined,
+                                })
+                              }
                               className="mt-1 text-xs"
                             />
                             <p className="mt-1 text-[11px] text-slate-500">
-                              This is a reference only for now – it doesn’t yet
-                              auto-drive rounds for private leagues.
+                              Reference only for now – doesn’t auto-drive rounds yet.
                             </p>
                           </div>
 
@@ -531,26 +486,18 @@ export function PrivateLeagueCreate() {
                       </div>
                     )}
 
-                    {/* Members */}
                     <div className="space-y-2 border-t pt-4">
                       <div className="text-xs font-semibold text-slate-700">
                         Members ({membersForActive.length})
                       </div>
                       {membersForActive.length === 0 ? (
-                        <div className="text-xs text-slate-500">
-                          No one has joined yet.
-                        </div>
+                        <div className="text-xs text-slate-500">No one has joined yet.</div>
                       ) : (
                         <ul className="space-y-1 text-xs">
                           {membersForActive.map((m, i) => (
-                            <li
-                              key={m.playerId + "-" + i}
-                              className="flex items-center gap-2"
-                            >
+                            <li key={m.playerId + "-" + i} className="flex items-center gap-2">
                               <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-700">
-                                {(m.displayName || "User")
-                                  .slice(0, 2)
-                                  .toUpperCase()}
+                                {(m.displayName || "User").slice(0, 2).toUpperCase()}
                               </span>
                               <span className="truncate">
                                 {m.displayName || m.playerId.slice(0, 8)}
@@ -560,12 +507,11 @@ export function PrivateLeagueCreate() {
                                   Owner
                                 </span>
                               )}
-                              {m.playerId === playerId &&
-                                m.playerId !== activeLeague.ownerId && (
-                                  <span className="ml-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
-                                    You
-                                  </span>
-                                )}
+                              {m.playerId === getPlayerId() && m.playerId !== activeLeague.ownerId && (
+                                <span className="ml-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
+                                  You
+                                </span>
+                              )}
                             </li>
                           ))}
                         </ul>

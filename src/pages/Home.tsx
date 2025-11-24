@@ -1,13 +1,19 @@
 // src/pages/Home.tsx
 import { useEffect, useState } from "react";
-import { dataService } from "../data/service";
+import { dataService, subscribeStore } from "../data/service";
 import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 
 const STORE_KEY = "lms_store_v1";
 const DEFAULT_LEAGUE_NAME = "English Premier League LMS";
 
-type LeagueLite = { id: string; name: string; current_round: number; status: string };
+type LeagueLite = {
+  id: string;
+  name: string;
+  current_round: number;
+  status: string;
+  deleted_at?: string | null; // <-- hide soft-deleted/archived leagues
+};
 
 export function Home() {
   const [leagues, setLeagues] = useState<LeagueLite[]>([]);
@@ -16,74 +22,92 @@ export function Home() {
   const [displayName, setDisplayName] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
-  // “Already in a game?” state
   const [hasGame, setHasGame] = useState<boolean>(() => {
-    return !!localStorage.getItem("player_id") && !!localStorage.getItem("active_league_id");
+    return (
+      !!localStorage.getItem("player_id") &&
+      !!localStorage.getItem("active_league_id")
+    );
   });
   const [activeLeague, setActiveLeague] = useState<LeagueLite | null>(null);
 
   const navigate = useNavigate();
   const toast = useToast();
 
-  // Load leagues and restore previously selected league (if any)
-  useEffect(() => {
-    (async () => {
-      try {
-        let ls: LeagueLite[] | undefined;
+  async function reloadLeagues() {
+    let ls: LeagueLite[] | undefined;
 
-        // Primary: list all games
-        if ((dataService as any).listLeagues) {
-          ls = await (dataService as any).listLeagues();
-        }
+    if ((dataService as any).listLeagues) {
+      ls = await (dataService as any).listLeagues();
+    }
+    if (!ls || !ls.length) {
+      const l = await dataService.getLeagueByName(DEFAULT_LEAGUE_NAME);
+      if (l) ls = [l as LeagueLite];
+    }
 
-        // Fallback: at least try default league
-        if (!ls || !ls.length) {
-          const l = await dataService.getLeagueByName(DEFAULT_LEAGUE_NAME);
-          if (l) ls = [l];
-        }
+    // 🔒 hide deleted/archived leagues from all pickers
+    ls = (ls ?? []).filter((x) => !x.deleted_at);
 
-        ls = ls ?? [];
-        setLeagues(ls);
+    setLeagues(ls);
 
-        const savedLeagueId = localStorage.getItem("active_league_id");
-        if (savedLeagueId && ls.length) {
-          const match = ls.find((x) => x.id === savedLeagueId) || null;
-          setActiveLeague(match);
-          setSelectedLeagueId(savedLeagueId);
-        } else if (ls.length && !selectedLeagueId) {
-          setSelectedLeagueId(ls[0].id);
-        }
-
-        const storedName = localStorage.getItem("player_name");
-        if (storedName) setDisplayName(storedName);
-      } catch (e) {
-        console.error(e);
+    const savedLeagueId = localStorage.getItem("active_league_id");
+    if (savedLeagueId && ls.length) {
+      const match = ls.find((x) => x.id === savedLeagueId) || null;
+      setActiveLeague(match);
+      setSelectedLeagueId(match ? match.id : ls[0]?.id ?? "");
+      if (!match) {
+        // clear ghost selection if it was deleted
+        localStorage.removeItem("active_league_id");
       }
-    })();
+    } else if (ls.length && !selectedLeagueId) {
+      setSelectedLeagueId(ls[0].id);
+    }
+  }
+
+  // Initial load + subscribe to store updates + focus refresh
+  useEffect(() => {
+    reloadLeagues();
+
+    const unsub = subscribeStore(() => {
+      reloadLeagues();
+      setHasGame(
+        !!localStorage.getItem("player_id") &&
+          !!localStorage.getItem("active_league_id")
+      );
+    });
+
+    const onFocus = () => reloadLeagues();
+    window.addEventListener("focus", onFocus);
+
+    const storedName = localStorage.getItem("player_name");
+    if (storedName) setDisplayName(storedName);
+
+    return () => {
+      unsub();
+      window.removeEventListener("focus", onFocus);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function join() {
-    if (!selectedLeagueId) return toast("Select a game to join.", { variant: "error" });
-    if (!displayName.trim()) return toast("Enter your name.", { variant: "error" });
+    if (!selectedLeagueId)
+      return toast("Select a game to join.", { variant: "error" });
+    if (!displayName.trim())
+      return toast("Enter your name.", { variant: "error" });
 
     setLoading(true);
     try {
-      // upsert player + ensure membership in the chosen league
       const p = await dataService.upsertPlayer(displayName.trim());
       await dataService.ensureMembership(selectedLeagueId, p.id);
 
-      // persist player + active league
       localStorage.setItem("player_id", p.id);
       localStorage.setItem("player_name", displayName.trim());
       localStorage.setItem("active_league_id", selectedLeagueId);
 
-      // ensure store exists
       localStorage.getItem(STORE_KEY) || localStorage.setItem(STORE_KEY, "{}");
 
-      // update “already in a game” UI
       setHasGame(true);
-      const joinedLeague = leagues.find((l) => l.id === selectedLeagueId) || null;
+      const joinedLeague =
+        leagues.find((l) => l.id === selectedLeagueId) || null;
       setActiveLeague(joinedLeague);
 
       toast("Joined game. Let’s make your pick!", { variant: "success" });
@@ -108,7 +132,6 @@ export function Home() {
               </p>
             </div>
 
-            {/* Admin button */}
             <Link
               to="/admin"
               className="text-xs rounded-lg border px-3 py-1.5 hover:bg-slate-50"
@@ -118,7 +141,6 @@ export function Home() {
             </Link>
           </div>
 
-          {/* “Already in a game” banner */}
           {hasGame && activeLeague && (
             <div className="mb-4 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-900 flex flex-wrap items-center gap-2">
               <span>
@@ -168,7 +190,11 @@ export function Home() {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <button disabled={loading} onClick={join} className="btn btn-primary">
+              <button
+                disabled={loading}
+                onClick={join}
+                className="btn btn-primary"
+              >
                 {loading ? "Joining…" : "Join Game"}
               </button>
               <button
@@ -187,7 +213,8 @@ export function Home() {
           <h2 className="text-xl font-semibold mb-1">Private leagues</h2>
           <p className="text-sm text-slate-100/90 mb-4">
             Spin up a mini Last Man Standing just for your mates, work league,
-            or Telegram group. Pick an FPL Gameweek to start from and share an invite code.
+            or Telegram group. Pick an FPL Gameweek to start from and share an
+            invite code.
           </p>
 
           <ul className="text-sm space-y-2 mb-5 text-slate-100/90">
