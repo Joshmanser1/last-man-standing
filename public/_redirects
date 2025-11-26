@@ -1,0 +1,10 @@
+# --- Short path to the LMS subdomain ---
+/lms      https://lms.fantasycommandcentre.co.uk  301!
+/lms/*    https://lms.fantasycommandcentre.co.uk/:splat  301!
+
+# --- (Optional) force users onto your apex domain if they hit the Netlify subdomain ---
+# Netlify usually handles this via “Primary domain”, but this rule is a belt & braces.
+https://fantasy-command-centre.netlify.app/*  https://fantasycommandcentre.co.uk/:splat  301!
+
+# --- SPA fallback (must be LAST – first match wins) ---
+/*       /index.html  200
