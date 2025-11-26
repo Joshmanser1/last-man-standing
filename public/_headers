@@ -1,0 +1,18 @@
+/* 
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+
+# Cache static assets aggressively (Vite fingerprints them)
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Don’t cache the main HTML (ensures users always get the latest build)
+/index.html
+  Cache-Control: no-store
+
+# (Optional) lock down /admin until production-ready
+#/admin/*
+#  Basic-Auth: josh:PutAStrongPasswordHere
