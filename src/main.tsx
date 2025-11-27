@@ -3,11 +3,11 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
 
-// === Sentry (v8) setup ===
+// === Sentry (v8) setup — only needs @sentry/react ===
 import * as Sentry from "@sentry/react";
 
-// Initialize Sentry only in production and only if a DSN is present
 const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN as string | undefined;
+
 if (import.meta.env.PROD && SENTRY_DSN) {
   Sentry.init({
     dsn: SENTRY_DSN,
@@ -16,8 +16,7 @@ if (import.meta.env.PROD && SENTRY_DSN) {
     environment: import.meta.env.MODE || "production",
     release: `fantasy-command-centre@${import.meta.env.VITE_APP_VERSION || "1.0.0"}`,
   });
-
-  // Expose for console testing
+  // Expose for console testing in prod
   (window as any).Sentry = Sentry;
 }
 
