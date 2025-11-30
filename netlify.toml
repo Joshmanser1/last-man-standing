@@ -4,7 +4,6 @@
 # ============================
 
 [build]
-  # Regular app build; PowerShell verifier runs locally after deploy
   command = "npm run build"
   publish = "dist"
 
@@ -18,7 +17,7 @@
   status = 200
   force = true
 
-# --- SPA fallback (must come AFTER proxy) ---
+# --- SPA fallback (must come AFTER the proxy) ---
 [[redirects]]
   from = "/*"
   to = "/index.html"
@@ -33,4 +32,15 @@
     X-Content-Type-Options = "nosniff"
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
     Permissions-Policy = "geolocation=(), microphone=(), camera=()"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://*.supabase.co https://*.beehiiv.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*; connect-src 'self' https://*.supabase.co https://api.fantasycommandcentre.co.uk; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    # CSP: allow Umami, Supabase, Beehiiv, Google Fonts
+    Content-Security-Policy = """
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' https://cloud.umami.is https://*.supabase.co https://*.beehiiv.com;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      img-src 'self' data: https:;
+      font-src 'self' https://fonts.gstatic.com;
+      connect-src 'self' https://cloud.umami.is https://*.supabase.co https://api.fantasycommandcentre.co.uk;
+      base-uri 'self';
+      frame-ancestors 'none';
+      form-action 'self'
+    """
