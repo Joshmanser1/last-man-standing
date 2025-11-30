@@ -1,29 +1,30 @@
 # ============================
-# Netlify configuration file
+# Netlify configuration
+# Fantasy Command Centre / LMS
 # ============================
 
 [build]
-  # build your app and then run post-deploy verifier
-  command = "npm run build && pwsh ./verify_live.ps1"
+  # Regular app build; PowerShell verifier runs locally after deploy
+  command = "npm run build"
   publish = "dist"
 
 [functions]
   node_bundler = "esbuild"
 
-# --- PROXY: send FPL requests to the real API in production ---
+# --- PROXY: forward FPL API requests ---
 [[redirects]]
   from = "/fpl/*"
   to = "https://fantasy.premierleague.com/:splat"
   status = 200
   force = true
 
-# --- SPA fallback (must come AFTER the proxy) ---
+# --- SPA fallback (must come AFTER proxy) ---
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
-# --- SECURITY HEADERS (global) ---
+# --- GLOBAL SECURITY HEADERS ---
 [[headers]]
   for = "/*"
   [headers.values]
