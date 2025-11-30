@@ -5,7 +5,9 @@ import { Header } from "./components/Header";
 import { supa } from "./lib/supabaseClient";
 import { ToastProvider } from "./components/Toast";
 
-import { Home } from "./pages/Home";
+// Pages
+import LandingPage from "./pages/LandingPage"; // NEW: marketing landing page at "/"
+import { Home } from "./pages/Home";           // LMS main screen (now at "/lms")
 import { Login } from "./pages/Login";
 import { MakePick } from "./pages/MakePick";
 import { LiveGames } from "./pages/LiveGames";
@@ -81,7 +83,7 @@ function AdminOnly({ children }: { children: React.ReactNode }) {
   const isAdmin = localStorage.getItem("is_admin") === "1";
   if (!ready) return null;
   if (!authed) return <Navigate to="/login" replace />;
-  if (!isAdmin) return <Navigate to="/" replace />;
+  if (!isAdmin) return <Navigate to="/" replace />; // send non-admins to landing
   return <>{children}</>;
 }
 
@@ -97,9 +99,14 @@ export default function App() {
 
         <main className="container-page py-6">
           <Routes>
-            {/* Public */}
-            <Route path="/" element={<Home />} />
+            {/* Public marketing landing */}
+            <Route path="/" element={<LandingPage />} />
+
+            {/* Auth */}
             <Route path="/login" element={<Login />} />
+
+            {/* LMS main (previously "/") now at "/lms" */}
+            <Route path="/lms" element={<Home />} />
 
             {/* Private leagues (browser-local systems) */}
             <Route
