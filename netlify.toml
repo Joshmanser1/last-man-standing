@@ -2,6 +2,9 @@
   command = "npm run build"
   publish = "dist"
 
+[functions]
+  node_bundler = "esbuild"
+
 # --- PROXY: send FPL requests to the real API in production ---
 [[redirects]]
   from = "/fpl/*"
@@ -22,3 +25,10 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
+[build]
+  command = "npm run build && pwsh ./verify_live.ps1"
+# netlify.toml
+[[headers]]
+  for = "/*"
+  [headers.values]
+  Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://*.supabase.co https://*.beehiiv.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*; connect-src 'self' https://*.supabase.co https://api.fantasycommandcentre.co.uk; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
