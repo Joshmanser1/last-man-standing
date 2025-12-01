@@ -1,4 +1,3 @@
 User-agent: *
 Allow: /
-
-Sitemap: https://fantasycommandcentre.co.uk/sitemap.xml
+Sitemap: https://www.fantasycommandcentre.co.uk/sitemap.xml

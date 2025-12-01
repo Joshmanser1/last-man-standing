@@ -1,13 +1,13 @@
 // src/App.tsx
 import React, { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Header } from "./components/Header";
 import { supa } from "./lib/supabaseClient";
 import { ToastProvider } from "./components/Toast";
 
 // Pages
-import LandingPage from "./pages/LandingPage"; // NEW: marketing landing page at "/"
-import { Home } from "./pages/Home";           // LMS main screen (now at "/lms")
+import LandingPage from "./pages/LandingPage"; // marketing landing at "/"
+import { Home } from "./pages/Home";           // LMS main at "/lms"
 import { Login } from "./pages/Login";
 import { MakePick } from "./pages/MakePick";
 import { LiveGames } from "./pages/LiveGames";
@@ -21,13 +21,9 @@ import { LeagueSummary } from "./pages/LeagueSummary";
 import { PrivateLeagueCreate } from "./pages/PrivateLeagueCreate";
 import { PrivateLeagueJoin } from "./pages/PrivateLeagueJoin";
 
-// Simple dev flag (optional footer badge)
 const IS_DEV = import.meta.env.DEV === true;
 
-// ---------------------------------------------------------------------------
-// Auth gates
-// ---------------------------------------------------------------------------
-
+/* ------------------------- Auth gates ------------------------- */
 function useIsAuthed() {
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
@@ -36,7 +32,6 @@ function useIsAuthed() {
     let cancelled = false;
 
     async function check() {
-      // 1) If we already have a local player_id, treat as authed
       const playerId = localStorage.getItem("player_id");
       if (playerId) {
         if (!cancelled) {
@@ -46,7 +41,6 @@ function useIsAuthed() {
         return;
       }
 
-      // 2) Otherwise, fall back to Supabase session
       const { data } = await supa.auth.getSession();
       if (!cancelled) {
         setAuthed(!!data.session?.user?.id);
@@ -56,7 +50,6 @@ function useIsAuthed() {
 
     check();
 
-    // Also react to auth state changes
     const { data: sub } = supa.auth.onAuthStateChange((_event, session) => {
       setAuthed(!!session?.user?.id || !!localStorage.getItem("player_id"));
       setReady(true);
@@ -73,7 +66,7 @@ function useIsAuthed() {
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { ready, authed } = useIsAuthed();
-  if (!ready) return null; // avoid flicker
+  if (!ready) return null;
   if (!authed) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
@@ -83,129 +76,52 @@ function AdminOnly({ children }: { children: React.ReactNode }) {
   const isAdmin = localStorage.getItem("is_admin") === "1";
   if (!ready) return null;
   if (!authed) return <Navigate to="/login" replace />;
-  if (!isAdmin) return <Navigate to="/" replace />; // send non-admins to landing
+  if (!isAdmin) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
-// ---------------------------------------------------------------------------
-// App
-// ---------------------------------------------------------------------------
+/* --------------------------- App --------------------------- */
+function AppInner() {
+  const location = useLocation();
+  const onLanding = location.pathname === "/";
 
-export default function App() {
   return (
-    <BrowserRouter>
-      <ToastProvider>
-        <Header />
+    <>
+      {/* Hide global header/footer on landing to avoid double bars */}
+      {!onLanding && <Header />}
 
-        <main className="container-page py-6">
-          <Routes>
-            {/* Public marketing landing */}
-            <Route path="/" element={<LandingPage />} />
+      <main className={onLanding ? "" : "container-page py-6"}>
+        <Routes>
+          {/* Public marketing landing */}
+          <Route path="/" element={<LandingPage />} />
 
-            {/* Auth */}
-            <Route path="/login" element={<Login />} />
+          {/* Auth */}
+          <Route path="/login" element={<Login />} />
 
-            {/* LMS main (previously "/") now at "/lms" */}
-            <Route path="/lms" element={<Home />} />
+          {/* LMS main (moved from "/") */}
+          <Route path="/lms" element={<Home />} />
 
-            {/* Private leagues (browser-local systems) */}
-            <Route
-              path="/private/create"
-              element={
-                <Protected>
-                  <PrivateLeagueCreate />
-                </Protected>
-              }
-            />
-            <Route
-              path="/private/join"
-              element={
-                <Protected>
-                  <PrivateLeagueJoin />
-                </Protected>
-              }
-            />
+          {/* Private leagues */}
+          <Route path="/private/create" element={<Protected><PrivateLeagueCreate /></Protected>} />
+          <Route path="/private/join" element={<Protected><PrivateLeagueJoin /></Protected>} />
 
-            {/* Core LMS routes */}
-            <Route
-              path="/make-pick"
-              element={
-                <Protected>
-                  <MakePick />
-                </Protected>
-              }
-            />
-            <Route
-              path="/live"
-              element={
-                <Protected>
-                  <LiveGames />
-                </Protected>
-              }
-            />
-            <Route
-              path="/results"
-              element={
-                <Protected>
-                  <Results />
-                </Protected>
-              }
-            />
-            <Route
-              path="/league"
-              element={
-                <Protected>
-                  <LeagueSummary />
-                </Protected>
-              }
-            />
-            <Route
-              path="/leaderboard"
-              element={
-                <Protected>
-                  <Leaderboard />
-                </Protected>
-              }
-            />
-            <Route
-              path="/eliminations"
-              element={
-                <Protected>
-                  <EliminationHistory />
-                </Protected>
-              }
-            />
-            <Route
-              path="/my-games"
-              element={
-                <Protected>
-                  <MyGames />
-                </Protected>
-              }
-            />
-            <Route
-              path="/stats"
-              element={
-                <Protected>
-                  <Stats />
-                </Protected>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <AdminOnly>
-                  <Admin />
-                </AdminOnly>
-              }
-            />
+          {/* Core LMS */}
+          <Route path="/make-pick" element={<Protected><MakePick /></Protected>} />
+          <Route path="/live" element={<Protected><LiveGames /></Protected>} />
+          <Route path="/results" element={<Protected><Results /></Protected>} />
+          <Route path="/league" element={<Protected><LeagueSummary /></Protected>} />
+          <Route path="/leaderboard" element={<Protected><Leaderboard /></Protected>} />
+          <Route path="/eliminations" element={<Protected><EliminationHistory /></Protected>} />
+          <Route path="/my-games" element={<Protected><MyGames /></Protected>} />
+          <Route path="/stats" element={<Protected><Stats /></Protected>} />
+          <Route path="/admin" element={<AdminOnly><Admin /></AdminOnly>} />
 
-            {/* Fallback */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
 
-        {/* Simple footer to match the brand */}
+      {!onLanding && (
         <footer className="border-t bg-white/80">
           <div className="container-page py-3 text-xs text-slate-500 flex items-center justify-between">
             <span>© {new Date().getFullYear()} Fantasy Command Centre</span>
@@ -216,6 +132,16 @@ export default function App() {
             )}
           </div>
         </footer>
+      )}
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <ToastProvider>
+        <AppInner />
       </ToastProvider>
     </BrowserRouter>
   );
