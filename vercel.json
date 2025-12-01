@@ -12,7 +12,7 @@
         { "key": "Permissions-Policy", "value": "geolocation=(), microphone=(), camera=()" },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cloud.umami.is https://*.supabase.co https://*.beehiiv.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://cloud.umami.is https://*.supabase.co https://api.fantasycommandcentre.co.uk; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cloud.umami.is https://*.supabase.co https://*.beehiiv.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://cloud.umami.is https://api-gateway.umami.dev https://*.supabase.co https://*.supabase.in wss://*.supabase.co wss://*.supabase.in https://api.fantasycommandcentre.co.uk; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
         }
       ]
     }
