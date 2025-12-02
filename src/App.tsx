@@ -2,12 +2,12 @@
 import React, { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Header } from "./components/Header";
-import { supa } from "./lib/supabaseClient";
 import { ToastProvider } from "./components/Toast";
+import { supa } from "./lib/supabaseClient";
 
 // Pages
-import LandingPage from "./pages/LandingPage"; // marketing landing at "/"
-import { Home } from "./pages/Home";           // LMS main at "/lms"
+import LandingPage from "./pages/LandingPage";
+import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { MakePick } from "./pages/MakePick";
 import { LiveGames } from "./pages/LiveGames";
@@ -23,7 +23,9 @@ import { PrivateLeagueJoin } from "./pages/PrivateLeagueJoin";
 
 const IS_DEV = import.meta.env.DEV === true;
 
-/* ------------------------- Auth gates ------------------------- */
+// ---------------------------------------------------------------------------
+// Auth gates (same behaviour you had before, made self-contained here)
+// ---------------------------------------------------------------------------
 function useIsAuthed() {
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
@@ -80,17 +82,20 @@ function AdminOnly({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/* --------------------------- App --------------------------- */
+// ---------------------------------------------------------------------------
+
 function AppInner() {
   const location = useLocation();
-  const onLanding = location.pathname === "/";
+  const path = location.pathname;
+
+  // Full-bleed pages: landing and login (no container spacing)
+  const isFullBleed = path === "/" || path.startsWith("/login");
 
   return (
     <>
-      {/* Hide global header/footer on landing to avoid double bars */}
-      {!onLanding && <Header />}
+      <Header />
 
-      <main className={onLanding ? "" : "container-page py-6"}>
+      <main className={isFullBleed ? "" : "container-page py-6"}>
         <Routes>
           {/* Public marketing landing */}
           <Route path="/" element={<LandingPage />} />
@@ -98,7 +103,7 @@ function AppInner() {
           {/* Auth */}
           <Route path="/login" element={<Login />} />
 
-          {/* LMS main (moved from "/") */}
+          {/* LMS main */}
           <Route path="/lms" element={<Home />} />
 
           {/* Private leagues */}
@@ -121,7 +126,7 @@ function AppInner() {
         </Routes>
       </main>
 
-      {!onLanding && (
+      {!isFullBleed && (
         <footer className="border-t bg-white/80">
           <div className="container-page py-3 text-xs text-slate-500 flex items-center justify-between">
             <span>© {new Date().getFullYear()} Fantasy Command Centre</span>
