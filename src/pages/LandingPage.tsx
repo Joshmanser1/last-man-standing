@@ -4,40 +4,8 @@ import { Link } from "react-router-dom";
 export default function LandingPage() {
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      {/* Top bar */}
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-slate-900/70 backdrop-blur">
-        <div className="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
-            {/* Use the actual shield from /public */}
-            <img
-              src="/logo-shield.png"
-              alt="Fantasy Command Centre"
-              width={32}
-              height={32}
-              className="rounded-xl"
-              loading="eager"
-              decoding="async"
-            />
-            <span className="font-semibold tracking-tight">Fantasy Command Centre</span>
-          </Link>
-          <nav className="hidden md:flex items-center gap-6 text-sm">
-            <a href="#features" className="opacity-80 hover:opacity-100">Features</a>
-            <a href="#pricing" className="opacity-80 hover:opacity-100">Pricing</a>
-            <a href="#faq" className="opacity-80 hover:opacity-100">FAQ</a>
-          </nav>
-          <div className="flex items-center gap-3">
-            <Link to="/login" className="px-4 py-2 rounded-xl border border-white/15 hover:border-white/30 transition">
-              Log in
-            </Link>
-            <Link to="/login" className="px-4 py-2 rounded-xl bg-white text-slate-900 font-medium hover:opacity-90 transition">
-              Get started
-            </Link>
-          </div>
-        </div>
-      </header>
-
       {/* Hero */}
-      <section className="relative overflow-hidden">
+      <section className="relative overflow-hidden pt-8 md:pt-12">
         <div className="absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_-10%,rgba(16,185,129,0.25),transparent)]" />
         <div className="mx-auto max-w-7xl px-4 py-20 md:py-28">
           <div className="max-w-3xl">
