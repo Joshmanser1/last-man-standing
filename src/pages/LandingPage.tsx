@@ -1,3 +1,4 @@
+// src/pages/LandingPage.tsx
 import { Link } from "react-router-dom";
 
 export default function LandingPage() {
@@ -7,7 +8,16 @@ export default function LandingPage() {
       <header className="sticky top-0 z-30 border-b border-white/10 bg-slate-900/70 backdrop-blur">
         <div className="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600" />
+            {/* Use the actual shield from /public */}
+            <img
+              src="/logo-shield.png"
+              alt="Fantasy Command Centre"
+              width={32}
+              height={32}
+              className="rounded-xl"
+              loading="eager"
+              decoding="async"
+            />
             <span className="font-semibold tracking-tight">Fantasy Command Centre</span>
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm">
