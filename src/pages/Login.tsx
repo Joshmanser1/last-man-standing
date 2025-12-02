@@ -12,10 +12,10 @@ export function Login() {
 
   // ux
   const [sending, setSending] = useState(false);
-  const [cooldown, setCooldown] = useState(0); // seconds
+  const [cooldown, setCooldown] = useState(0);
   const [checking, setChecking] = useState(false);
 
-  // simple 1s countdown for the send button
+  // countdown
   useEffect(() => {
     if (!cooldown) return;
     const t = setInterval(() => setCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
@@ -33,20 +33,13 @@ export function Login() {
 
     try {
       setSending(true);
-
-      // Keep the display name for later (used across the app)
       localStorage.setItem("player_name", name);
 
-      const redirectTo =
-        // if you deploy with a custom URL, set VITE_SITE_URL in .env
-        import.meta.env.VITE_SITE_URL || window.location.origin;
+      const redirectTo = import.meta.env.VITE_SITE_URL || window.location.origin;
 
       const { error } = await supa.auth.signInWithOtp({
         email,
-        options: {
-          emailRedirectTo: redirectTo,
-          shouldCreateUser: true,
-        },
+        options: { emailRedirectTo: redirectTo, shouldCreateUser: true },
       });
 
       if (error) {
@@ -66,7 +59,6 @@ export function Login() {
     }
   }
 
-  // === "Continue" button behaviour ===
   async function continueIfSignedIn() {
     if (checking) return;
     setChecking(true);
@@ -74,7 +66,6 @@ export function Login() {
       const { data } = await supa.auth.getSession();
       const hasSupa = !!data.session?.user?.id;
       const hasLocal = !!localStorage.getItem("player_id");
-
       if (hasSupa || hasLocal) {
         navigate("/", { replace: true });
       } else {
@@ -88,36 +79,40 @@ export function Login() {
   async function signOutEverywhere() {
     try {
       await supa.auth.signOut();
-    } catch {
-      // ignore
-    } finally {
-      localStorage.removeItem("player_id");
-      localStorage.removeItem("player_name");
-      localStorage.removeItem("is_admin");
-      navigate("/login", { replace: true });
-    }
+    } catch {}
+    localStorage.removeItem("player_id");
+    localStorage.removeItem("player_name");
+    localStorage.removeItem("is_admin");
+    navigate("/login", { replace: true });
   }
 
   return (
-    <div className="min-h-[calc(100vh-56px)] bg-slate-950 text-white flex items-start sm:items-center justify-center p-4 relative">
-      {/* subtle emerald glow like landing hero */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_-10%,rgba(16,185,129,0.15),transparent)]" />
-
-      <div className="w-full max-w-xl rounded-2xl border border-white/15 bg-white/5 p-6 sm:p-8 shadow-xl relative">
-        <div className="mx-auto w-fit rounded-full border border-emerald-300/30 bg-emerald-500/15 text-emerald-300 px-3 py-1 text-xs font-semibold mb-4">
-          Fantasy Command Centre
+    <div className="min-h-[calc(100vh-5rem)] bg-[radial-gradient(120%_120%_at_50%_-20%,#072a25,#0b1f20_50%,#0a0e12_90%)] flex items-start sm:items-center justify-center p-6">
+      <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-xl p-6 sm:p-8 text-slate-100">
+        <div className="mx-auto w-fit mb-5 flex items-center gap-2">
+          <img
+            src="/logo-shield.png"
+            width="28"
+            height="28"
+            alt="FCC"
+            className="rounded-md"
+            onError={(e) => ((e.currentTarget.style.display = "none"))}
+          />
+          <span className="rounded-full bg-emerald-400/15 text-emerald-300 px-3 py-1 text-xs font-semibold">
+            Fantasy Command Centre
+          </span>
         </div>
 
         <h1 className="text-3xl font-bold text-center mb-2">Login</h1>
-        <p className="text-sm text-white/70 text-center mb-6">
+        <p className="text-sm text-slate-300/80 text-center mb-6">
           Use your email to receive a magic link. No password required.
         </p>
 
-        <form onSubmit={sendMagicLink} className="space-y-4">
+        <form onSubmit={sendMagicLink} className="space-y-3">
           <div>
-            <label className="text-sm text-white/80">Your display name</label>
+            <label className="label text-slate-200">Your display name</label>
             <input
-              className="mt-2 w-full rounded-xl bg-white/10 border border-white/15 px-3 py-2 outline-none focus:border-emerald-400/60"
+              className="input w-full bg-white/5 border-white/10 text-slate-100 placeholder:text-slate-400"
               placeholder="Your name"
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
@@ -126,9 +121,9 @@ export function Login() {
           </div>
 
           <div>
-            <label className="text-sm text-white/80">Email</label>
+            <label className="label text-slate-200">Email</label>
             <input
-              className="mt-2 w-full rounded-xl bg-white/10 border border-white/15 px-3 py-2 outline-none focus:border-emerald-400/60"
+              className="input w-full bg-white/5 border-white/10 text-slate-100 placeholder:text-slate-400"
               placeholder="you@email.com"
               value={formEmail}
               onChange={(e) => setFormEmail(e.target.value)}
@@ -137,9 +132,9 @@ export function Login() {
             />
           </div>
 
-          <button
+        <button
             type="submit"
-            className="w-full rounded-xl bg-gradient-to-br from-emerald-500 to-green-400 text-slate-900 font-semibold py-3 hover:opacity-90 disabled:opacity-60"
+            className="btn w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold border-0"
             disabled={sending || cooldown > 0}
           >
             {sending ? "Sending…" : cooldown > 0 ? `Wait ${cooldown}s` : "Send Magic Link"}
@@ -148,7 +143,7 @@ export function Login() {
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
           <button
-            className="rounded-xl border border-white/20 px-4 py-2 hover:border-white/40"
+            className="btn btn-ghost border-white/10 text-slate-100 hover:bg-white/10"
             onClick={continueIfSignedIn}
             disabled={checking}
             title="Use existing session (if any)"
@@ -156,21 +151,14 @@ export function Login() {
             {checking ? "Checking…" : "Continue"}
           </button>
 
-          <button
-            className="rounded-xl border border-white/20 px-4 py-2 hover:border-white/40"
-            onClick={signOutEverywhere}
-          >
+          <button className="btn btn-ghost border-white/10 text-slate-100 hover:bg-white/10" onClick={signOutEverywhere}>
             Sign out
           </button>
         </div>
 
-        <p className="mt-3 text-[11px] text-white/60 text-center">
+        <p className="mt-3 text-[11px] text-slate-300/70 text-center">
           Tip: If you opened the magic link in another tab/window, just press <b>Continue</b> here.
         </p>
-      </div>
-
-      <div className="absolute bottom-4 text-xs text-white/50">
-        © {new Date().getFullYear()} Fantasy Command Centre
       </div>
     </div>
   );

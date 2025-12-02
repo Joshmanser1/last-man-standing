@@ -1,6 +1,6 @@
 // src/components/Header.tsx
 import React, { useEffect, useState } from "react";
-import { NavLink, useNavigate, useLocation } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
 import { GameSelector } from "./GameSelector";
 import { subscribeStore } from "../data/service";
@@ -9,12 +9,8 @@ const linkCls = ({ isActive }: { isActive: boolean }) =>
   `nav-link ${isActive ? "nav-link-active" : ""}`;
 
 export function Header() {
-  const [authed, setAuthed] = useState<boolean>(
-    !!localStorage.getItem("player_id")
-  );
-  const [hasLeague, setHasLeague] = useState<boolean>(
-    !!localStorage.getItem("active_league_id")
-  );
+  const [authed, setAuthed] = useState<boolean>(!!localStorage.getItem("player_id"));
+  const [hasLeague, setHasLeague] = useState<boolean>(!!localStorage.getItem("active_league_id"));
   const [activeLeagueId, setActiveLeagueId] = useState<string | null>(
     localStorage.getItem("active_league_id")
   );
@@ -22,14 +18,10 @@ export function Header() {
   const playerName = localStorage.getItem("player_name") || "";
   const isAdmin = localStorage.getItem("is_admin") === "1";
   const navigate = useNavigate();
-  const location = useLocation();
-  const onLanding = location.pathname === "/";
 
   useEffect(() => {
     supa.auth.getSession().then(({ data }) => setAuthed(!!data.session?.user?.id));
-    const { data: sub } = supa.auth.onAuthStateChange((_e, s) =>
-      setAuthed(!!s?.user?.id)
-    );
+    const { data: sub } = supa.auth.onAuthStateChange((_e, s) => setAuthed(!!s?.user?.id));
 
     const unsub = subscribeStore(() => {
       const id = localStorage.getItem("active_league_id");
@@ -64,26 +56,19 @@ export function Header() {
   }
 
   return (
-    <header
-      className={[
-        "sticky top-0 z-40 border-b backdrop-blur",
-        // Dark navy gradient to match landing page
-        "border-white/10 bg-[linear-gradient(180deg,#0f172a,rgba(15,23,42,0.85))] text-white"
-      ].join(" ")}
-    >
-      {/* allow wrapping on small widths to prevent overlap */}
+    <header className="sticky top-0 z-40 border-b border-emerald-500/10 bg-[radial-gradient(120%_120%_at_50%_-10%,#0e1b1a,#0b1413_35%,#0a0e12_85%)] text-white/90 backdrop-blur">
       <div className="container-page py-3 flex items-center gap-3 flex-wrap md:flex-nowrap">
         {/* Brand */}
-        <NavLink
-          to={onLanding ? "/" : "/lms"}
-          className="mr-2 flex items-center gap-2 text-lg font-bold tracking-tight text-white hover:text-white shrink-0"
-        >
+        <NavLink to="/" className="mr-2 flex items-center gap-2 shrink-0">
           <img
-            src="/logo-shield.png" // place your PNG in /public
+            src="/logo-shield.png"
             alt="Fantasy Command Centre"
-            className="h-8 w-8"
+            width={26}
+            height={26}
+            className="rounded-lg shadow-sm"
+            onError={(e) => ((e.currentTarget.style.display = "none"))}
           />
-          <span className="hidden sm:inline text-emerald-300 font-semibold tracking-tight">
+          <span className="text-emerald-300 font-semibold tracking-tight">
             Fantasy Command Centre
           </span>
         </NavLink>
@@ -94,54 +79,32 @@ export function Header() {
             <>
               {hasLeague && (
                 <>
-                  <NavLink to="/live" className={linkCls}>
-                    Live
-                  </NavLink>
-                  <NavLink to="/make-pick" className={linkCls}>
-                    Make Pick
-                  </NavLink>
-                  <NavLink to="/results" className={linkCls}>
-                    Results
-                  </NavLink>
-                  <NavLink to="/leaderboard" className={linkCls}>
-                    Leaderboard
-                  </NavLink>
-                  <NavLink to="/eliminations" className={linkCls}>
-                    Eliminations
-                  </NavLink>
-                  <NavLink to="/stats" className={linkCls}>
-                    Stats
-                  </NavLink>
-                  <NavLink to="/league" className={linkCls}>
-                    League
-                  </NavLink>
+                  <NavLink to="/live" className={linkCls}>Live</NavLink>
+                  <NavLink to="/make-pick" className={linkCls}>Make Pick</NavLink>
+                  <NavLink to="/results" className={linkCls}>Results</NavLink>
+                  <NavLink to="/leaderboard" className={linkCls}>Leaderboard</NavLink>
+                  <NavLink to="/eliminations" className={linkCls}>Eliminations</NavLink>
+                  <NavLink to="/stats" className={linkCls}>Stats</NavLink>
+                  <NavLink to="/league" className={linkCls}>League</NavLink>
                 </>
               )}
 
-              <NavLink to="/my-games" className={linkCls}>
-                My Games
-              </NavLink>
-              <NavLink to="/private/create" className={linkCls}>
-                Private
-              </NavLink>
+              <NavLink to="/my-games" className={linkCls}>My Games</NavLink>
+              <NavLink to="/private/create" className={linkCls}>Private</NavLink>
 
-              {isAdmin && (
-                <NavLink to="/admin" className={linkCls}>
-                  Admin
-                </NavLink>
-              )}
+              {isAdmin && <NavLink to="/admin" className={linkCls}>Admin</NavLink>}
             </>
           )}
         </nav>
 
-        {/* Spacer (consumes remaining space before right-hand controls) */}
+        {/* Spacer */}
         <div className="flex-1 basis-full md:basis-auto" />
 
-        {/* Right-hand: Game selector + user controls */}
+        {/* Right side */}
         <div className="flex items-center gap-2 shrink-0">
           {/* Game selector */}
           <div className="hidden sm:flex items-center gap-2">
-            <span className="hidden lg:inline text-sm text-white/80">Game</span>
+            <span className="hidden lg:inline text-sm text-white/70">Game</span>
             <GameSelector
               variant="header"
               value={activeLeagueId ?? undefined}
@@ -156,12 +119,12 @@ export function Header() {
           {authed ? (
             <>
               {playerName ? (
-                <span className="hidden sm:inline text-xs text-white/80 truncate max-w-[120px]">
+                <span className="hidden sm:inline text-xs text-white/70 truncate max-w-[120px]">
                   Hi, {playerName}
                 </span>
               ) : null}
               <button
-                className="px-3 py-1.5 rounded-lg border border-white/20 text-white hover:border-white/40 hover:bg-white/10 transition shrink-0"
+                className="btn btn-ghost text-white/90 border-white/15 hover:bg-white/10 shrink-0"
                 onClick={logout}
                 title="Logout"
               >
@@ -171,7 +134,7 @@ export function Header() {
           ) : (
             <NavLink
               to="/login"
-              className="px-3 py-1.5 rounded-lg border border-white/20 text-white hover:border-white/40 hover:bg-white/10 transition shrink-0"
+              className="btn btn-ghost text-white/90 border-white/15 hover:bg-white/10 shrink-0"
             >
               Login
             </NavLink>
@@ -184,41 +147,18 @@ export function Header() {
         <div className="md:hidden border-t border-white/10 px-3 py-2 flex gap-1 overflow-x-auto">
           {hasLeague && (
             <>
-              <NavLink to="/live" className={linkCls}>
-                Live
-              </NavLink>
-              <NavLink to="/make-pick" className={linkCls}>
-                Pick
-              </NavLink>
-              <NavLink to="/results" className={linkCls}>
-                Results
-              </NavLink>
-              <NavLink to="/leaderboard" className={linkCls}>
-                Leaderboard
-              </NavLink>
-              <NavLink to="/eliminations" className={linkCls}>
-                Elims
-              </NavLink>
-              <NavLink to="/stats" className={linkCls}>
-                Stats
-              </NavLink>
-              <NavLink to="/league" className={linkCls}>
-                League
-              </NavLink>
+              <NavLink to="/live" className={linkCls}>Live</NavLink>
+              <NavLink to="/make-pick" className={linkCls}>Pick</NavLink>
+              <NavLink to="/results" className={linkCls}>Results</NavLink>
+              <NavLink to="/leaderboard" className={linkCls}>Leaderboard</NavLink>
+              <NavLink to="/eliminations" className={linkCls}>Elims</NavLink>
+              <NavLink to="/stats" className={linkCls}>Stats</NavLink>
+              <NavLink to="/league" className={linkCls}>League</NavLink>
             </>
           )}
-
-          <NavLink to="/my-games" className={linkCls}>
-            My Games
-          </NavLink>
-          <NavLink to="/private/create" className={linkCls}>
-            Private
-          </NavLink>
-          {isAdmin && (
-            <NavLink to="/admin" className={linkCls}>
-              Admin
-            </NavLink>
-          )}
+          <NavLink to="/my-games" className={linkCls}>My Games</NavLink>
+          <NavLink to="/private/create" className={linkCls}>Private</NavLink>
+          {isAdmin && <NavLink to="/admin" className={linkCls}>Admin</NavLink>}
         </div>
       )}
     </header>
