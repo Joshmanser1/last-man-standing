@@ -67,8 +67,6 @@ export function Login() {
   }
 
   // === "Continue" button behaviour ===
-  // Use this when the user already has a valid Supabase session OR
-  // you've already created/stored a local player_id (bypasses email re-send).
   async function continueIfSignedIn() {
     if (checking) return;
     setChecking(true);
@@ -101,22 +99,25 @@ export function Login() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-5rem)] flex items-start sm:items-center justify-center p-4">
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow p-6 sm:p-8">
-        <div className="mx-auto w-fit rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 text-xs font-semibold mb-4">
+    <div className="min-h-[calc(100vh-56px)] bg-slate-950 text-white flex items-start sm:items-center justify-center p-4 relative">
+      {/* subtle emerald glow like landing hero */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_-10%,rgba(16,185,129,0.15),transparent)]" />
+
+      <div className="w-full max-w-xl rounded-2xl border border-white/15 bg-white/5 p-6 sm:p-8 shadow-xl relative">
+        <div className="mx-auto w-fit rounded-full border border-emerald-300/30 bg-emerald-500/15 text-emerald-300 px-3 py-1 text-xs font-semibold mb-4">
           Fantasy Command Centre
         </div>
 
-        <h1 className="text-2xl font-bold text-center mb-2">Login</h1>
-        <p className="text-sm text-slate-600 text-center mb-6">
+        <h1 className="text-3xl font-bold text-center mb-2">Login</h1>
+        <p className="text-sm text-white/70 text-center mb-6">
           Use your email to receive a magic link. No password required.
         </p>
 
-        <form onSubmit={sendMagicLink} className="space-y-3">
+        <form onSubmit={sendMagicLink} className="space-y-4">
           <div>
-            <label className="label">Your display name</label>
+            <label className="text-sm text-white/80">Your display name</label>
             <input
-              className="input w-full"
+              className="mt-2 w-full rounded-xl bg-white/10 border border-white/15 px-3 py-2 outline-none focus:border-emerald-400/60"
               placeholder="Your name"
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
@@ -125,9 +126,9 @@ export function Login() {
           </div>
 
           <div>
-            <label className="label">Email</label>
+            <label className="text-sm text-white/80">Email</label>
             <input
-              className="input w-full"
+              className="mt-2 w-full rounded-xl bg-white/10 border border-white/15 px-3 py-2 outline-none focus:border-emerald-400/60"
               placeholder="you@email.com"
               value={formEmail}
               onChange={(e) => setFormEmail(e.target.value)}
@@ -138,7 +139,7 @@ export function Login() {
 
           <button
             type="submit"
-            className="btn btn-primary w-full"
+            className="w-full rounded-xl bg-gradient-to-br from-emerald-500 to-green-400 text-slate-900 font-semibold py-3 hover:opacity-90 disabled:opacity-60"
             disabled={sending || cooldown > 0}
           >
             {sending ? "Sending…" : cooldown > 0 ? `Wait ${cooldown}s` : "Send Magic Link"}
@@ -147,7 +148,7 @@ export function Login() {
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
           <button
-            className="btn btn-ghost"
+            className="rounded-xl border border-white/20 px-4 py-2 hover:border-white/40"
             onClick={continueIfSignedIn}
             disabled={checking}
             title="Use existing session (if any)"
@@ -155,15 +156,21 @@ export function Login() {
             {checking ? "Checking…" : "Continue"}
           </button>
 
-          <button className="btn btn-ghost" onClick={signOutEverywhere}>
+          <button
+            className="rounded-xl border border-white/20 px-4 py-2 hover:border-white/40"
+            onClick={signOutEverywhere}
+          >
             Sign out
           </button>
         </div>
 
-        <p className="mt-3 text-[11px] text-slate-500 text-center">
-          Tip: If you opened the magic link in another tab/window, just press{" "}
-          <b>Continue</b> here.
+        <p className="mt-3 text-[11px] text-white/60 text-center">
+          Tip: If you opened the magic link in another tab/window, just press <b>Continue</b> here.
         </p>
+      </div>
+
+      <div className="absolute bottom-4 text-xs text-white/50">
+        © {new Date().getFullYear()} Fantasy Command Centre
       </div>
     </div>
   );

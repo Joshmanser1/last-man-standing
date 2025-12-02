@@ -1,6 +1,6 @@
 // src/components/Header.tsx
 import React, { useEffect, useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
 import { GameSelector } from "./GameSelector";
 import { subscribeStore } from "../data/service";
@@ -22,6 +22,8 @@ export function Header() {
   const playerName = localStorage.getItem("player_name") || "";
   const isAdmin = localStorage.getItem("is_admin") === "1";
   const navigate = useNavigate();
+  const location = useLocation();
+  const onLanding = location.pathname === "/";
 
   useEffect(() => {
     supa.auth.getSession().then(({ data }) => setAuthed(!!data.session?.user?.id));
@@ -62,15 +64,28 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-teal-800/30 bg-[linear-gradient(180deg,#176b5b,#1f8a75)] text-white/90 backdrop-blur">
+    <header
+      className={[
+        "sticky top-0 z-40 border-b backdrop-blur",
+        // Dark navy gradient to match landing page
+        "border-white/10 bg-[linear-gradient(180deg,#0f172a,rgba(15,23,42,0.85))] text-white"
+      ].join(" ")}
+    >
       {/* allow wrapping on small widths to prevent overlap */}
       <div className="container-page py-3 flex items-center gap-3 flex-wrap md:flex-nowrap">
         {/* Brand */}
         <NavLink
-          to="/"
-          className="mr-2 text-lg font-bold tracking-tight text-white hover:text-white shrink-0"
+          to={onLanding ? "/" : "/lms"}
+          className="mr-2 flex items-center gap-2 text-lg font-bold tracking-tight text-white hover:text-white shrink-0"
         >
-          LMS
+          <img
+            src="/logo-shield.png" // place your PNG in /public
+            alt="Fantasy Command Centre"
+            className="h-8 w-8"
+          />
+          <span className="hidden sm:inline text-emerald-300 font-semibold tracking-tight">
+            Fantasy Command Centre
+          </span>
         </NavLink>
 
         {/* Desktop nav */}
@@ -146,7 +161,7 @@ export function Header() {
                 </span>
               ) : null}
               <button
-                className="btn btn-ghost text-white border-white/20 hover:bg-white/10 shrink-0"
+                className="px-3 py-1.5 rounded-lg border border-white/20 text-white hover:border-white/40 hover:bg-white/10 transition shrink-0"
                 onClick={logout}
                 title="Logout"
               >
@@ -156,7 +171,7 @@ export function Header() {
           ) : (
             <NavLink
               to="/login"
-              className="btn btn-ghost text-white border-white/20 hover:bg-white/10 shrink-0"
+              className="px-3 py-1.5 rounded-lg border border-white/20 text-white hover:border-white/40 hover:bg-white/10 transition shrink-0"
             >
               Login
             </NavLink>
