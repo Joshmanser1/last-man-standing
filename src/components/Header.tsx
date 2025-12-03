@@ -61,12 +61,15 @@ export function Header() {
         {/* Brand */}
         <NavLink to="/" className="mr-2 flex items-center gap-2 shrink-0 min-w-[220px]">
           <img
-            src="/logo-shield.png"
-            alt="Fantasy Command Centre"
-            width={26}
-            height={26}
-            className="rounded-lg shadow-sm"
-          />
+  src="/logo-shield.png?v=6"
+  alt="Fantasy Command Centre"
+  width={28}
+  height={28}
+  className="rounded-lg block"
+  style={{
+    filter: "drop-shadow(0 0 6px rgba(16,185,129,.7)) invert(1)",
+  }}
+/>
           <span className="text-emerald-300 font-semibold tracking-tight whitespace-nowrap">
             Fantasy Command Centre
           </span>
