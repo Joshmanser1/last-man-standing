@@ -59,21 +59,19 @@ export function Header() {
     <header className="sticky top-0 z-40 border-b border-emerald-500/10 bg-[radial-gradient(120%_120%_at_50%_-10%,#0e1b1a,#0b1413_35%,#0a0e12_85%)] text-white/90 backdrop-blur">
       <div className="container-page py-3 flex items-center gap-3 flex-wrap md:flex-nowrap">
         {/* Brand */}
-<NavLink
-  to="/"
-  className="mr-2 flex items-center gap-2 shrink-0 min-w-[220px]"  // <— reserve space
->
-  <img
-    src="/logo-shield.png"
-    alt="Fantasy Command Centre"
-    width={26}
-    height={26}
-    className="rounded-lg shadow-sm"
-  />
-  <span className="text-emerald-300 font-semibold tracking-tight whitespace-nowrap">  {/* no wrap */}
-    Fantasy Command Centre
-  </span>
-</NavLink>
+        <NavLink to="/" className="mr-2 flex items-center gap-2 shrink-0 min-w-[220px]">
+          <img
+            src="/logo-shield.png"
+            alt="Fantasy Command Centre"
+            width={26}
+            height={26}
+            className="rounded-lg shadow-sm"
+          />
+          <span className="text-emerald-300 font-semibold tracking-tight whitespace-nowrap">
+            Fantasy Command Centre
+          </span>
+        </NavLink>
+
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-1">
           {authed && (
@@ -89,10 +87,8 @@ export function Header() {
                   <NavLink to="/league" className={linkCls}>League</NavLink>
                 </>
               )}
-
               <NavLink to="/my-games" className={linkCls}>My Games</NavLink>
               <NavLink to="/private/create" className={linkCls}>Private</NavLink>
-
               {isAdmin && <NavLink to="/admin" className={linkCls}>Admin</NavLink>}
             </>
           )}
