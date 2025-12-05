@@ -62,12 +62,12 @@ export function Header() {
         <NavLink to="/" className="mr-2 flex items-center gap-2 shrink-0 min-w-[220px]">
   <NavLink to="/" className="mr-2 flex items-center gap-2 shrink-0 min-w-[220px]">
   <img
-    src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><rect rx='6' width='28' height='28' fill='%2310b981'/></svg>"
-    alt="FCC"
-    width={28}
-    height={28}
-    className="rounded-lg block"
-  />
+  src="/fcc-shield.png?v=2"
+  alt="Fantasy Command Centre"
+  width={28}
+  height={28}
+  className="rounded-lg block"
+/>
   <span className="text-emerald-300 font-semibold tracking-tight whitespace-nowrap">
     Fantasy Command Centre
   </span>
