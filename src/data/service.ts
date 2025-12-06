@@ -46,6 +46,11 @@ export interface IDataService {
   createGame(name: string, startISO: string): Promise<League>;
   importFixturesForCurrentRound(leagueId: ID): Promise<{ event: number }>;
   evaluateFromFixtures(roundId: ID): Promise<void>;
+
+  // NEW (admin league management)
+  setLeagueVisibility?(leagueId: ID, isPublic: boolean): Promise<void>;
+  updateLeague?(leagueId: ID, patch: Partial<League>): Promise<void>;
+  deleteLeague?(leagueId: ID): Promise<void>; // local impl is hard-delete
 }
 
 /* -----------------------------------------------------------------------------
@@ -93,17 +98,74 @@ function withNotify<TArgs extends any[], TReturn>(
 ) {
   return async (...args: TArgs) => {
     const result = await fn(...args);
-    // The mock service writes to localStorage internally; we just broadcast.
     window.dispatchEvent(new Event(STORE_EVENT));
     return result;
   };
 }
 
-/** Export a proxy that forwards to the base service but fires change events
-    after any mutating operation. */
+/* -----------------------------------------------------------------------------
+   Local fallbacks for new admin methods (safe if base doesn't have them)
+----------------------------------------------------------------------------- */
+type Store = {
+  leagues?: any[];
+  rounds?: any[];
+  teams?: any[];
+  players?: any[];
+  memberships?: any[];
+  picks?: any[];
+  fixtures?: any[];
+};
+
+const notDeleted = (l: any) => !l?.deleted_at;
+
+/**
+ * HARD DELETE + FULL CASCADE (local storage)
+ * - Remove league row
+ * - Remove all related rows (rounds, teams, memberships, picks, fixtures)
+ * - Clear active_league_id if it pointed at the deleted league
+ */
+async function localDeleteLeague(leagueId: ID) {
+  const s = readStore<Store>();
+
+  // Remove the league entirely (no soft delete here)
+  s.leagues = (s.leagues || []).filter((l: any) => l.id !== leagueId);
+
+  // Cascade removal of children
+  s.rounds = (s.rounds || []).filter((r: any) => r.league_id !== leagueId);
+  s.teams = (s.teams || []).filter((t: any) => t.league_id !== leagueId);
+  s.memberships = (s.memberships || []).filter((m: any) => m.league_id !== leagueId);
+  s.picks = (s.picks || []).filter((p: any) => p.league_id !== leagueId);
+  s.fixtures = (s.fixtures || []).filter((f: any) => f.league_id !== leagueId);
+
+  // If UI was pointing to this league, clear it
+  if (localStorage.getItem("active_league_id") === leagueId) {
+    localStorage.removeItem("active_league_id");
+  }
+
+  writeStore(s);
+}
+
+async function localUpdateLeague(leagueId: ID, patch: Partial<League>) {
+  const s = readStore<Store>();
+  s.leagues ||= [];
+  const i = s.leagues.findIndex((l: any) => l.id === leagueId);
+  if (i >= 0) {
+    s.leagues[i] = { ...s.leagues[i], ...patch };
+    writeStore(s);
+  } else {
+    throw new Error("League not found");
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   Export proxy: forwards to base, filters, and notifies after mutations
+----------------------------------------------------------------------------- */
 export const dataService: IDataService = {
-  // Reads (no notification needed)
-  listLeagues: (...a) => base.listLeagues(...a),
+  // Reads (wrap listLeagues to hide soft-deleted rows regardless of backend)
+  listLeagues: async (...a) => {
+    const rows = await base.listLeagues(...a);
+    return (rows || []).filter(notDeleted);
+  },
   getLeagueByName: (...a) => base.getLeagueByName(...a),
   getCurrentRound: (...a) => base.getCurrentRound(...a),
   listTeams: (...a) => base.listTeams(...a),
@@ -124,4 +186,26 @@ export const dataService: IDataService = {
     base.importFixturesForCurrentRound.bind(base)
   ),
   evaluateFromFixtures: withNotify(base.evaluateFromFixtures.bind(base)),
+
+  // New admin methods with graceful fallback to local store
+  setLeagueVisibility: withNotify(async (leagueId: ID, isPublic: boolean) => {
+    if (base.setLeagueVisibility) {
+      return base.setLeagueVisibility(leagueId, isPublic);
+    }
+    return localUpdateLeague(leagueId, { is_public: isPublic } as Partial<League>);
+  }),
+
+  updateLeague: withNotify(async (leagueId: ID, patch: Partial<League>) => {
+    if (base.updateLeague) {
+      return base.updateLeague(leagueId, patch);
+    }
+    return localUpdateLeague(leagueId, patch);
+  }),
+
+  deleteLeague: withNotify(async (leagueId: ID) => {
+    if (base.deleteLeague) {
+      return base.deleteLeague(leagueId);
+    }
+    return localDeleteLeague(leagueId);
+  }),
 };
