@@ -6,6 +6,15 @@ import { supa } from "../lib/supabaseClient";
 export function Login() {
   const navigate = useNavigate();
 
+// Auto-redirect if already logged in
+useEffect(() => {
+  supa.auth.getSession().then(({ data }) => {
+    if (data.session?.user?.id) {
+      navigate("/my-games", { replace: true });
+    }
+  });
+}, [navigate]);
+
   // form
   const [formName, setFormName] = useState("");
   const [formEmail, setFormEmail] = useState("");
