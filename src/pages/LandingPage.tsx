@@ -1,12 +1,28 @@
 // src/pages/LandingPage.tsx
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { supa } from "../lib/supabaseClient";
 
 export default function LandingPage() {
+  const [authed, setAuthed] = useState(false);
+
+  useEffect(() => {
+    // initial check
+    supa.auth.getSession().then(({ data }) => setAuthed(!!data.session?.user?.id));
+    // keep in sync
+    const { data: sub } = supa.auth.onAuthStateChange((_e, session) =>
+      setAuthed(!!session?.user?.id)
+    );
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  const hostHref = authed ? "/private/create" : "/login";
+
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       {/* Hero */}
       <section className="relative overflow-hidden pt-8 md:pt-12">
-        {/* Put the gradient behind content and make it ignore clicks */}
+        {/* background sits behind and ignores clicks */}
         <div className="absolute inset-0 -z-10 pointer-events-none bg-[radial-gradient(60%_60%_at_50%_-10%,rgba(16,185,129,0.25),transparent)]" />
 
         <div className="mx-auto max-w-7xl px-4 py-20 md:py-28 relative z-0">
@@ -27,14 +43,15 @@ export default function LandingPage() {
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
+              {/* Host: go to create if authed, otherwise to login */}
               <Link
-                to="/login"
+                to={hostHref}
                 className="px-6 py-3 rounded-xl bg-emerald-500 text-slate-900 font-semibold hover:bg-emerald-400 transition"
               >
                 Host a private league
               </Link>
 
-              {/* Route this to an existing page for now */}
+              {/* Explore: send to your current list page */}
               <Link
                 to="/my-games"
                 className="px-6 py-3 rounded-xl border border-white/15 hover:border-white/30 transition"
