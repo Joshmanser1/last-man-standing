@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataService } from "../data/service";
 import { useNavigate } from "react-router-dom";
+import { supa } from "../lib/supabaseClient";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -12,6 +13,9 @@ type LeagueLite = {
   status: "upcoming" | "active" | "locked" | "completed" | string;
   start_date_utc?: string;
   fpl_start_event?: number;
+  // visibility (optional so it won’t break if absent in local/mock)
+  is_public?: boolean;
+  join_code?: string | null;
 };
 
 type Store = {
@@ -37,6 +41,7 @@ export function LiveGames() {
   const [filter, setFilter] = useState<Filter>("all");
   const [store, setStore] = useState<Store | null>(null);
   const [loading, setLoading] = useState(true);
+  const [joiningId, setJoiningId] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const playerId = localStorage.getItem("player_id") || null;
@@ -62,10 +67,7 @@ export function LiveGames() {
   }, []);
 
   // Membership / entrants maps
-  const memberships = useMemo(
-    () => store?.memberships || [],
-    [store]
-  );
+  const memberships = useMemo(() => store?.memberships || [], [store]);
 
   const entrantsByLeague = useMemo(() => {
     const map = new Map<string, number>();
@@ -101,10 +103,49 @@ export function LiveGames() {
     navigate(path);
   }
 
-  function goJoin(leagueId: string) {
-    // Set as active and send them to Home where they’ll join via name field
-    localStorage.setItem("active_league_id", leagueId);
-    navigate("/");
+  // ---- Real join flow (auth → (private code?) → ensure membership → set active → /my-games)
+  async function joinLeague(l: LeagueLite) {
+    if (joiningId) return;
+    setJoiningId(l.id);
+    try {
+      // Require session
+      const { data } = await supa.auth.getSession();
+      const authed = !!data.session?.user?.id;
+      if (!authed) {
+        localStorage.setItem("active_league_id", l.id);
+        navigate("/login");
+        return;
+      }
+
+      // Private? ask for code (unless you keep the code in league.join_code and want to compare)
+      if (l.is_public === false) {
+        const input = window.prompt("Enter the private join code to join this league:");
+        if (!input) {
+          return; // cancelled
+        }
+        // If the league carries a join_code locally, do a quick client check (server still validates)
+        if (l.join_code && input.trim() !== l.join_code.trim()) {
+          alert("That join code is not correct.");
+          return;
+        }
+      }
+
+      // Ensure we have a player
+      const displayName = localStorage.getItem("player_name") || "Manager";
+      const player = await dataService.upsertPlayer(displayName);
+
+      // Ensure membership (works for both public and private; backend should validate code server-side if you add it there)
+      await dataService.ensureMembership(l.id, player.id);
+
+      // Set active and go to My Games
+      localStorage.setItem("active_league_id", l.id);
+      navigate("/my-games");
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message ?? "Failed to join this game.");
+    } finally {
+      setJoiningId(null);
+    }
   }
 
   if (loading) {
@@ -234,6 +275,11 @@ export function LiveGames() {
                           You’re in
                         </span>
                       )}
+                      {l.is_public === false && (
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                          Private
+                        </span>
+                      )}
                     </div>
                     <div className="mt-1 text-xs text-slate-600 space-x-2">
                       <span>{roundLabel}</span>
@@ -242,8 +288,7 @@ export function LiveGames() {
                       )}
                       {l.start_date_utc && (
                         <span className="text-slate-500">
-                          • Starts{" "}
-                          {new Date(l.start_date_utc).toLocaleDateString()}
+                          • Starts {new Date(l.start_date_utc).toLocaleDateString()}
                         </span>
                       )}
                     </div>
@@ -261,13 +306,6 @@ export function LiveGames() {
                       {entrants}
                     </span>{" "}
                     entrant{entrants === 1 ? "" : "s"}
-                  </div>
-                  <div className="space-x-1">
-                    {l.status === "completed" && (
-                      <span className="text-amber-700">
-                        Finished competition
-                      </span>
-                    )}
                   </div>
                 </div>
 
@@ -290,9 +328,10 @@ export function LiveGames() {
                   ) : (
                     <button
                       className="btn btn-primary text-xs"
-                      onClick={() => goJoin(l.id)}
+                      onClick={() => joinLeague(l)}
+                      disabled={joiningId === l.id}
                     >
-                      Join this game
+                      {joiningId === l.id ? "Joining…" : "Join this game"}
                     </button>
                   )}
                   <button
