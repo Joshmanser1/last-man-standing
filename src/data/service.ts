@@ -50,7 +50,7 @@ export interface IDataService {
   // NEW (admin league management)
   setLeagueVisibility?(leagueId: ID, isPublic: boolean): Promise<void>;
   updateLeague?(leagueId: ID, patch: Partial<League>): Promise<void>;
-  deleteLeague?(leagueId: ID): Promise<void>; // local impl is hard-delete
+  deleteLeague?(leagueId: ID): Promise<void>; // soft delete
 }
 
 /* -----------------------------------------------------------------------------
@@ -73,7 +73,6 @@ export function readStore<T = any>(): T {
 
 export function writeStore(next: any) {
   localStorage.setItem(STORE_KEY, JSON.stringify(next));
-  // Notify the app that local data changed (components re-query on this)
   window.dispatchEvent(new Event(STORE_EVENT));
 }
 
@@ -85,14 +84,16 @@ export function subscribeStore(cb: () => void) {
 }
 
 /* -----------------------------------------------------------------------------
-   Choose backend (mock for now) and wrap mutating calls to emit change events
+   Backend selection
 ----------------------------------------------------------------------------- */
 const USE_SUPABASE_BACKEND = false;
 const base = (USE_SUPABASE_BACKEND
   ? supabaseService
   : (mockService as unknown)) as IDataService;
 
-// Helper to call a base fn and then emit STORE_EVENT
+/* -----------------------------------------------------------------------------
+   Helpers
+----------------------------------------------------------------------------- */
 function withNotify<TArgs extends any[], TReturn>(
   fn: (...args: TArgs) => Promise<TReturn>
 ) {
@@ -103,50 +104,49 @@ function withNotify<TArgs extends any[], TReturn>(
   };
 }
 
-/* -----------------------------------------------------------------------------
-   Local fallbacks for new admin methods (safe if base doesn't have them)
------------------------------------------------------------------------------ */
-type Store = {
-  leagues?: any[];
-  rounds?: any[];
-  teams?: any[];
-  players?: any[];
-  memberships?: any[];
-  picks?: any[];
-  fixtures?: any[];
-};
+// Short code like “K7H9QX” (unambiguous chars)
+function genJoinCode(len = 6) {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < len; i++) {
+    out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return out;
+}
 
-const notDeleted = (l: any) => !l?.deleted_at;
+/** Ensure a private league has a join_code in local store (no-op if already set). */
+function ensurePrivateCodeLocal(leagueId: ID): string | undefined {
+  const s = readStore<any>();
+  s.leagues ||= [];
+  const idx = s.leagues.findIndex((l: any) => l.id === leagueId);
+  if (idx === -1) return;
 
-/**
- * HARD DELETE + FULL CASCADE (local storage)
- * - Remove league row
- * - Remove all related rows (rounds, teams, memberships, picks, fixtures)
- * - Clear active_league_id if it pointed at the deleted league
- */
+  const lg = s.leagues[idx];
+  if (!lg.is_public && !lg.join_code) {
+    lg.join_code = genJoinCode();
+    writeStore(s);
+    return lg.join_code as string;
+  }
+  return lg.join_code;
+}
+
 async function localDeleteLeague(leagueId: ID) {
-  const s = readStore<Store>();
-
-  // Remove the league entirely (no soft delete here)
-  s.leagues = (s.leagues || []).filter((l: any) => l.id !== leagueId);
-
-  // Cascade removal of children
+  const s = readStore<any>();
+  s.leagues ||= [];
+  const i = s.leagues.findIndex((l: any) => l.id === leagueId);
+  if (i >= 0) {
+    s.leagues[i] = { ...s.leagues[i], deleted_at: new Date().toISOString() };
+  }
   s.rounds = (s.rounds || []).filter((r: any) => r.league_id !== leagueId);
   s.teams = (s.teams || []).filter((t: any) => t.league_id !== leagueId);
   s.memberships = (s.memberships || []).filter((m: any) => m.league_id !== leagueId);
   s.picks = (s.picks || []).filter((p: any) => p.league_id !== leagueId);
   s.fixtures = (s.fixtures || []).filter((f: any) => f.league_id !== leagueId);
-
-  // If UI was pointing to this league, clear it
-  if (localStorage.getItem("active_league_id") === leagueId) {
-    localStorage.removeItem("active_league_id");
-  }
-
   writeStore(s);
 }
 
 async function localUpdateLeague(leagueId: ID, patch: Partial<League>) {
-  const s = readStore<Store>();
+  const s = readStore<any>();
   s.leagues ||= [];
   const i = s.leagues.findIndex((l: any) => l.id === leagueId);
   if (i >= 0) {
@@ -158,13 +158,13 @@ async function localUpdateLeague(leagueId: ID, patch: Partial<League>) {
 }
 
 /* -----------------------------------------------------------------------------
-   Export proxy: forwards to base, filters, and notifies after mutations
+   Export proxy
 ----------------------------------------------------------------------------- */
 export const dataService: IDataService = {
-  // Reads (wrap listLeagues to hide soft-deleted rows regardless of backend)
+  // Reads
   listLeagues: async (...a) => {
     const rows = await base.listLeagues(...a);
-    return (rows || []).filter(notDeleted);
+    return (rows || []).filter((l: any) => !l?.deleted_at);
   },
   getLeagueByName: (...a) => base.getLeagueByName(...a),
   getCurrentRound: (...a) => base.getCurrentRound(...a),
@@ -172,7 +172,7 @@ export const dataService: IDataService = {
   listPicks: (...a) => base.listPicks(...a),
   listUsedTeamIds: (...a) => base.listUsedTeamIds(...a),
 
-  // Mutations wrapped with notify
+  // Mutations (proxy + notify)
   seed: withNotify(base.seed.bind(base)),
   upsertPlayer: withNotify(base.upsertPlayer.bind(base)),
   ensureMembership: withNotify(base.ensureMembership.bind(base)),
@@ -181,25 +181,45 @@ export const dataService: IDataService = {
   lockRound: withNotify(base.lockRound.bind(base)),
   evaluateRound: withNotify(base.evaluateRound.bind(base)),
   advanceRound: withNotify(base.advanceRound.bind(base)),
-  createGame: withNotify(base.createGame.bind(base)),
+
+  // Create game, then (if private) guarantee a join code
+  createGame: withNotify(async (name: string, startISO: string) => {
+    const created = await base.createGame(name, startISO);
+    // If backend didn’t set code and league is private, create a local one
+    const s = readStore<any>();
+    const found = (s.leagues || []).find((l: any) => l.id === created.id);
+    if (found && !found.is_public && !found.join_code) {
+      found.join_code = genJoinCode();
+      writeStore(s);
+    }
+    return created;
+  }),
+
   importFixturesForCurrentRound: withNotify(
     base.importFixturesForCurrentRound.bind(base)
   ),
   evaluateFromFixtures: withNotify(base.evaluateFromFixtures.bind(base)),
 
-  // New admin methods with graceful fallback to local store
+  // Visibility: when switching to private, ensure a join code exists
   setLeagueVisibility: withNotify(async (leagueId: ID, isPublic: boolean) => {
     if (base.setLeagueVisibility) {
-      return base.setLeagueVisibility(leagueId, isPublic);
+      await base.setLeagueVisibility(leagueId, isPublic);
+    } else if (base.updateLeague) {
+      await base.updateLeague(leagueId, { is_public: isPublic } as Partial<League>);
+    } else {
+      await localUpdateLeague(leagueId, { is_public: isPublic } as Partial<League>);
     }
-    return localUpdateLeague(leagueId, { is_public: isPublic } as Partial<League>);
+    if (!isPublic) ensurePrivateCodeLocal(leagueId);
   }),
 
   updateLeague: withNotify(async (leagueId: ID, patch: Partial<League>) => {
     if (base.updateLeague) {
-      return base.updateLeague(leagueId, patch);
+      await base.updateLeague(leagueId, patch);
+    } else {
+      await localUpdateLeague(leagueId, patch);
     }
-    return localUpdateLeague(leagueId, patch);
+    // If caller flipped to private via patch, guarantee a code
+    if (patch.is_public === false) ensurePrivateCodeLocal(leagueId);
   }),
 
   deleteLeague: withNotify(async (leagueId: ID) => {
