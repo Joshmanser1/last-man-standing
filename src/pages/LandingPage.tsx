@@ -6,29 +6,43 @@ export default function LandingPage() {
     <main className="min-h-screen bg-slate-950 text-white">
       {/* Hero */}
       <section className="relative overflow-hidden pt-8 md:pt-12">
-        <div className="absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_-10%,rgba(16,185,129,0.25),transparent)]" />
-        <div className="mx-auto max-w-7xl px-4 py-20 md:py-28">
+        {/* Put the gradient behind content and make it ignore clicks */}
+        <div className="absolute inset-0 -z-10 pointer-events-none bg-[radial-gradient(60%_60%_at_50%_-10%,rgba(16,185,129,0.25),transparent)]" />
+
+        <div className="mx-auto max-w-7xl px-4 py-20 md:py-28 relative z-0">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-emerald-300 text-xs">
               <span>Beta</span>
               <span className="opacity-60">Go-live checklist: final polish</span>
             </div>
+
             <h1 className="mt-6 text-4xl md:text-6xl font-extrabold tracking-tight leading-tight">
               Last-Man-Standing
               <span className="block text-emerald-400">Host. Join. Win.</span>
             </h1>
+
             <p className="mt-6 text-lg opacity-80">
               Spin up a private LMS with mates, or enter public pots. Live scoring, smart eliminations,
               and clean admin tools. Free tier to start — upgrade when you’re ready.
             </p>
+
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link to="/login" className="px-6 py-3 rounded-xl bg-emerald-500 text-slate-900 font-semibold hover:bg-emerald-400 transition">
+              <Link
+                to="/login"
+                className="px-6 py-3 rounded-xl bg-emerald-500 text-slate-900 font-semibold hover:bg-emerald-400 transition"
+              >
                 Host a private league
               </Link>
-              <Link to="/lms" className="px-6 py-3 rounded-xl border border-white/15 hover:border-white/30 transition">
+
+              {/* Route this to an existing page for now */}
+              <Link
+                to="/my-games"
+                className="px-6 py-3 rounded-xl border border-white/15 hover:border-white/30 transition"
+              >
                 Explore public games
               </Link>
             </div>
+
             <p className="mt-4 text-sm opacity-70">No card required on Free. Upgrade anytime.</p>
           </div>
         </div>
