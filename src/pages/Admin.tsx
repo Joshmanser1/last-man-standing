@@ -30,19 +30,18 @@ export function Admin() {
   const [refreshTick, setRefreshTick] = useState(0);
   const [fetchSummary, setFetchSummary] = useState<string>("");
 
-  // For "Create Next Round" FPL-based setup
+  // Next round (FPL)
   const [nextFplEvent, setNextFplEvent] = useState<number | null>(null);
   const [nextDeadlineISO, setNextDeadlineISO] = useState<string | null>(null);
 
-  // fixtures table sorting
+  // Fixtures table sorting
   const [sortKey, setSortKey] = useState<SortKey>("kickoff");
   const [sortAsc, setSortAsc] = useState<boolean>(true);
 
-  // ------------------------ helpers ------------------------
+  // ---------- helpers ----------
   function toast(msg: string) {
     alert(msg);
   }
-
   function readStore(): Store {
     return JSON.parse(localStorage.getItem(STORE_KEY) || "{}") as Store;
   }
@@ -50,7 +49,7 @@ export function Admin() {
     localStorage.setItem(STORE_KEY, JSON.stringify(s));
   }
 
-  // ------------------------ load leagues (filter out soft-deleted) ------------------------
+  // ---------- load leagues (filter out soft-deleted) ----------
   useEffect(() => {
     (async () => {
       const serverList = await (dataService as any).listLeagues?.();
@@ -62,8 +61,7 @@ export function Admin() {
           return;
         }
       }
-
-      // Only seed on the very first run
+      // first run: seed
       if (!localStorage.getItem(SEED_SENTINEL)) {
         await (dataService as any).seed?.();
         localStorage.setItem(SEED_SENTINEL, "1");
@@ -78,10 +76,9 @@ export function Admin() {
     })();
   }, []);
 
-  // ------------------------ load selected league/round ------------------------
+  // ---------- load selected league/round ----------
   useEffect(() => {
     if (!selectedLeagueId) return;
-
     (async () => {
       const store = readStore();
       const l = (store.leagues || []).find((x: any) => x.id === selectedLeagueId);
@@ -98,7 +95,7 @@ export function Admin() {
       setFetchSummary("");
       setWinners(new Set());
 
-      // 🔒 Auto-lock: if round is still upcoming but its deadline has passed
+      // Auto-lock after deadline if still upcoming
       if (r && r.pick_deadline_utc && r.status === "upcoming") {
         const deadlineTs = Date.parse(r.pick_deadline_utc);
         if (!Number.isNaN(deadlineTs) && Date.now() >= deadlineTs) {
@@ -115,7 +112,7 @@ export function Admin() {
     })();
   }, [selectedLeagueId, refreshTick]);
 
-  // ------------------------ derived ------------------------
+  // ---------- derived ----------
   const store: Store | null = useMemo(() => {
     try {
       const raw = localStorage.getItem(STORE_KEY);
@@ -142,6 +139,7 @@ export function Admin() {
     return base + (round.round_number - 1);
   }, [league, round]);
 
+  // ---------- actions ----------
   function toggleWinner(teamId: string) {
     setWinners((prev) => {
       const copy = new Set(prev);
@@ -153,10 +151,9 @@ export function Admin() {
   function resetAll() {
     localStorage.removeItem(STORE_KEY);
     localStorage.removeItem(SEED_SENTINEL);
-    location.assign("/"); // reseed on truly fresh start
+    location.assign("/");
   }
 
-  // ------------------------ lock / advance / results ------------------------
   async function lockNow() {
     if (!round) return;
     setLoading(true);
@@ -214,7 +211,6 @@ export function Admin() {
     }
   }
 
-  // ------------------------ Create Next Round ------------------------
   async function createNext() {
     if (!league) return;
     if (!nextDeadlineISO || !nextFplEvent) {
@@ -236,7 +232,6 @@ export function Admin() {
     }
   }
 
-  // ------------------------ Delete League (soft delete fallback) ------------------------
   async function handleDeleteLeague() {
     if (!selectedLeagueId || !league) return;
     const ok = window.confirm(
@@ -249,7 +244,6 @@ export function Admin() {
       if ((dataService as any).deleteLeague) {
         await (dataService as any).deleteLeague(selectedLeagueId);
       } else {
-        // Soft-delete in local storage as a fallback
         const s = readStore();
         const idx = (s.leagues || []).findIndex((l: any) => l.id === selectedLeagueId);
         if (idx >= 0) {
@@ -277,7 +271,6 @@ export function Admin() {
     }
   }
 
-  // ------------------------ Public / Private toggle ------------------------
   async function setVisibility(nextPublic: boolean) {
     if (!league) return;
     setLoading(true);
@@ -287,7 +280,6 @@ export function Admin() {
       } else if ((dataService as any).updateLeague) {
         await (dataService as any).updateLeague(league.id, { is_public: nextPublic });
       } else {
-        // Local storage fallback
         const s = readStore();
         const idx = (s.leagues || []).findIndex((l: any) => l.id === league.id);
         if (idx >= 0) {
@@ -309,7 +301,7 @@ export function Admin() {
     }
   }
 
-  // ------------------------ Fixtures (API + fallback) ------------------------
+  // ---------- fixtures (API + fallback) ----------
   async function importFixturesFromLocalBackup() {
     if (!league || !round) return 0;
     try {
@@ -402,9 +394,7 @@ export function Admin() {
     } catch (e: any) {
       const added = await importFixturesFromLocalBackup();
       if (added > 0) {
-        setFetchSummary(
-          `FPL unavailable. Loaded ${added} fixtures from local backup.`
-        );
+        setFetchSummary(`FPL unavailable. Loaded ${added} fixtures from local backup.`);
         setRefreshTick((x) => x + 1);
       } else {
         setFetchSummary("Failed to fetch fixtures (FPL & local backup).");
@@ -429,7 +419,7 @@ export function Admin() {
     }
   }
 
-  // ------------------------ fixtures table views ------------------------
+  // ---------- fixtures table views ----------
   const fixturesForRound = useMemo(() => {
     if (!store || !round) return [];
     return (store.fixtures || [])
@@ -537,7 +527,9 @@ export function Admin() {
           />
         </div>
 
-        <div className="flex items-center justify-between gap-4 mb-6">
+        {/* Header row: left info + right controls */}
+        <div className="flex items-start justify-between gap-4 mb-6">
+          {/* LEFT: info */}
           <div>
             <h2 className="text-2xl font-bold">Admin Panel</h2>
             <div className="mt-2 space-y-1 text-sm text-slate-600">
@@ -554,6 +546,27 @@ export function Admin() {
                   {league.is_public ? "Public" : "Private"}
                 </span>
               </div>
+
+              {/* Join code for private leagues */}
+              {!league.is_public && (
+                <div>
+                  Join code:{" "}
+                  <button
+                    type="button"
+                    className="font-mono text-emerald-700 underline decoration-dotted select-all"
+                    title={league?.join_code ? "Click to copy" : "No code yet"}
+                    onClick={() => {
+                      if (league?.join_code) {
+                        navigator.clipboard.writeText(league.join_code);
+                        alert(`Copied join code: ${league.join_code}`);
+                      }
+                    }}
+                  >
+                    {league?.join_code ?? "—"}
+                  </button>
+                </div>
+              )}
+
               <div>
                 Current Round: <b>{round.round_number}</b> • Status:{" "}
                 <b className="uppercase">{round.status}</b>
@@ -564,36 +577,6 @@ export function Admin() {
                   ? new Date(round.pick_deadline_utc).toLocaleString()
                   : "—"}
               </div>
-              {!league.is_public && league.join_code && (
-  <div>
-    Private Join Code:{" "}
-    <b
-      className="font-mono text-emerald-700 select-all cursor-pointer"
-      title="Click to copy"
-      onClick={() => {
-        navigator.clipboard.writeText(league.join_code);
-        alert(`Copied join code: ${league.join_code}`);
-      }}
-    >
-      {league.join_code}
-    </b>
-  </div>
-)}
-{!league.is_public && league.join_code && (
-  <div>
-    Private Join Code:{" "}
-    <b
-      className="font-mono text-emerald-700 select-all cursor-pointer"
-      title="Click to copy"
-      onClick={() => {
-        navigator.clipboard.writeText(league.join_code);
-        alert(`Copied join code: ${league.join_code}`);
-      }}
-    >
-      {league.join_code}
-    </b>
-  </div>
-)}
               <div>
                 Picks this round: <b>{roundPicks.length}</b> • Survivors (marked):{" "}
                 <b>{survivors}</b>
@@ -602,16 +585,15 @@ export function Admin() {
                 <div>
                   FPL Mapping: <b>GW {mappedFplEvent}</b>{" "}
                   <span className="text-slate-500">
-                    (base {league.fpl_start_event} + offset{" "}
-                    {round.round_number - 1})
+                    (base {league.fpl_start_event} + offset {round.round_number - 1})
                   </span>
                 </div>
               )}
             </div>
           </div>
 
+          {/* RIGHT: controls */}
           <div className="flex items-center gap-2">
-            {/* visibility toggle */}
             <label className="mr-2 text-sm text-slate-700 flex items-center gap-2">
               <input
                 type="checkbox"
@@ -665,7 +647,6 @@ export function Admin() {
             Advance Round
           </button>
 
-          {/* API-driven */}
           <button
             disabled={loading}
             onClick={fetchFixturesFromFpl}
@@ -716,8 +697,8 @@ export function Admin() {
           </div>
           <p className="text-xs text-slate-500 mt-2">
             Tip: lock first to auto-mark “no-pick”, then tick winners and press{" "}
-            <b>Save Results (Manual)</b>. For EPL you can also use{" "}
-            <b>Fetch Fixtures</b> + <b>Auto-Evaluate</b>.
+            <b>Save Results (Manual)</b>. For EPL you can also use <b>Fetch Fixtures</b>{" "}
+            + <b>Auto-Evaluate</b>.
           </p>
         </div>
 
@@ -729,18 +710,10 @@ export function Admin() {
               <table className="min-w-full border border-slate-200 text-sm">
                 <thead className="bg-slate-100 text-slate-700">
                   <tr>
-                    <th className="px-3 py-2 w-1/4">
-                      {headerBtn("home", "Home")}
-                    </th>
-                    <th className="px-3 py-2 w-1/4">
-                      {headerBtn("away", "Away")}
-                    </th>
-                    <th className="px-3 py-2 w-1/4">
-                      {headerBtn("kickoff", "Kickoff")}
-                    </th>
-                    <th className="px-3 py-2 w-1/4">
-                      {headerBtn("result", "Result")}
-                    </th>
+                    <th className="px-3 py-2 w-1/4">{headerBtn("home", "Home")}</th>
+                    <th className="px-3 py-2 w-1/4">{headerBtn("away", "Away")}</th>
+                    <th className="px-3 py-2 w-1/4">{headerBtn("kickoff", "Kickoff")}</th>
+                    <th className="px-3 py-2 w-1/4">{headerBtn("result", "Result")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -753,11 +726,7 @@ export function Admin() {
                           ? new Date(f.kickoff_utc).toLocaleString()
                           : "—"}
                       </td>
-                      <td
-                        className={
-                          "px-3 py-2 font-medium " + resultClass(f.resultText)
-                        }
-                      >
+                      <td className={"px-3 py-2 font-medium " + resultClass(f.resultText)}>
                         {f.resultText}
                       </td>
                     </tr>
@@ -794,8 +763,8 @@ export function Admin() {
               Create
             </button>
             <span className="text-xs text-slate-500 max-w-xs">
-              This uses the official FPL deadline for the selected Gameweek as the
-              pick deadline for the new round.
+              This uses the official FPL deadline for the selected Gameweek as the pick
+              deadline for the new round.
             </span>
           </div>
         </div>
@@ -825,18 +794,13 @@ function CreateGameInline({ onCreated }: { onCreated: (lg: any) => void }) {
 
     try {
       setSaving(true);
-      // create + visibility
-      const lg = await (dataService as any).createGame(
-        name.trim(),
-        startDeadlineISO
-      );
+      const lg = await (dataService as any).createGame(name.trim(), startDeadlineISO);
 
       if ((dataService as any).setLeagueVisibility) {
         await (dataService as any).setLeagueVisibility(lg.id, makePublic);
       } else if ((dataService as any).updateLeague) {
         await (dataService as any).updateLeague(lg.id, { is_public: makePublic });
       } else {
-        // fallback to local patch
         const s = JSON.parse(localStorage.getItem(STORE_KEY) || "{}") as Store;
         const idx = (s.leagues || []).findIndex((l: any) => l.id === lg.id);
         if (idx >= 0) {
@@ -846,9 +810,9 @@ function CreateGameInline({ onCreated }: { onCreated: (lg: any) => void }) {
       }
 
       alert(
-        `Created: ${lg.name} (FPL start GW ${
-          lg.fpl_start_event ?? startEvent
-        }) — ${makePublic ? "Public" : "Private"}`
+        `Created: ${lg.name} (FPL start GW ${lg.fpl_start_event ?? startEvent}) — ${
+          makePublic ? "Public" : "Private"
+        }`
       );
       onCreated({ ...lg, is_public: makePublic });
     } catch (err: any) {
@@ -898,12 +862,10 @@ function CreateGameInline({ onCreated }: { onCreated: (lg: any) => void }) {
 function CreateGamePanel({ onCreated }: { onCreated: (lg: any) => void }) {
   return (
     <div className="w-full max-w-xl bg-white rounded-2xl shadow p-6 space-y-4">
-      <h2 className="text-xl font-semibold">
-        Create your first Last Man Standing game
-      </h2>
+      <h2 className="text-xl font-semibold">Create your first Last Man Standing game</h2>
       <p className="text-slate-600 text-sm">
-        Pick a starting FPL Gameweek. We’ll use the official deadline for Round 1
-        and map all future rounds to the FPL calendar.
+        Pick a starting FPL Gameweek. We’ll use the official deadline for Round 1 and map
+        all future rounds to the FPL calendar.
       </p>
       <CreateGameInline onCreated={onCreated} />
     </div>
