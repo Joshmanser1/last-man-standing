@@ -4,7 +4,7 @@ import { dataService } from "../data/service";
 import { FplGwSelect } from "../components/FplGwSelect";
 
 const STORE_KEY = "lms_store_v1";
-const SEED_SENTINEL = "lms_seed_done"; // ← NEW
+const SEED_SENTINEL = "lms_seed_done";
 
 type Store = {
   leagues: any[];
@@ -38,44 +38,54 @@ export function Admin() {
   const [sortKey, setSortKey] = useState<SortKey>("kickoff");
   const [sortAsc, setSortAsc] = useState<boolean>(true);
 
-  // load leagues on mount (with first-run-only seed)
+  // ------------------------ helpers ------------------------
+  function toast(msg: string) {
+    alert(msg);
+  }
+
+  function readStore(): Store {
+    return JSON.parse(localStorage.getItem(STORE_KEY) || "{}") as Store;
+  }
+  function writeStore(s: Store) {
+    localStorage.setItem(STORE_KEY, JSON.stringify(s));
+  }
+
+  // ------------------------ load leagues (filter out soft-deleted) ------------------------
   useEffect(() => {
     (async () => {
-      const ls = await (dataService as any).listLeagues?.();
-      if (ls && Array.isArray(ls) && ls.length) {
-        setAllLeagues(ls);
-        setSelectedLeagueId((prev) => prev || ls[0].id);
-        return;
+      const serverList = await (dataService as any).listLeagues?.();
+      if (serverList && Array.isArray(serverList)) {
+        const filtered = serverList.filter((l: any) => !l.deleted_at);
+        setAllLeagues(filtered);
+        if (filtered.length) {
+          setSelectedLeagueId((prev) => prev || filtered[0].id);
+          return;
+        }
       }
 
-      // Only seed on true first run
+      // Only seed on the very first run
       if (!localStorage.getItem(SEED_SENTINEL)) {
         await (dataService as any).seed?.();
         localStorage.setItem(SEED_SENTINEL, "1");
-        const after = await (dataService as any).listLeagues?.();
-        setAllLeagues(after || []);
-        setSelectedLeagueId(after?.[0]?.id || "");
+        const after = (await (dataService as any).listLeagues?.()) || [];
+        const filtered = after.filter((l: any) => !l.deleted_at);
+        setAllLeagues(filtered);
+        setSelectedLeagueId(filtered[0]?.id || "");
       } else {
-        // user has intentionally deleted all leagues – do not reseed
         setAllLeagues([]);
         setSelectedLeagueId("");
       }
     })();
   }, []);
 
-  // toast helper
-  function toast(msg: string) {
-    alert(msg);
-  }
-
-  // load selected league + round + teams (+ auto-lock if deadline passed)
+  // ------------------------ load selected league/round ------------------------
   useEffect(() => {
     if (!selectedLeagueId) return;
 
     (async () => {
-      const store = JSON.parse(localStorage.getItem(STORE_KEY) || "{}") as Store;
+      const store = readStore();
       const l = (store.leagues || []).find((x: any) => x.id === selectedLeagueId);
-      if (!l) return;
+      if (!l || l.deleted_at) return;
       setLeague(l);
 
       const r = (store.rounds || []).find(
@@ -96,7 +106,7 @@ export function Admin() {
             await dataService.lockRound(r.id);
             toast("Round auto-locked at deadline.");
             setRefreshTick((x) => x + 1);
-            return; // avoid continuing with stale round data
+            return;
           } catch (e: any) {
             toast(e?.message ?? "Failed to auto-lock round.");
           }
@@ -105,6 +115,7 @@ export function Admin() {
     })();
   }, [selectedLeagueId, refreshTick]);
 
+  // ------------------------ derived ------------------------
   const store: Store | null = useMemo(() => {
     try {
       const raw = localStorage.getItem(STORE_KEY);
@@ -124,7 +135,6 @@ export function Admin() {
     [roundPicks]
   );
 
-  // Derived FPL GW mapping label
   const mappedFplEvent = useMemo(() => {
     if (!league || !round) return null;
     const base: number | undefined = (league as any).fpl_start_event;
@@ -146,6 +156,7 @@ export function Admin() {
     location.assign("/"); // reseed on truly fresh start
   }
 
+  // ------------------------ lock / advance / results ------------------------
   async function lockNow() {
     if (!round) return;
     setLoading(true);
@@ -160,7 +171,6 @@ export function Admin() {
     }
   }
 
-  // Manual evaluation
   async function saveResults() {
     if (!store || !round) return;
     if (winners.size === 0) {
@@ -183,7 +193,7 @@ export function Admin() {
     });
 
     if (r) r.status = "completed";
-    localStorage.setItem(STORE_KEY, JSON.stringify(s));
+    writeStore(s);
     toast("Results saved. Round completed.");
     setRefreshTick((x) => x + 1);
   }
@@ -204,7 +214,7 @@ export function Admin() {
     }
   }
 
-  // Create next round using FPL GW deadline
+  // ------------------------ Create Next Round ------------------------
   async function createNext() {
     if (!league) return;
     if (!nextDeadlineISO || !nextFplEvent) {
@@ -226,7 +236,7 @@ export function Admin() {
     }
   }
 
-  // ---------- Delete League ----------
+  // ------------------------ Delete League (soft delete fallback) ------------------------
   async function handleDeleteLeague() {
     if (!selectedLeagueId || !league) return;
     const ok = window.confirm(
@@ -238,7 +248,19 @@ export function Admin() {
     try {
       if ((dataService as any).deleteLeague) {
         await (dataService as any).deleteLeague(selectedLeagueId);
+      } else {
+        // Soft-delete in local storage as a fallback
+        const s = readStore();
+        const idx = (s.leagues || []).findIndex((l: any) => l.id === selectedLeagueId);
+        if (idx >= 0) {
+          (s.leagues as any[])[idx] = {
+            ...s.leagues[idx],
+            deleted_at: new Date().toISOString(),
+          };
+          writeStore(s);
+        }
       }
+
       setAllLeagues((prev) => prev.filter((l) => l.id !== selectedLeagueId));
       if (localStorage.getItem("active_league_id") === selectedLeagueId) {
         localStorage.removeItem("active_league_id");
@@ -255,7 +277,39 @@ export function Admin() {
     }
   }
 
-  // ---------- Fixtures (API + fallback) ----------
+  // ------------------------ Public / Private toggle ------------------------
+  async function setVisibility(nextPublic: boolean) {
+    if (!league) return;
+    setLoading(true);
+    try {
+      if ((dataService as any).setLeagueVisibility) {
+        await (dataService as any).setLeagueVisibility(league.id, nextPublic);
+      } else if ((dataService as any).updateLeague) {
+        await (dataService as any).updateLeague(league.id, { is_public: nextPublic });
+      } else {
+        // Local storage fallback
+        const s = readStore();
+        const idx = (s.leagues || []).findIndex((l: any) => l.id === league.id);
+        if (idx >= 0) {
+          (s.leagues as any[])[idx] = { ...s.leagues[idx], is_public: nextPublic };
+          writeStore(s);
+        }
+      }
+
+      setLeague((prev: any) => ({ ...prev, is_public: nextPublic }));
+      setAllLeagues((prev) =>
+        prev.map((l) => (l.id === league.id ? { ...l, is_public: nextPublic } : l))
+      );
+      toast(`Marked as ${nextPublic ? "Public" : "Private"}.`);
+    } catch (e: any) {
+      console.error(e);
+      toast(e?.message ?? "Failed to change visibility.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ------------------------ Fixtures (API + fallback) ------------------------
   async function importFixturesFromLocalBackup() {
     if (!league || !round) return 0;
     try {
@@ -271,7 +325,7 @@ export function Admin() {
         finished?: boolean;
       }>;
 
-      const s = JSON.parse(localStorage.getItem(STORE_KEY) || "{}") as Store;
+      const s = readStore();
       const byCode = new Map<string, any>(
         (s.teams || [])
           .filter((t: any) => t.league_id === league.id)
@@ -319,7 +373,7 @@ export function Admin() {
         }
       }
 
-      localStorage.setItem(STORE_KEY, JSON.stringify(s));
+      writeStore(s);
       return added;
     } catch {
       return 0;
@@ -331,7 +385,7 @@ export function Admin() {
     setLoading(true);
     try {
       const res = await (dataService as any).importFixturesForCurrentRound(league.id);
-      const s = JSON.parse(localStorage.getItem(STORE_KEY) || "{}") as Store;
+      const s = readStore();
       const count = (s.fixtures || []).filter(
         (f: any) => f.round_id === (round?.id ?? "")
       ).length;
@@ -375,7 +429,7 @@ export function Admin() {
     }
   }
 
-  // ---------- Fixtures table helpers ----------
+  // ------------------------ fixtures table views ------------------------
   const fixturesForRound = useMemo(() => {
     if (!store || !round) return [];
     return (store.fixtures || [])
@@ -460,7 +514,7 @@ export function Admin() {
       <div className="w-full max-w-5xl bg-white rounded-2xl shadow-lg p-6 sm:p-8">
         {/* Top bar: game selector + create */}
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between mb-6">
-          <div className="flex items-center gap-2 min-w-[180px]">
+          <div className="flex items-center gap-2 min-w-[220px]">
             <span className="text-sm text-slate-600">Game:</span>
             <select
               className="border rounded px-2 py-1 flex-1"
@@ -469,7 +523,7 @@ export function Admin() {
             >
               {allLeagues.map((l: any) => (
                 <option key={l.id} value={l.id}>
-                  {l.name}
+                  {l.name} {l.is_public ? "— Public" : "— Private"}
                 </option>
               ))}
             </select>
@@ -488,7 +542,17 @@ export function Admin() {
             <h2 className="text-2xl font-bold">Admin Panel</h2>
             <div className="mt-2 space-y-1 text-sm text-slate-600">
               <div>
-                League: <b>{league.name}</b>
+                League: <b>{league.name}</b>{" "}
+                <span
+                  className={
+                    "ml-2 inline-block rounded-full px-2 py-0.5 text-xs font-semibold " +
+                    (league.is_public
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-slate-200 text-slate-700")
+                  }
+                >
+                  {league.is_public ? "Public" : "Private"}
+                </span>
               </div>
               <div>
                 Current Round: <b>{round.round_number}</b> • Status:{" "}
@@ -517,6 +581,16 @@ export function Admin() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* visibility toggle */}
+            <label className="mr-2 text-sm text-slate-700 flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={!!league.is_public}
+                onChange={(e) => setVisibility(e.target.checked)}
+              />
+              Public
+            </label>
+
             <button
               onClick={resetAll}
               className="text-sm rounded-lg border px-3 py-1.5 hover:bg-slate-50"
@@ -525,7 +599,6 @@ export function Admin() {
               Reset (Dev)
             </button>
 
-            {/* Delete league */}
             <button
               type="button"
               disabled={loading}
@@ -708,6 +781,7 @@ function CreateGameInline({ onCreated }: { onCreated: (lg: any) => void }) {
   const [startEvent, setStartEvent] = useState<number | null>(null);
   const [startDeadlineISO, setStartDeadlineISO] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [makePublic, setMakePublic] = useState<boolean>(false);
 
   async function createIt() {
     if (!name.trim()) {
@@ -721,16 +795,32 @@ function CreateGameInline({ onCreated }: { onCreated: (lg: any) => void }) {
 
     try {
       setSaving(true);
+      // create + visibility
       const lg = await (dataService as any).createGame(
         name.trim(),
         startDeadlineISO
       );
+
+      if ((dataService as any).setLeagueVisibility) {
+        await (dataService as any).setLeagueVisibility(lg.id, makePublic);
+      } else if ((dataService as any).updateLeague) {
+        await (dataService as any).updateLeague(lg.id, { is_public: makePublic });
+      } else {
+        // fallback to local patch
+        const s = JSON.parse(localStorage.getItem(STORE_KEY) || "{}") as Store;
+        const idx = (s.leagues || []).findIndex((l: any) => l.id === lg.id);
+        if (idx >= 0) {
+          (s.leagues as any[])[idx] = { ...s.leagues[idx], is_public: makePublic };
+          localStorage.setItem(STORE_KEY, JSON.stringify(s));
+        }
+      }
+
       alert(
         `Created: ${lg.name} (FPL start GW ${
           lg.fpl_start_event ?? startEvent
-        })`
+        }) — ${makePublic ? "Public" : "Private"}`
       );
-      onCreated(lg);
+      onCreated({ ...lg, is_public: makePublic });
     } catch (err: any) {
       console.error(err);
       alert(err?.message ?? "Failed to create game.");
@@ -756,6 +846,14 @@ function CreateGameInline({ onCreated }: { onCreated: (lg: any) => void }) {
           }}
         />
       </div>
+      <label className="text-sm text-slate-700 flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={makePublic}
+          onChange={(e) => setMakePublic(e.target.checked)}
+        />
+        Public
+      </label>
       <button
         onClick={createIt}
         disabled={saving}
