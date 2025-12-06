@@ -564,6 +564,21 @@ export function Admin() {
                   ? new Date(round.pick_deadline_utc).toLocaleString()
                   : "—"}
               </div>
+              {!league.is_public && league.join_code && (
+  <div>
+    Private Join Code:{" "}
+    <b
+      className="font-mono text-emerald-700 select-all cursor-pointer"
+      title="Click to copy"
+      onClick={() => {
+        navigator.clipboard.writeText(league.join_code);
+        alert(`Copied join code: ${league.join_code}`);
+      }}
+    >
+      {league.join_code}
+    </b>
+  </div>
+)}
               <div>
                 Picks this round: <b>{roundPicks.length}</b> • Survivors (marked):{" "}
                 <b>{survivors}</b>
