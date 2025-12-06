@@ -61,8 +61,9 @@ export function Header() {
         {/* Brand */}
         <NavLink to="/" className="mr-2 flex items-center gap-2 shrink-0 min-w-[220px]">
   <NavLink to="/" className="mr-2 flex items-center gap-2 shrink-0 min-w-[220px]">
-  <img
-  src="/fcc-shield.png?v=2"
+  // in src/components/Header.tsx
+<img
+  src="/fcc-shield.png?v=1"
   alt="Fantasy Command Centre"
   width={28}
   height={28}
