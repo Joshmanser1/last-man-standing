@@ -1,10 +1,17 @@
+// src/data/types.ts
 export type ID = string;
 
 export type League = {
   id: ID;
   name: string;
-  status: 'upcoming' | 'active' | 'completed';
+  status: "upcoming" | "active" | "completed";
   current_round: number;
+
+  // 👇 Added fields for private/public support & soft delete
+  is_public?: boolean;          // whether league is public
+  join_code?: string | null;    // private invite code (for private leagues)
+  deleted_at?: string | null;   // soft delete marker
+  fpl_start_event?: number | null; // starting FPL event for mapping
 };
 
 export type Round = {
@@ -13,7 +20,7 @@ export type Round = {
   round_number: number;
   name: string;
   pick_deadline_utc: string;
-  status: 'upcoming' | 'locked' | 'completed';
+  status: "upcoming" | "locked" | "completed";
 };
 
 export type Team = {
@@ -46,8 +53,8 @@ export type Pick = {
   player_id: ID;
   team_id: ID;
   created_at: string;
-  status: 'pending' | 'through' | 'eliminated' | 'no-pick';
-  reason?: 'loss' | 'draw' | 'no-pick';
+  status: "pending" | "through" | "eliminated" | "no-pick";
+  reason?: "loss" | "draw" | "no-pick";
 };
 
 export type Fixture = {
@@ -56,6 +63,6 @@ export type Fixture = {
   home_team_id: ID;
   away_team_id: ID;
   kickoff_utc?: string;
-  result: 'home_win' | 'away_win' | 'draw' | 'not_set';
+  result: "home_win" | "away_win" | "draw" | "not_set";
   winning_team_id?: ID;
 };
