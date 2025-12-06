@@ -35,11 +35,18 @@ export function Login() {
       setSending(true);
       localStorage.setItem("player_name", name);
 
-      const redirectTo = import.meta.env.VITE_SITE_URL || window.location.origin;
+      // Prefer explicit site URL from env (Vercel), fallback to current origin
+      const base =
+        (import.meta.env.VITE_PUBLIC_SITE_URL as string) || window.location.origin;
+      // Normalize (remove trailing slash) to avoid double slashes when adding paths later
+      const redirectTo = base.replace(/\/$/, "");
 
       const { error } = await supa.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: redirectTo, shouldCreateUser: true },
+        options: {
+          emailRedirectTo: redirectTo, // e.g. https://lms.fantasycommandcentre.co.uk
+          shouldCreateUser: true,
+        },
       });
 
       if (error) {
@@ -91,9 +98,9 @@ export function Login() {
       <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-xl p-6 sm:p-8 text-slate-100">
         <div className="mx-auto w-fit mb-5 flex items-center gap-2">
           <img
-            src="/logo-shield.png"
-            width="28"
-            height="28"
+            src="/fcc-shield.png?v=1"
+            width={28}
+            height={28}
             alt="FCC"
             className="rounded-md"
             onError={(e) => ((e.currentTarget.style.display = "none"))}
@@ -132,7 +139,7 @@ export function Login() {
             />
           </div>
 
-        <button
+          <button
             type="submit"
             className="btn w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold border-0"
             disabled={sending || cooldown > 0}
@@ -151,7 +158,10 @@ export function Login() {
             {checking ? "Checking…" : "Continue"}
           </button>
 
-          <button className="btn btn-ghost border-white/10 text-slate-100 hover:bg-white/10" onClick={signOutEverywhere}>
+          <button
+            className="btn btn-ghost border-white/10 text-slate-100 hover:bg-white/10"
+            onClick={signOutEverywhere}
+          >
             Sign out
           </button>
         </div>
