@@ -1,6 +1,7 @@
 // src/pages/Leaderboard.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import * as htmlToImage from "html-to-image";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -60,10 +61,8 @@ function readStore(): Store {
 }
 
 function teamShort(name: string) {
-  // Try FPL-ish 3-letter, otherwise first 3 letters
   const cleaned = name.replace(/\s+/g, " ").trim();
   if (cleaned.length <= 4) return cleaned;
-  // Prefer capital letters if it's like "Man City" -> "MCI" style
   const caps = cleaned
     .split(" ")
     .map((w) => w[0])
@@ -73,24 +72,14 @@ function teamShort(name: string) {
   return cleaned.slice(0, 3);
 }
 
-function downloadCSV(filename: string, csv: string) {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.style.display = "none";
-  document.body.appendChild(a);
-  a.click();
-  URL.revokeObjectURL(url);
-  a.remove();
-}
-
 export function Leaderboard() {
   const navigate = useNavigate();
   const [storeTick, setStoreTick] = useState(0);
   const [view, setView] = useState<ViewMode>("leaderboard");
   const [showElims, setShowElims] = useState(true);
+
+  // node to export as PNG
+  const exportRef = useRef<HTMLDivElement>(null);
 
   // active league
   const activeLeagueId = localStorage.getItem("active_league_id") || "";
@@ -214,43 +203,21 @@ export function Leaderboard() {
     return `${code}`;
   }
 
-  function exportCurrentView() {
-    if (!league) return;
-
-    if (view === "leaderboard") {
-      const headers = ["Name", "State"];
-      const lines = [headers.join(",")];
-
-      for (const r of rows) {
-        lines.push(
-          [csvSafe(r.name), csvSafe(r.state)].join(",")
-        );
-      }
-      downloadCSV(
-        `${slug(league.name)}-leaderboard.csv`,
-        lines.join("\r\n")
-      );
-      return;
+  async function exportPNG() {
+    if (!exportRef.current || !league) return;
+    try {
+      const dataUrl = await htmlToImage.toPng(exportRef.current, {
+        backgroundColor: "white",
+        pixelRatio: 2,
+      });
+      const a = document.createElement("a");
+      a.download = `${slug(league.name)}-${view}.png`;
+      a.href = dataUrl;
+      a.click();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to export PNG.");
     }
-
-    // Matrix export
-    const headers = ["Name", "State", ...Array.from({ length: maxRound }, (_, i) => `RD${i + 1}`)];
-    const lines = [headers.join(",")];
-
-    for (const r of rows) {
-      const cells: string[] = [csvSafe(r.name), csvSafe(r.state)];
-      const perRound = picksByPlayerByRound.get(r.playerId);
-      for (let rd = 1; rd <= maxRound; rd++) {
-        const p = perRound?.get(rd);
-        cells.push(csvSafe(symbolForPick(p)));
-      }
-      lines.push(cells.join(","));
-    }
-
-    downloadCSV(
-      `${slug(league.name)}-picks-matrix.csv`,
-      lines.join("\r\n")
-    );
   }
 
   if (!league) {
@@ -307,14 +274,15 @@ export function Leaderboard() {
             </button>
           </div>
 
-          <button className="btn btn-ghost text-xs" onClick={exportCurrentView}>
-            Export CSV
+          <button className="btn btn-ghost text-xs" onClick={exportPNG}>
+            Export PNG
           </button>
         </div>
       </div>
 
-      {view === "leaderboard" ? (
-        <div className="rounded-2xl border bg-white overflow-x-auto">
+      {/* Wrap the render area in exportRef so the PNG captures exactly this panel */}
+      <div ref={exportRef} className="rounded-2xl border bg-white overflow-x-auto p-0">
+        {view === "leaderboard" ? (
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-slate-700">
               <tr>
@@ -351,9 +319,7 @@ export function Leaderboard() {
               )}
             </tbody>
           </table>
-        </div>
-      ) : (
-        <div className="rounded-2xl border bg-white overflow-x-auto">
+        ) : (
           <table className="min-w-[720px] text-sm">
             <thead className="bg-slate-50 text-slate-700">
               <tr>
@@ -403,20 +369,14 @@ export function Leaderboard() {
               )}
             </tbody>
           </table>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
 
 export default Leaderboard;
 
-// ----------------- helpers -----------------
-function csvSafe(s: string) {
-  if (s == null) return "";
-  const needs = /[",\n\r]/.test(s);
-  return needs ? `"${s.replace(/"/g, '""')}"` : s;
-}
 function slug(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }

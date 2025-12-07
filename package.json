@@ -12,6 +12,7 @@
   "dependencies": {
     "@sentry/react": "^10.27.0",
     "@supabase/supabase-js": "^2.80.0",
+    "html-to-image": "^1.11.13",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.9.5"
