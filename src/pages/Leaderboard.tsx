@@ -1,240 +1,422 @@
 // src/pages/Leaderboard.tsx
 import { useEffect, useMemo, useState } from "react";
-import { dataService } from "../data/service";
-import { GameSelector } from "../components/GameSelector";
+import { useNavigate } from "react-router-dom";
 
 const STORE_KEY = "lms_store_v1";
 
-type Row = {
-  playerId: string;
+type ID = string;
+
+type League = {
+  id: ID;
   name: string;
-  state: "Alive" | "Eliminated" | "No Pick";
-  throughCount: number;
-  eliminatedIn?: number;
-  lastPickTeam?: string;
-  usedTeamsCount: number;
+  current_round: number;
+  fpl_start_event?: number;
 };
 
+type Round = {
+  id: ID;
+  league_id: ID;
+  round_number: number;
+  status: "upcoming" | "locked" | "completed";
+  pick_deadline_utc?: string;
+};
+
+type Player = { id: ID; display_name: string };
+type Membership = {
+  id: ID;
+  league_id: ID;
+  player_id: ID;
+  is_active: boolean;
+  joined_at: string;
+  final_position?: number;
+};
+type Pick = {
+  id: ID;
+  league_id: ID;
+  round_id: ID;
+  player_id: ID;
+  team_id: ID;
+  status: "pending" | "through" | "eliminated" | "no-pick";
+  reason?: "loss" | "draw" | "no-pick";
+};
+type Team = { id: ID; league_id: ID; name: string; code: string };
+type Store = {
+  leagues?: League[];
+  rounds?: Round[];
+  players?: Player[];
+  memberships?: Membership[];
+  picks?: Pick[];
+  teams?: Team[];
+};
+
+type ViewMode = "leaderboard" | "matrix";
+
+function readStore(): Store {
+  try {
+    return JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function teamShort(name: string) {
+  // Try FPL-ish 3-letter, otherwise first 3 letters
+  const cleaned = name.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= 4) return cleaned;
+  // Prefer capital letters if it's like "Man City" -> "MCI" style
+  const caps = cleaned
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
+  if (caps.length >= 3 && caps.length <= 4) return caps.slice(0, 3);
+  return cleaned.slice(0, 3);
+}
+
+function downloadCSV(filename: string, csv: string) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  URL.revokeObjectURL(url);
+  a.remove();
+}
+
 export function Leaderboard() {
-  const [leagueId, setLeagueId] = useState<string>(
-    () => localStorage.getItem("active_league_id") || ""
-  );
-  const [round, setRound] = useState<any>(null);
-  const [teams, setTeams] = useState<any[]>([]);
-  const [rows, setRows] = useState<Row[]>([]);
-  const [sortKey, setSortKey] = useState<keyof Row>("state");
-  const [asc, setAsc] = useState(false);
-  const [reloadTick, setReloadTick] = useState(0);
+  const navigate = useNavigate();
+  const [storeTick, setStoreTick] = useState(0);
+  const [view, setView] = useState<ViewMode>("leaderboard");
+  const [showElims, setShowElims] = useState(true);
 
+  // active league
+  const activeLeagueId = localStorage.getItem("active_league_id") || "";
+
+  // re-poll local store when other pages mutate it
   useEffect(() => {
-    if (!leagueId) return;
+    const h = () => setStoreTick((x) => x + 1);
+    window.addEventListener("lms:store-updated", h);
+    return () => window.removeEventListener("lms:store-updated", h);
+  }, []);
 
-    (async () => {
-      const r = await dataService.getCurrentRound(leagueId);
-      setRound(r);
-      const ts = await dataService.listTeams(leagueId);
-      setTeams(ts || []);
-    })();
-  }, [leagueId, reloadTick]);
+  const store = useMemo(() => readStore(), [storeTick]);
 
-  useEffect(() => {
-    if (!leagueId) {
-      setRows([]);
-      return;
+  const league: League | null = useMemo(() => {
+    return (store.leagues || []).find((l) => l.id === activeLeagueId) || null;
+  }, [store, activeLeagueId]);
+
+  const rounds = useMemo<Round[]>(() => {
+    if (!league) return [];
+    return (store.rounds || [])
+      .filter((r) => r.league_id === league.id)
+      .sort((a, b) => a.round_number - b.round_number);
+  }, [store, league]);
+
+  const teamsById = useMemo(() => {
+    const map = new Map<ID, Team>();
+    for (const t of store.teams || []) map.set(t.id, t);
+    return map;
+  }, [store]);
+
+  const playersById = useMemo(() => {
+    const m = new Map<ID, Player>();
+    for (const p of store.players || []) m.set(p.id, p);
+    return m;
+  }, [store]);
+
+  const memberships = useMemo<Membership[]>(() => {
+    if (!league) return [];
+    return (store.memberships || []).filter((m) => m.league_id === league.id);
+  }, [store, league]);
+
+  const picksByPlayerByRound = useMemo(() => {
+    // map: player -> (round_number -> pick)
+    const map = new Map<ID, Map<number, Pick>>();
+    if (!league) return map;
+    const picks = (store.picks || []).filter((p) => p.league_id === league.id);
+    const roundById = new Map<ID, Round>();
+    for (const r of rounds) roundById.set(r.id, r);
+
+    for (const p of picks) {
+      const r = roundById.get(p.round_id);
+      if (!r) continue;
+      if (!map.has(p.player_id)) map.set(p.player_id, new Map());
+      map.get(p.player_id)!.set(r.round_number, p);
     }
+    return map;
+  }, [store, league, rounds]);
 
-    // Build table from store
-    const raw = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
-    const players: any[] = raw.players || [];
-    const rounds: any[] = (raw.rounds || []).filter(
-      (rr: any) => rr.league_id === leagueId
-    );
-    const picks: any[] = (raw.picks || []).filter(
-      (p: any) => p.league_id === leagueId
-    );
-    const memberships: any[] = (raw.memberships || []).filter(
-      (m: any) => m.league_id === leagueId && m.is_active
-    );
-
-    const roundsById = new Map(rounds.map((r) => [r.id, r]));
-    const teamName = (id: string) => teams.find((t) => t.id === id)?.name ?? "—";
-
-    const out: Row[] = memberships.map((m) => {
-      const player = players.find((p) => p.id === m.player_id);
-      const playerPicks = picks.filter((p) => p.player_id === m.player_id);
-      const usedTeams = new Set(playerPicks.map((p) => p.team_id));
-
-      // Compute through count and elimination round
-      let throughCount = 0;
-      let eliminatedIn: number | undefined;
-      let lastPickTeam: string | undefined;
-      let state: Row["state"] = "Alive";
-
-      // order picks by round_number
-      const ordered = [...playerPicks].sort((a, b) => {
-        const ra = roundsById.get(a.round_id)?.round_number ?? 0;
-        const rb = roundsById.get(b.round_id)?.round_number ?? 0;
-        return ra - rb;
-      });
-
-      for (const p of ordered) {
-        const rr = roundsById.get(p.round_id);
-        lastPickTeam = teamName(p.team_id);
-        if (!rr) continue;
-        if (p.status === "through") throughCount++;
-        if (p.status === "eliminated") {
-          eliminatedIn = rr.round_number;
-          state = "Eliminated";
-          break;
+  const rows = useMemo(() => {
+    // One row per membership (player in league)
+    const items = memberships.map((m) => {
+      const player = playersById.get(m.player_id);
+      const display = player?.display_name || "Unknown";
+      const alive = !!m.is_active;
+      const state = alive ? "Alive" : "Eliminated";
+      const lastElimRound = (() => {
+        if (alive) return undefined;
+        // find earliest pick marked eliminated/no-pick
+        let elim: number | undefined = undefined;
+        const perRound = picksByPlayerByRound.get(m.player_id);
+        if (perRound) {
+          for (const [rd, p] of Array.from(perRound.entries()).sort(
+            (a, b) => a[0] - b[0]
+          )) {
+            if (p.status === "eliminated" || p.status === "no-pick") {
+              elim = rd;
+              break;
+            }
+          }
         }
-        if (p.status === "no-pick") {
-          eliminatedIn = rr.round_number;
-          state = "No Pick";
-          break;
-        }
-      }
+        return elim;
+      })();
 
-      // If never picked yet and round is ongoing, they’re Alive with 0 through
-      const name = player?.display_name ?? m.player_id.slice(0, 6);
+      // points = survivors first; if eliminated, rank by elim round descending
+      const sortKey = alive ? 1e9 : lastElimRound ?? 0;
 
       return {
+        membership: m,
         playerId: m.player_id,
-        name,
+        name: display,
+        alive,
         state,
-        throughCount,
-        eliminatedIn,
-        lastPickTeam,
-        usedTeamsCount: usedTeams.size,
+        sortKey,
       };
     });
 
-    setRows(out);
-  }, [leagueId, teams, reloadTick]);
+    // Hide eliminated?
+    const filtered = showElims ? items : items.filter((r) => r.alive);
 
-  const sorted = useMemo(() => {
-    const copy = [...rows];
-    copy.sort((a, b) => {
-      const dir = asc ? 1 : -1;
-      if (sortKey === "state") {
-        // Alive > No Pick > Eliminated
-        const rank = (s: Row["state"]) =>
-          s === "Alive" ? 2 : s === "No Pick" ? 1 : 0;
-        return (rank(a.state) - rank(b.state)) * dir;
-      }
-      const av = (a as any)[sortKey];
-      const bv = (b as any)[sortKey];
-      if (av == null && bv == null) return 0;
-      if (av == null) return 1;
-      if (bv == null) return -1;
-      if (av < bv) return -dir;
-      if (av > bv) return dir;
-      return 0;
+    // Sort: alive first (sortKey high), then alphabetically
+    filtered.sort((a, b) => {
+      if (b.sortKey !== a.sortKey) return b.sortKey - a.sortKey;
+      return a.name.localeCompare(b.name);
     });
-    return copy;
-  }, [rows, sortKey, asc]);
 
-  function th(key: keyof Row, label: string, className = "") {
-    const active = sortKey === key;
-    return (
-      <th className={"px-3 py-2 text-left " + className}>
-        <button
-          className={
-            "w-full text-left " + (active ? "underline font-semibold" : "")
-          }
-          onClick={() => {
-            if (active) setAsc((x) => !x);
-            else {
-              setSortKey(key);
-              setAsc(false);
-            }
-          }}
-        >
-          {label} {active ? (asc ? "▲" : "▼") : ""}
-        </button>
-      </th>
+    return filtered;
+  }, [memberships, playersById, picksByPlayerByRound, showElims]);
+
+  const maxRound =
+    rounds.length > 0
+      ? Math.max(...rounds.map((r) => r.round_number))
+      : 0;
+
+  function symbolForPick(p?: Pick) {
+    if (!p) return "";
+    const team = teamsById.get(p.team_id);
+    const code = team ? teamShort(team.name) : "";
+    if (p.status === "through") return `${code} ✓`;
+    if (p.status === "eliminated" || p.status === "no-pick") return `${code} ✗`;
+    // pending/locked/upcoming
+    return `${code}`;
+  }
+
+  function exportCurrentView() {
+    if (!league) return;
+
+    if (view === "leaderboard") {
+      const headers = ["Name", "State"];
+      const lines = [headers.join(",")];
+
+      for (const r of rows) {
+        lines.push(
+          [csvSafe(r.name), csvSafe(r.state)].join(",")
+        );
+      }
+      downloadCSV(
+        `${slug(league.name)}-leaderboard.csv`,
+        lines.join("\r\n")
+      );
+      return;
+    }
+
+    // Matrix export
+    const headers = ["Name", "State", ...Array.from({ length: maxRound }, (_, i) => `RD${i + 1}`)];
+    const lines = [headers.join(",")];
+
+    for (const r of rows) {
+      const cells: string[] = [csvSafe(r.name), csvSafe(r.state)];
+      const perRound = picksByPlayerByRound.get(r.playerId);
+      for (let rd = 1; rd <= maxRound; rd++) {
+        const p = perRound?.get(rd);
+        cells.push(csvSafe(symbolForPick(p)));
+      }
+      lines.push(cells.join(","));
+    }
+
+    downloadCSV(
+      `${slug(league.name)}-picks-matrix.csv`,
+      lines.join("\r\n")
     );
   }
 
-  if (!leagueId) {
+  if (!league) {
     return (
-      <div className="max-w-5xl mx-auto p-4">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-2xl font-bold">League Leaderboard</h2>
-          <GameSelector
-            label="Viewing game"
-            onChange={(id) => {
-              setLeagueId(id);
-              setReloadTick((x) => x + 1);
-            }}
-          />
+      <div className="container-page py-10 grid place-items-center text-slate-600">
+        <div className="text-center">
+          <div className="font-semibold mb-2">No active game selected</div>
+          <button className="btn btn-primary" onClick={() => navigate("/live")}>
+            Pick a game from Live
+          </button>
         </div>
-        <p className="text-slate-600 text-sm">
-          Pick a game from the selector above or in the header to view the
-          leaderboard.
-        </p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-        <div>
-          <h2 className="text-2xl font-bold mb-1">League Leaderboard</h2>
-          <p className="text-slate-600">
-            Round {round?.round_number ?? "—"}
-          </p>
+    <div className="container-page py-6 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-lg font-semibold">
+          {league.name} — Leaderboard
         </div>
-        <GameSelector
-          label="Viewing game"
-          onChange={(id) => {
-            setLeagueId(id);
-            setReloadTick((x) => x + 1);
-          }}
-        />
+        <div className="flex items-center gap-2">
+          <label className="text-sm flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={showElims}
+              onChange={(e) => setShowElims(e.target.checked)}
+            />
+            Show eliminated
+          </label>
+
+          <div className="inline-flex rounded-xl bg-white border px-1 py-1 shadow-sm">
+            <button
+              className={
+                "px-3 py-1.5 text-xs rounded-lg " +
+                (view === "leaderboard"
+                  ? "bg-teal-600 text-white"
+                  : "text-slate-700 hover:bg-slate-100")
+              }
+              onClick={() => setView("leaderboard")}
+            >
+              Leaderboard
+            </button>
+            <button
+              className={
+                "px-3 py-1.5 text-xs rounded-lg " +
+                (view === "matrix"
+                  ? "bg-teal-600 text-white"
+                  : "text-slate-700 hover:bg-slate-100")
+              }
+              onClick={() => setView("matrix")}
+            >
+              Picks Matrix
+            </button>
+          </div>
+
+          <button className="btn btn-ghost text-xs" onClick={exportCurrentView}>
+            Export CSV
+          </button>
+        </div>
       </div>
 
-      {sorted.length ? (
-        <div className="overflow-x-auto mt-3">
-          <table className="min-w-full text-sm border border-slate-200">
-            <thead className="bg-slate-100">
+      {view === "leaderboard" ? (
+        <div className="rounded-2xl border bg-white overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-slate-700">
               <tr>
-                {th("name", "Player")}
-                {th("state", "State")}
-                {th("throughCount", "Rounds Survived")}
-                {th("usedTeamsCount", "Teams Used")}
-                {th("lastPickTeam", "Last Pick")}
-                {th("eliminatedIn", "Eliminated In")}
+                <th className="px-3 py-2 text-left w-[48px]">#</th>
+                <th className="px-3 py-2 text-left">Name</th>
+                <th className="px-3 py-2 text-left">State</th>
               </tr>
             </thead>
             <tbody>
-              {sorted.map((r) => (
-                <tr key={r.playerId} className="border-t">
+              {rows.map((r, i) => (
+                <tr key={r.membership.id} className="border-t">
+                  <td className="px-3 py-2">{i + 1}</td>
                   <td className="px-3 py-2">{r.name}</td>
-                  <td
-                    className={
-                      "px-3 py-2 " +
-                      (r.state === "Alive"
-                        ? "text-green-700"
-                        : r.state === "No Pick"
-                        ? "text-amber-700"
-                        : "text-red-700")
-                    }
-                  >
-                    {r.state}
+                  <td className="px-3 py-2">
+                    <span
+                      className={
+                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold " +
+                        (r.alive
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-slate-200 text-slate-700")
+                      }
+                    >
+                      {r.state}
+                    </span>
                   </td>
-                  <td className="px-3 py-2">{r.throughCount}</td>
-                  <td className="px-3 py-2">{r.usedTeamsCount}</td>
-                  <td className="px-3 py-2">{r.lastPickTeam ?? "—"}</td>
-                  <td className="px-3 py-2">{r.eliminatedIn ?? "—"}</td>
                 </tr>
               ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td className="px-3 py-6 text-center text-slate-500" colSpan={3}>
+                    No entrants yet.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       ) : (
-        <div className="mt-3 text-slate-500">No members yet.</div>
+        <div className="rounded-2xl border bg-white overflow-x-auto">
+          <table className="min-w-[720px] text-sm">
+            <thead className="bg-slate-50 text-slate-700">
+              <tr>
+                <th className="px-3 py-2 text-left">Name</th>
+                <th className="px-3 py-2 text-left">State</th>
+                {Array.from({ length: maxRound }, (_, i) => (
+                  <th key={i} className="px-3 py-2 text-left">{`RD${i + 1}`}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const perRound = picksByPlayerByRound.get(r.playerId);
+                return (
+                  <tr key={r.membership.id} className="border-t">
+                    <td className="px-3 py-2 whitespace-nowrap">{r.name}</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={
+                          "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold " +
+                          (r.alive
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-slate-200 text-slate-700")
+                        }
+                      >
+                        {r.state}
+                      </span>
+                    </td>
+                    {Array.from({ length: maxRound }, (_, i) => {
+                      const rd = i + 1;
+                      const p = perRound?.get(rd);
+                      return (
+                        <td key={rd} className="px-3 py-2">
+                          {symbolForPick(p)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+              {rows.length === 0 && (
+                <tr>
+                  <td className="px-3 py-6 text-center text-slate-500" colSpan={2 + maxRound}>
+                    No entrants yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
+}
+
+export default Leaderboard;
+
+// ----------------- helpers -----------------
+function csvSafe(s: string) {
+  if (s == null) return "";
+  const needs = /[",\n\r]/.test(s);
+  return needs ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function slug(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
