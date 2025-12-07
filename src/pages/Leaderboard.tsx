@@ -189,9 +189,7 @@ export function Leaderboard() {
   }, [memberships, playersById, picksByPlayerByRound, showElims]);
 
   const maxRound =
-    rounds.length > 0
-      ? Math.max(...rounds.map((r) => r.round_number))
-      : 0;
+    rounds.length > 0 ? Math.max(...rounds.map((r) => r.round_number)) : 0;
 
   function symbolForPick(p?: Pick) {
     if (!p) return "";
@@ -205,18 +203,49 @@ export function Leaderboard() {
 
   async function exportPNG() {
     if (!exportRef.current || !league) return;
+    const node = exportRef.current;
+
+    // Capture the full scrolled size so nothing gets cropped
+    const width = Math.max(node.scrollWidth, node.clientWidth);
+    const height = Math.max(node.scrollHeight, node.clientHeight);
+
+    // Temp style so html-to-image renders at full size
+    const prevStyle = {
+      width: node.style.width,
+      height: node.style.height,
+      overflow: node.style.overflow,
+    };
+    node.style.width = `${width}px`;
+    node.style.height = `${height}px`;
+    node.style.overflow = "visible";
+
     try {
-      const dataUrl = await htmlToImage.toPng(exportRef.current, {
-        backgroundColor: "white",
+      const dataUrl = await htmlToImage.toPng(node, {
+        backgroundColor: "#ffffff",
         pixelRatio: 2,
+        width,
+        height,
+        style: {
+          transform: "scale(1)",
+          transformOrigin: "top left",
+          // Ensure border-radius/shadows don't clip content
+          overflow: "visible",
+        },
+        cacheBust: true,
       });
+
       const a = document.createElement("a");
       a.download = `${slug(league.name)}-${view}.png`;
       a.href = dataUrl;
       a.click();
     } catch (err) {
-      console.error(err);
+      console.error("PNG export failed", err);
       alert("Failed to export PNG.");
+    } finally {
+      // restore styles
+      node.style.width = prevStyle.width;
+      node.style.height = prevStyle.height;
+      node.style.overflow = prevStyle.overflow;
     }
   }
 
@@ -225,10 +254,10 @@ export function Leaderboard() {
       <div className="container-page py-10 grid place-items-center text-slate-600">
         <div className="text-center">
           <div className="font-semibold mb-2">No active game selected</div>
-          <button className="btn btn-primary" onClick={() => navigate("/live")}>
-            Pick a game from Live
-          </button>
         </div>
+        <button className="btn btn-primary" onClick={() => navigate("/live")}>
+          Pick a game from Live
+        </button>
       </div>
     );
   }
@@ -236,9 +265,7 @@ export function Leaderboard() {
   return (
     <div className="container-page py-6 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-lg font-semibold">
-          {league.name} — Leaderboard
-        </div>
+        <div className="text-lg font-semibold">{league.name} — Leaderboard</div>
         <div className="flex items-center gap-2">
           <label className="text-sm flex items-center gap-2">
             <input
@@ -280,7 +307,7 @@ export function Leaderboard() {
         </div>
       </div>
 
-      {/* Wrap the render area in exportRef so the PNG captures exactly this panel */}
+      {/* The PNG will capture this whole panel (full scroll size handled in exportPNG) */}
       <div ref={exportRef} className="rounded-2xl border bg-white overflow-x-auto p-0">
         {view === "leaderboard" ? (
           <table className="min-w-full text-sm">
