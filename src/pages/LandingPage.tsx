@@ -19,12 +19,10 @@ export default function LandingPage() {
   const exploreHref = authed ? "/my-games" : "/login";
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
+    <main className="min-h-screen text-white bg-[radial-gradient(120%_120%_at_50%_-20%,#072a25,#0b1f20_50%,#0a0e12_90%)]">
       {/* Hero */}
       <section className="relative overflow-hidden pt-8 md:pt-12">
-        <div className="absolute inset-0 -z-10 pointer-events-none bg-[radial-gradient(60%_60%_at_50%_-10%,rgba(16,185,129,0.25),transparent)]" />
-
-        <div className="mx-auto max-w-7xl px-4 py-20 md:py-28 relative z-0">
+        <div className="mx-auto max-w-7xl px-4 py-20 md:py-28">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-emerald-300 text-xs">
               <span>Beta</span>
@@ -63,7 +61,7 @@ export default function LandingPage() {
       </section>
 
       {/* Feature cards */}
-      <section id="features" className="border-t border-white/10">
+      <section id="features" className="border-t border-white/10/">
         <div className="mx-auto max-w-7xl px-4 py-12 grid gap-6 md:grid-cols-3">
           {[
             { t: "Private & Public", b: "Free tier: 1 hosted + 1 joined private league. Pro/Elite unlock public pots." },
