@@ -1,9 +1,16 @@
 // src/App.tsx
-import React, { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import React from "react";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+} from "react-router-dom";
+
 import { Header } from "./components/Header";
 import { ToastProvider } from "./components/Toast";
-import { supa } from "./lib/supabaseClient";
+import { DevUserSwitcher } from "./components/DevUserSwitcher";
 
 // Pages
 import LandingPage from "./pages/LandingPage";
@@ -19,113 +26,48 @@ import { Leaderboard } from "./pages/Leaderboard";
 import { EliminationHistory } from "./pages/EliminationHistory";
 import { LeagueSummary } from "./pages/LeagueSummary";
 import { PrivateLeagueCreate } from "./pages/PrivateLeagueCreate";
-import { PrivateLeagueJoin } from "./pages/PrivateLeagueJoin";
 
-const IS_DEV = import.meta.env.DEV === true;
-
-// ---------------------------------------------------------------------------
-// Auth gates (same behaviour you had before, made self-contained here)
-// ---------------------------------------------------------------------------
-function useIsAuthed() {
-  const [ready, setReady] = useState(false);
-  const [authed, setAuthed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function check() {
-      const playerId = localStorage.getItem("player_id");
-      if (playerId) {
-        if (!cancelled) {
-          setAuthed(true);
-          setReady(true);
-        }
-        return;
-      }
-
-      const { data } = await supa.auth.getSession();
-      if (!cancelled) {
-        setAuthed(!!data.session?.user?.id);
-        setReady(true);
-      }
-    }
-
-    check();
-
-    const { data: sub } = supa.auth.onAuthStateChange((_event, session) => {
-      setAuthed(!!session?.user?.id || !!localStorage.getItem("player_id"));
-      setReady(true);
-    });
-
-    return () => {
-      cancelled = true;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
-
-  return { ready, authed };
-}
-
-function Protected({ children }: { children: React.ReactNode }) {
-  const { ready, authed } = useIsAuthed();
-  if (!ready) return null;
-  if (!authed) return <Navigate to="/login" replace />;
-  return <>{children}</>;
-}
-
-function AdminOnly({ children }: { children: React.ReactNode }) {
-  const { ready, authed } = useIsAuthed();
-  const isAdmin = localStorage.getItem("is_admin") === "1";
-  if (!ready) return null;
-  if (!authed) return <Navigate to="/login" replace />;
-  if (!isAdmin) return <Navigate to="/" replace />;
-  return <>{children}</>;
-}
-
-// ---------------------------------------------------------------------------
+const IS_DEV = import.meta.env.DEV || !import.meta.env.PROD;
 
 function AppInner() {
   const location = useLocation();
-  const path = location.pathname;
 
-  // Full-bleed pages: landing and login (no container spacing)
-  const isFullBleed = path === "/" || path.startsWith("/login");
+  // Full-bleed routes: these pages render their own top bar/hero
+  const FULL_BLEED = new Set<string>(["/", "/login"]);
+  const isFullBleed = FULL_BLEED.has(location.pathname);
 
   return (
     <>
-      <Header />
+      {/* Header hidden on full-bleed pages (Landing/Login) to avoid duplication */}
+      {!isFullBleed && <Header />}
 
-      <main className={isFullBleed ? "" : "container-page py-6"}>
+      <main className={isFullBleed ? "" : "min-h-[calc(100vh-5rem)] bg-slate-50"}>
         <Routes>
-          {/* Public marketing landing */}
+          {/* Marketing / Landing (full-bleed) */}
           <Route path="/" element={<LandingPage />} />
 
-          {/* Auth */}
+          {/* Auth (full-bleed) */}
           <Route path="/login" element={<Login />} />
 
-          {/* LMS main */}
-          <Route path="/lms" element={<Home />} />
-
-          {/* Private leagues */}
-          <Route path="/private/create" element={<Protected><PrivateLeagueCreate /></Protected>} />
-          <Route path="/private/join" element={<Protected><PrivateLeagueJoin /></Protected>} />
-
-          {/* Core LMS */}
-          <Route path="/make-pick" element={<Protected><MakePick /></Protected>} />
-          <Route path="/live" element={<Protected><LiveGames /></Protected>} />
-          <Route path="/results" element={<Protected><Results /></Protected>} />
-          <Route path="/league" element={<Protected><LeagueSummary /></Protected>} />
-          <Route path="/leaderboard" element={<Protected><Leaderboard /></Protected>} />
-          <Route path="/eliminations" element={<Protected><EliminationHistory /></Protected>} />
-          <Route path="/my-games" element={<Protected><MyGames /></Protected>} />
-          <Route path="/stats" element={<Protected><Stats /></Protected>} />
-          <Route path="/admin" element={<AdminOnly><Admin /></AdminOnly>} />
+          {/* App pages */}
+          <Route path="/home" element={<Home />} />
+          <Route path="/live" element={<LiveGames />} />
+          <Route path="/make-pick" element={<MakePick />} />
+          <Route path="/results" element={<Results />} />
+          <Route path="/stats" element={<Stats />} />
+          <Route path="/admin" element={<Admin />} />
+          <Route path="/my-games" element={<MyGames />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/eliminations" element={<EliminationHistory />} />
+          <Route path="/league" element={<LeagueSummary />} />
+          <Route path="/private/create" element={<PrivateLeagueCreate />} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
 
+      {/* Footer hidden on full-bleed pages */}
       {!isFullBleed && (
         <footer className="border-t bg-white/80">
           <div className="container-page py-3 text-xs text-slate-500 flex items-center justify-between">
@@ -138,6 +80,9 @@ function AppInner() {
           </div>
         </footer>
       )}
+
+      {/* Dev-only floating user switcher (safe in prod due to component guard) */}
+      <DevUserSwitcher />
     </>
   );
 }
