@@ -16,7 +16,8 @@ export default function LandingPage() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  const hostHref = authed ? "/private/create" : "/login";
+  // FIX: route exists at /private, not /private/create
+  const hostHref = authed ? "/private" : "/login";
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
