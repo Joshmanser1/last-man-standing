@@ -9,7 +9,15 @@ const linkCls = ({ isActive }: { isActive: boolean }) =>
   `nav-link ${isActive ? "nav-link-active" : ""}`;
 
 export function Header() {
-  const [authed, setAuthed] = useState<boolean>(!!localStorage.getItem("player_id"));
+  // Dev switcher is enabled when this flag is set (via ?dev=1 or env in App.tsx)
+  const devOn = typeof window !== "undefined" && localStorage.getItem("dev_switcher") === "1";
+
+  const [authed, setAuthed] = useState<boolean>(() => {
+    const supaAuthed = false; // will be set in effect
+    const localAuthed = devOn && !!localStorage.getItem("player_id");
+    return supaAuthed || localAuthed;
+  });
+
   const [hasLeague, setHasLeague] = useState<boolean>(!!localStorage.getItem("active_league_id"));
   const [activeLeagueId, setActiveLeagueId] = useState<string | null>(
     localStorage.getItem("active_league_id")
@@ -20,34 +28,57 @@ export function Header() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    supa.auth.getSession().then(({ data }) => setAuthed(!!data.session?.user?.id));
-    const { data: sub } = supa.auth.onAuthStateChange((_e, s) => setAuthed(!!s?.user?.id));
+    const recomputeAuth = async () => {
+      const { data } = await supa.auth.getSession();
+      const supaAuthed = !!data.session?.user?.id;
+      const localAuthed = devOn && !!localStorage.getItem("player_id");
+      setAuthed(supaAuthed || localAuthed);
+    };
 
-    const unsub = subscribeStore(() => {
-      const id = localStorage.getItem("active_league_id");
-      setActiveLeagueId(id);
-      setHasLeague(!!id);
+    // initial
+    recomputeAuth();
+
+    // keep in sync with Supabase
+    const { data: sub } = supa.auth.onAuthStateChange((_e, session) => {
+      const supaAuthed = !!session?.user?.id;
+      const localAuthed = devOn && !!localStorage.getItem("player_id");
+      setAuthed(supaAuthed || localAuthed);
     });
 
-    const onFocus = () => {
+    // react to our store changes (DevUserSwitcher fires this)
+    const onStore = () => {
       const id = localStorage.getItem("active_league_id");
       setActiveLeagueId(id);
       setHasLeague(!!id);
+
+      const localAuthed = devOn && !!localStorage.getItem("player_id");
+      setAuthed((prev) => prev || localAuthed);
     };
+
+    // also catch cross-tab changes and focus
+    const onStorage = () => onStore();
+    const onFocus = () => onStore();
+
+    const unsub = subscribeStore(onStore);
+    window.addEventListener("lms:store-updated", onStore as EventListener);
+    window.addEventListener("storage", onStorage);
     window.addEventListener("focus", onFocus);
 
     return () => {
       sub.subscription.unsubscribe();
       unsub();
+      window.removeEventListener("lms:store-updated", onStore as EventListener);
+      window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onFocus);
     };
-  }, []);
+  }, [devOn]);
 
   async function logout() {
     try {
       await supa.auth.signOut();
     } finally {
       localStorage.removeItem("player_id");
+      localStorage.removeItem("player_name");
       localStorage.removeItem("active_league_id");
       setHasLeague(false);
       setActiveLeagueId(null);
@@ -68,7 +99,7 @@ export function Header() {
             height={28}
             className="rounded-lg block"
           />
-          <span className="text-emerald-300 font-semibold tracking-tight whitespace-nowrap">
+        <span className="text-emerald-300 font-semibold tracking-tight whitespace-nowrap">
             Fantasy Command Centre
           </span>
         </NavLink>
@@ -100,7 +131,7 @@ export function Header() {
 
         {/* Right side */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Game selector — ONLY when authed (and show value if a league exists) */}
+          {/* Game selector — ONLY when authed */}
           {authed && (
             <div className="hidden sm:flex items-center gap-2">
               <span className="hidden lg:inline text-sm text-white/70">Game</span>
