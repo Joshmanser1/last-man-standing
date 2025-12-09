@@ -1,5 +1,6 @@
 // src/App.tsx
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { useEffect, useMemo } from "react";
 import { Header } from "./components/Header";
 import { ToastProvider } from "./components/Toast";
 
@@ -18,28 +19,51 @@ import { EliminationHistory } from "./pages/EliminationHistory";
 import { LeagueSummary } from "./pages/LeagueSummary";
 import { PrivateLeagueCreate } from "./pages/PrivateLeagueCreate";
 
-// Dev-only user switcher (safe if missing in prod)
+// Dev-only switcher
 import { DevUserSwitcher } from "./components/DevUserSwitcher";
 
-// Prefer explicit flag; fallback to Vite DEV for local only
-const DEV_SWITCHER_ENABLED =
-  (import.meta.env.VITE_DEV_SWITCHER_ENABLED === "true") || import.meta.env.DEV;
+// Env flag still supported
+const DEV_FLAG =
+  import.meta.env.VITE_DEV_SWITCHER_ENABLED === "true" || import.meta.env.DEV;
 
 function AppInner() {
   const location = useLocation();
 
-  // Full-bleed routes (no header/footer and no page container)
-  const noChromeRoutes = ["/login"]; // hide header + footer
+  // One-time: allow ?dev=1 to enable switcher for this browser and clean URL
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const search = new URLSearchParams(location.search);
+    if (search.get("dev") === "1") {
+      try {
+        localStorage.setItem("dev_switcher", "1");
+        search.delete("dev");
+        const qs = search.toString();
+        const url = `${location.pathname}${qs ? `?${qs}` : ""}`;
+        window.history.replaceState({}, "", url);
+      } catch {
+        /* noop */
+      }
+    }
+  }, [location.pathname, location.search]);
+
+  // Switcher is enabled if env OR local toggle is set
+  const SWITCHER_ENABLED = useMemo(() => {
+    if (DEV_FLAG) return true;
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("dev_switcher") === "1";
+  }, []);
+
+  // Routes that hide header/footer
+  const noChromeRoutes = ["/login"];
   const isNoChrome = noChromeRoutes.includes(location.pathname);
 
-  // Full-bleed content (keeps header but removes container padding)
-  // Landing is designed as a full page with its own footer, so don’t wrap/duplicate
+  // Routes that are full-bleed (no container wrapper)
   const fullBleedRoutes = ["/", "/login"];
   const isFullBleed = fullBleedRoutes.includes(location.pathname);
 
   return (
     <>
-      {/* Header everywhere EXCEPT on no-chrome routes like /login */}
+      {/* Header everywhere except no-chrome routes */}
       {!isNoChrome && <Header />}
 
       <main className={isFullBleed ? "" : "container-page py-4"}>
@@ -55,18 +79,17 @@ function AppInner() {
           <Route path="/my-games" element={<MyGames />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/eliminations" element={<EliminationHistory />} />
-          {/* Use a param route so /league/123 works */}
           <Route path="/league/:leagueId" element={<LeagueSummary />} />
           <Route path="/private" element={<PrivateLeagueCreate />} />
         </Routes>
       </main>
 
-      {/* App footer: hide on landing (it has its own) and on no-chrome pages like /login */}
+      {/* Footer hidden on landing & /login */}
       {!isFullBleed && !isNoChrome && (
         <footer className="border-t bg-white/80">
           <div className="container-page py-3 text-xs text-slate-500 flex items-center justify-between">
             <span>© {new Date().getFullYear()} Fantasy Command Centre</span>
-            {DEV_SWITCHER_ENABLED && (
+            {SWITCHER_ENABLED && (
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
                 Dev mode
               </span>
@@ -75,8 +98,8 @@ function AppInner() {
         </footer>
       )}
 
-      {/* Dev test helper: only when explicitly enabled */}
-      {DEV_SWITCHER_ENABLED && <DevUserSwitcher />}
+      {/* Render the switcher OVER every route (incl. /login) */}
+      {SWITCHER_ENABLED && <DevUserSwitcher />}
     </>
   );
 }
