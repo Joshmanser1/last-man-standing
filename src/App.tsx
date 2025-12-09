@@ -1,16 +1,7 @@
 // src/App.tsx
-import React from "react";
-import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Navigate,
-  useLocation,
-} from "react-router-dom";
-
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { Header } from "./components/Header";
 import { ToastProvider } from "./components/Toast";
-import { DevUserSwitcher } from "./components/DevUserSwitcher";
 
 // Pages
 import LandingPage from "./pages/LandingPage";
@@ -27,30 +18,26 @@ import { EliminationHistory } from "./pages/EliminationHistory";
 import { LeagueSummary } from "./pages/LeagueSummary";
 import { PrivateLeagueCreate } from "./pages/PrivateLeagueCreate";
 
-const IS_DEV = import.meta.env.DEV || !import.meta.env.PROD;
+// Dev-only user switcher (safe if missing in prod)
+import { DevUserSwitcher } from "./components/DevUserSwitcher";
+
+const IS_DEV = import.meta.env.DEV;
 
 function AppInner() {
   const location = useLocation();
-
-  // Full-bleed routes: these pages render their own top bar/hero
-  const FULL_BLEED = new Set<string>(["/", "/login"]);
-  const isFullBleed = FULL_BLEED.has(location.pathname);
+  // We only use this to hide the FOOTER on the landing page.
+  const isFullBleed = location.pathname === "/";
 
   return (
     <>
-      {/* Header hidden on full-bleed pages (Landing/Login) to avoid duplication */}
-      {!isFullBleed && <Header />}
+      {/* Keep header always visible (this restores landing page header) */}
+      <Header />
 
-      <main className={isFullBleed ? "" : "min-h-[calc(100vh-5rem)] bg-slate-50"}>
+      <main className={isFullBleed ? "" : "container-page py-4"}>
         <Routes>
-          {/* Marketing / Landing (full-bleed) */}
           <Route path="/" element={<LandingPage />} />
-
-          {/* Auth (full-bleed) */}
-          <Route path="/login" element={<Login />} />
-
-          {/* App pages */}
           <Route path="/home" element={<Home />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/live" element={<LiveGames />} />
           <Route path="/make-pick" element={<MakePick />} />
           <Route path="/results" element={<Results />} />
@@ -60,14 +47,11 @@ function AppInner() {
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/eliminations" element={<EliminationHistory />} />
           <Route path="/league" element={<LeagueSummary />} />
-          <Route path="/private/create" element={<PrivateLeagueCreate />} />
-
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/private" element={<PrivateLeagueCreate />} />
         </Routes>
       </main>
 
-      {/* Footer hidden on full-bleed pages */}
+      {/* Hide footer only on landing page */}
       {!isFullBleed && (
         <footer className="border-t bg-white/80">
           <div className="container-page py-3 text-xs text-slate-500 flex items-center justify-between">
@@ -81,8 +65,8 @@ function AppInner() {
         </footer>
       )}
 
-      {/* Dev-only floating user switcher (safe in prod due to component guard) */}
-      <DevUserSwitcher />
+      {/* Dev test helper: switch between fake users without re-login */}
+      {IS_DEV && <DevUserSwitcher />}
     </>
   );
 }
