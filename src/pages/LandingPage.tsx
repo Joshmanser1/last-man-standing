@@ -7,23 +7,21 @@ export default function LandingPage() {
   const [authed, setAuthed] = useState(false);
 
   useEffect(() => {
-    // initial check
     supa.auth.getSession().then(({ data }) => setAuthed(!!data.session?.user?.id));
-    // keep in sync
     const { data: sub } = supa.auth.onAuthStateChange((_e, session) =>
       setAuthed(!!session?.user?.id)
     );
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // FIX: route exists at /private, not /private/create
+  // Require login for both actions when not authed
   const hostHref = authed ? "/private" : "/login";
+  const exploreHref = authed ? "/my-games" : "/login";
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       {/* Hero */}
       <section className="relative overflow-hidden pt-8 md:pt-12">
-        {/* background sits behind and ignores clicks */}
         <div className="absolute inset-0 -z-10 pointer-events-none bg-[radial-gradient(60%_60%_at_50%_-10%,rgba(16,185,129,0.25),transparent)]" />
 
         <div className="mx-auto max-w-7xl px-4 py-20 md:py-28 relative z-0">
@@ -44,7 +42,6 @@ export default function LandingPage() {
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
-              {/* Host: go to create if authed, otherwise to login */}
               <Link
                 to={hostHref}
                 className="px-6 py-3 rounded-xl bg-emerald-500 text-slate-900 font-semibold hover:bg-emerald-400 transition"
@@ -52,9 +49,8 @@ export default function LandingPage() {
                 Host a private league
               </Link>
 
-              {/* Explore: send to your current list page */}
               <Link
-                to="/my-games"
+                to={exploreHref}
                 className="px-6 py-3 rounded-xl border border-white/15 hover:border-white/30 transition"
               >
                 Explore public games

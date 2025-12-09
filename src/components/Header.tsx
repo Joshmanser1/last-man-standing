@@ -51,6 +51,7 @@ export function Header() {
       localStorage.removeItem("active_league_id");
       setHasLeague(false);
       setActiveLeagueId(null);
+      setAuthed(false);
       navigate("/login");
     }
   }
@@ -59,10 +60,7 @@ export function Header() {
     <header className="sticky top-0 z-40 border-b border-emerald-500/10 bg-[radial-gradient(120%_120%_at_50%_-10%,#0e1b1a,#0b1413_35%,#0a0e12_85%)] text-white/90 backdrop-blur">
       <div className="container-page py-3 flex items-center gap-3 flex-wrap md:flex-nowrap">
         {/* Brand */}
-        <NavLink
-          to="/"
-          className="mr-2 flex items-center gap-2 shrink-0 min-w-[220px]"
-        >
+        <NavLink to="/" className="mr-2 flex items-center gap-2 shrink-0 min-w-[220px]">
           <img
             src="/fcc-shield.png?v=1"
             alt="Fantasy Command Centre"
@@ -91,7 +89,7 @@ export function Header() {
                 </>
               )}
               <NavLink to="/my-games" className={linkCls}>My Games</NavLink>
-              <NavLink to="/private/create" className={linkCls}>Private</NavLink>
+              <NavLink to="/private" className={linkCls}>Private</NavLink>
               {isAdmin && <NavLink to="/admin" className={linkCls}>Admin</NavLink>}
             </>
           )}
@@ -102,18 +100,20 @@ export function Header() {
 
         {/* Right side */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Game selector */}
-          <div className="hidden sm:flex items-center gap-2">
-            <span className="hidden lg:inline text-sm text-white/70">Game</span>
-            <GameSelector
-              variant="header"
-              value={activeLeagueId ?? undefined}
-              onChange={(_id) => {
-                setHasLeague(!!_id);
-                setActiveLeagueId(_id);
-              }}
-            />
-          </div>
+          {/* Game selector — ONLY when authed (and show value if a league exists) */}
+          {authed && (
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="hidden lg:inline text-sm text-white/70">Game</span>
+              <GameSelector
+                variant="header"
+                value={activeLeagueId ?? undefined}
+                onChange={(_id) => {
+                  setHasLeague(!!_id);
+                  setActiveLeagueId(_id);
+                }}
+              />
+            </div>
+          )}
 
           {/* Auth */}
           {authed ? (
@@ -157,7 +157,7 @@ export function Header() {
             </>
           )}
           <NavLink to="/my-games" className={linkCls}>My Games</NavLink>
-          <NavLink to="/private/create" className={linkCls}>Private</NavLink>
+          <NavLink to="/private" className={linkCls}>Private</NavLink>
           {isAdmin && <NavLink to="/admin" className={linkCls}>Admin</NavLink>}
         </div>
       )}
