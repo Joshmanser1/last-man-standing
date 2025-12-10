@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { useEffect, useMemo } from "react";
 import { Header } from "./components/Header";
 import { ToastProvider } from "./components/Toast";
+import { RequireAuth } from "./components/RequireAuth";
 
 // Pages
 import LandingPage from "./pages/LandingPage";
@@ -68,19 +69,57 @@ function AppInner() {
 
       <main className={isFullBleed ? "" : "container-page py-4"}>
         <Routes>
+          {/* Public */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/home" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/live" element={<LiveGames />} />
-          <Route path="/make-pick" element={<MakePick />} />
           <Route path="/results" element={<Results />} />
-          <Route path="/stats" element={<Stats />} />
-          <Route path="/admin" element={<Admin />} />
-          <Route path="/my-games" element={<MyGames />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/eliminations" element={<EliminationHistory />} />
-          <Route path="/league/:leagueId" element={<LeagueSummary />} />
-          <Route path="/private" element={<PrivateLeagueCreate />} />
+          <Route path="/stats" element={<Stats />} />
+
+          {/* Protected (respects Supabase OR dev switcher auth) */}
+          <Route
+            path="/my-games"
+            element={
+              <RequireAuth>
+                <MyGames />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/make-pick"
+            element={
+              <RequireAuth>
+                <MakePick />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/league/:leagueId"
+            element={
+              <RequireAuth>
+                <LeagueSummary />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/private"
+            element={
+              <RequireAuth>
+                <PrivateLeagueCreate />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <RequireAuth>
+                <Admin />
+              </RequireAuth>
+            }
+          />
         </Routes>
       </main>
 

@@ -3,14 +3,23 @@ import { useEffect, useState, useCallback } from "react";
 
 const KEY = "lms_dev_users_v1";
 
+function prettifyName(id: string) {
+  if (/^demo[-_]?a$/i.test(id)) return "Demo A";
+  if (/^demo[-_]?b$/i.test(id)) return "Demo B";
+  return id
+    .replace(/^demo[-_]?/i, "Demo ")
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function setDevIdentity(id: string, name?: string) {
-  const display = name || (id === "demo-a" ? "Demo A" : id === "demo-b" ? "Demo B" : id);
+  const display = name || prettifyName(id);
   localStorage.setItem("player_id", id);
   localStorage.setItem("player_name", display);
   // keep admin off by default unless explicitly set elsewhere
   if (!localStorage.getItem("is_admin")) localStorage.setItem("is_admin", "0");
 
-  // clear current league on switch (so each user can have their own)
+  // clear current league on switch (each user can have their own)
   localStorage.removeItem("active_league_id");
 
   // notify app that local store changed
@@ -53,6 +62,7 @@ export function DevUserSwitcher() {
   const clearUser = useCallback(() => {
     localStorage.removeItem("player_id");
     localStorage.removeItem("player_name");
+    localStorage.removeItem("active_league_id");
     window.dispatchEvent(new Event("lms:store-updated"));
     setCurrent(null);
   }, []);
