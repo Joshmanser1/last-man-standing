@@ -13,7 +13,6 @@ type LeagueLite = {
   status: "upcoming" | "active" | "locked" | "completed" | string;
   start_date_utc?: string;
   fpl_start_event?: number;
-  // visibility (optional so it won’t break if absent in local/mock)
   is_public?: boolean;
   join_code?: string | null;
 };
@@ -26,13 +25,25 @@ type Store = {
 
 type Filter = "all" | "upcoming" | "active" | "completed";
 
+// --- Dev auth helpers (allow join without Supabase when dev switcher is on)
+const devOn = () =>
+  typeof window !== "undefined" && localStorage.getItem("dev_switcher") === "1";
+const devAuthed = () =>
+  typeof window !== "undefined" &&
+  devOn() &&
+  !!localStorage.getItem("player_id");
+
 function statusPill(status: string) {
   const base =
     "inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold";
-  if (status === "active") return <span className={`${base} bg-emerald-100 text-emerald-700`}>Active</span>;
-  if (status === "upcoming") return <span className={`${base} bg-indigo-100 text-indigo-700`}>Upcoming</span>;
-  if (status === "locked") return <span className={`${base} bg-amber-100 text-amber-800`}>Locked</span>;
-  if (status === "completed") return <span className={`${base} bg-slate-200 text-slate-700`}>Completed</span>;
+  if (status === "active")
+    return <span className={`${base} bg-emerald-100 text-emerald-700`}>Active</span>;
+  if (status === "upcoming")
+    return <span className={`${base} bg-indigo-100 text-indigo-700`}>Upcoming</span>;
+  if (status === "locked")
+    return <span className={`${base} bg-amber-100 text-amber-800`}>Locked</span>;
+  if (status === "completed")
+    return <span className={`${base} bg-slate-200 text-slate-700`}>Completed</span>;
   return <span className={`${base} bg-slate-100 text-slate-700`}>{status.toUpperCase()}</span>;
 }
 
@@ -53,8 +64,7 @@ export function LiveGames() {
       setLoading(true);
       try {
         await (dataService as any).seed?.();
-        const ls = ((await (dataService as any).listLeagues?.()) ||
-          []) as LeagueLite[];
+        const ls = ((await (dataService as any).listLeagues?.()) || []) as LeagueLite[];
         setLeagues(ls);
 
         const raw = localStorage.getItem(STORE_KEY);
@@ -89,12 +99,9 @@ export function LiveGames() {
 
   const filteredLeagues = useMemo(() => {
     if (filter === "all") return leagues;
-    if (filter === "upcoming")
-      return leagues.filter((l) => l.status === "upcoming");
-    if (filter === "active")
-      return leagues.filter((l) => l.status === "active" || l.status === "locked");
-    if (filter === "completed")
-      return leagues.filter((l) => l.status === "completed");
+    if (filter === "upcoming") return leagues.filter((l) => l.status === "upcoming");
+    if (filter === "active") return leagues.filter((l) => l.status === "active" || l.status === "locked");
+    if (filter === "completed") return leagues.filter((l) => l.status === "completed");
     return leagues;
   }, [leagues, filter]);
 
@@ -103,38 +110,37 @@ export function LiveGames() {
     navigate(path);
   }
 
-  // ---- Real join flow (auth → (private code?) → ensure membership → set active → /my-games)
+  // ---- Real join flow (now accepts dev auth)
   async function joinLeague(l: LeagueLite) {
     if (joiningId) return;
     setJoiningId(l.id);
     try {
-      // Require session
+      // Accept either a Supabase session OR dev local auth
       const { data } = await supa.auth.getSession();
-      const authed = !!data.session?.user?.id;
+      const supaAuthed = !!data.session?.user?.id;
+      const authed = supaAuthed || devAuthed();
+
       if (!authed) {
         localStorage.setItem("active_league_id", l.id);
         navigate("/login");
         return;
       }
 
-      // Private? ask for code (unless you keep the code in league.join_code and want to compare)
+      // Private? ask for code (client-side hint; server should still validate)
       if (l.is_public === false) {
         const input = window.prompt("Enter the private join code to join this league:");
-        if (!input) {
-          return; // cancelled
-        }
-        // If the league carries a join_code locally, do a quick client check (server still validates)
+        if (!input) return; // cancelled
         if (l.join_code && input.trim() !== l.join_code.trim()) {
           alert("That join code is not correct.");
           return;
         }
       }
 
-      // Ensure we have a player
+      // Ensure we have a player record (works in dev or real auth)
       const displayName = localStorage.getItem("player_name") || "Manager";
       const player = await dataService.upsertPlayer(displayName);
 
-      // Ensure membership (works for both public and private; backend should validate code server-side if you add it there)
+      // Ensure membership
       await dataService.ensureMembership(l.id, player.id);
 
       // Set active and go to My Games
@@ -151,9 +157,7 @@ export function LiveGames() {
   if (loading) {
     return (
       <div className="min-h-[calc(100vh-5rem)] grid place-items-center">
-        <div className="text-slate-500 animate-pulse">
-          Loading live games…
-        </div>
+        <div className="text-slate-500 animate-pulse">Loading live games…</div>
       </div>
     );
   }
@@ -185,17 +189,11 @@ export function LiveGames() {
                 {leagues.length} game{leagues.length === 1 ? "" : "s"} total
               </div>
               <div className="mt-1 text-xs text-white/80">
-                {Array.from(entrantsByLeague.values()).reduce(
-                  (sum, v) => sum + v,
-                  0
-                )}{" "}
+                {Array.from(entrantsByLeague.values()).reduce((sum, v) => sum + v, 0)}{" "}
                 total entrants across all games
               </div>
             </div>
-            <button
-              className="btn btn-ghost text-xs mt-1"
-              onClick={() => navigate("/my-games")}
-            >
+            <button className="btn btn-ghost text-xs mt-1" onClick={() => navigate("/my-games")}>
               View My Games
             </button>
           </div>
@@ -216,9 +214,7 @@ export function LiveGames() {
               onClick={() => setFilter(f.key)}
               className={[
                 "px-3 py-1.5 text-xs md:text-sm rounded-lg font-medium",
-                filter === f.key
-                  ? "bg-teal-600 text-white"
-                  : "text-slate-700 hover:bg-slate-100",
+                filter === f.key ? "bg-teal-600 text-white" : "text-slate-700 hover:bg-slate-100",
               ].join(" ")}
             >
               {f.label}
@@ -239,10 +235,7 @@ export function LiveGames() {
         <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600 text-center">
           No games match this filter yet. Try switching to a different tab or
           create a new game from{" "}
-          <button
-            className="underline"
-            onClick={() => navigate("/admin")}
-          >
+          <button className="underline" onClick={() => navigate("/admin")}>
             Admin
           </button>
           .
@@ -256,15 +249,10 @@ export function LiveGames() {
 
             const roundLabel = `Round ${l.current_round}`;
             const fplLabel =
-              typeof l.fpl_start_event === "number"
-                ? `Start GW ${l.fpl_start_event}`
-                : undefined;
+              typeof l.fpl_start_event === "number" ? `Start GW ${l.fpl_start_event}` : undefined;
 
             return (
-              <div
-                key={l.id}
-                className="card p-4 flex flex-col justify-between gap-3 border border-slate-200/80"
-              >
+              <div key={l.id} className="card p-4 flex flex-col justify-between gap-3 border border-slate-200/80">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -283,13 +271,9 @@ export function LiveGames() {
                     </div>
                     <div className="mt-1 text-xs text-slate-600 space-x-2">
                       <span>{roundLabel}</span>
-                      {fplLabel && (
-                        <span className="text-slate-500">• {fplLabel}</span>
-                      )}
+                      {fplLabel && <span className="text-slate-500">• {fplLabel}</span>}
                       {l.start_date_utc && (
-                        <span className="text-slate-500">
-                          • Starts {new Date(l.start_date_utc).toLocaleDateString()}
-                        </span>
+                        <span className="text-slate-500">• Starts {new Date(l.start_date_utc).toLocaleDateString()}</span>
                       )}
                     </div>
                   </div>
@@ -302,9 +286,7 @@ export function LiveGames() {
 
                 <div className="flex items-center justify-between text-xs text-slate-600">
                   <div>
-                    <span className="font-semibold text-slate-900">
-                      {entrants}
-                    </span>{" "}
+                    <span className="font-semibold text-slate-900">{entrants}</span>{" "}
                     entrant{entrants === 1 ? "" : "s"}
                   </div>
                 </div>
