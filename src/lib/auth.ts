@@ -15,6 +15,22 @@ export async function isAuthedAsync(): Promise<boolean> {
 
 export function isAuthedNow(): boolean {
   // Synchronous check for client-side UI decisions
-  const supaFlag = false; // don't block on async here
-  return supaFlag || (devOn() && localAuthed());
+  return (devOn() && localAuthed());
+}
+
+/** DEV: treat local is_admin=1 as admin; also used as a fast synchronous check */
+export function isAdminNow(): boolean {
+  if (devOn() && localAuthed()) return true;
+  return typeof window !== "undefined" && localStorage.getItem("is_admin") === "1";
+}
+
+/** Async admin check with Supabase user metadata fallback */
+export async function isAdminAsync(): Promise<boolean> {
+  try {
+    const { data } = await supa.auth.getUser();
+    const role = (data.user?.user_metadata?.role as string) || "";
+    return role === "admin" || isAdminNow();
+  } catch {
+    return isAdminNow();
+  }
 }
