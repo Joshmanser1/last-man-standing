@@ -1,6 +1,5 @@
 // src/lib/fpl.ts
-// Minimal FPL client using Vite proxy to bypass CORS during dev.
-// Docs (unofficial): /api/bootstrap-static/ and /api/fixtures/
+// Direct calls to the public Fantasy Premier League API (no proxy needed).
 
 type FplTeam = { id: number; name: string; short_name: string };
 type FplFixture = {
@@ -15,71 +14,73 @@ type FplFixture = {
   finished_provisional: boolean;
 };
 
+const FPL_BASE = "https://fantasy.premierleague.com/api";
+
+async function getJSON<T = any>(url: string): Promise<T> {
+  const res = await fetch(url, { credentials: "omit", cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to fetch FPL data: ${res.status} ${res.statusText}`);
+  return (await res.json()) as T;
+}
+
 // ---------------------------------------------------------------------------
 // Fetch all FPL teams
 // ---------------------------------------------------------------------------
 export async function fetchFplTeams(): Promise<FplTeam[]> {
-  const res = await fetch("/fpl/api/bootstrap-static/");
-  if (!res.ok) throw new Error(`Failed to fetch FPL teams: ${res.status}`);
-  const data = await res.json();
-  return data.teams as FplTeam[];
+  const data = await getJSON<{ teams: FplTeam[] }>(`${FPL_BASE}/bootstrap-static/`);
+  return data.teams;
 }
 
 // ---------------------------------------------------------------------------
 // Fetch all fixtures (for every gameweek)
 // ---------------------------------------------------------------------------
 export async function fetchFplFixtures(): Promise<FplFixture[]> {
-  const res = await fetch("/fpl/api/fixtures/");
-  if (!res.ok) throw new Error(`Failed to fetch FPL fixtures: ${res.status}`);
-  return (await res.json()) as FplFixture[];
+  return getJSON<FplFixture[]>(`${FPL_BASE}/fixtures/`);
 }
 
 // ---------------------------------------------------------------------------
 // Fetch fixtures for a specific Gameweek (event)
-// Returns teams with BOTH short_name and full name for robust matching.
+// Keeps keys used by supabaseService: kickoff, finished, home/away.short_name,
+// homeScore, awayScore.
 // ---------------------------------------------------------------------------
 export async function fetchFplFixturesForEvent(eventNumber: number) {
-  try {
-    const [teams, fixtures] = await Promise.all([fetchFplTeams(), fetchFplFixtures()]);
-    const teamById = new Map<number, FplTeam>(teams.map((t) => [t.id, t]));
-    const gw = fixtures.filter((f) => f.event === eventNumber);
+  const [teamsData, fixturesData] = await Promise.all([
+    getJSON<{ teams: FplTeam[] }>(`${FPL_BASE}/bootstrap-static/`),
+    getJSON<FplFixture[]>(`${FPL_BASE}/fixtures/?event=${eventNumber}`),
+  ]);
 
-    return gw.map((f) => {
-      const homeTeam = teamById.get(f.team_h);
-      const awayTeam = teamById.get(f.team_a);
-      return {
-        fplId: f.id,
-        kickoff: f.kickoff_time,
-        finished: f.finished || f.finished_provisional,
-        home: {
-          id: f.team_h,
-          short_name: homeTeam?.short_name ?? `H${f.team_h}`,
-          name: homeTeam?.name ?? `Team ${f.team_h}`,
-          score: f.team_h_score,
-        },
-        away: {
-          id: f.team_a,
-          short_name: awayTeam?.short_name ?? `A${f.team_a}`,
-          name: awayTeam?.name ?? `Team ${f.team_a}`,
-          score: f.team_a_score,
-        },
-        homeScore: f.team_h_score,
-        awayScore: f.team_a_score,
-      };
-    });
-  } catch (err) {
-    console.error("Failed to fetch FPL fixtures:", err);
-    throw new Error("Unable to fetch fixtures from the FPL API");
-  }
+  const teamById = new Map<number, FplTeam>(teamsData.teams.map((t) => [t.id, t]));
+  const gw = fixturesData; // endpoint is already filtered by event
+
+  return gw.map((f) => {
+    const homeTeam = teamById.get(f.team_h);
+    const awayTeam = teamById.get(f.team_a);
+    return {
+      fplId: f.id,
+      kickoff: f.kickoff_time ?? undefined,
+      finished: !!(f.finished || f.finished_provisional),
+      home: {
+        id: f.team_h,
+        short_name: homeTeam?.short_name ?? `H${f.team_h}`,
+        name: homeTeam?.name ?? `Team ${f.team_h}`,
+        score: f.team_h_score,
+      },
+      away: {
+        id: f.team_a,
+        short_name: awayTeam?.short_name ?? `A${f.team_a}`,
+        name: awayTeam?.name ?? `Team ${f.team_a}`,
+        score: f.team_a_score,
+      },
+      homeScore: f.team_h_score,
+      awayScore: f.team_a_score,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
 // Bootstrap + Smart Event (current → next → last finished)
 // ---------------------------------------------------------------------------
 export async function fetchBootstrap(): Promise<any> {
-  const res = await fetch("/fpl/api/bootstrap-static/");
-  if (!res.ok) throw new Error(`Failed to fetch bootstrap: ${res.status}`);
-  return res.json();
+  return getJSON(`${FPL_BASE}/bootstrap-static/`);
 }
 
 /** Choose the most relevant GW: current → next → last finished. */
@@ -103,18 +104,16 @@ export async function getSmartCurrentEvent(): Promise<number> {
 
   return events[0]?.id ?? 1;
 }
-// Return the FPL event (gameweek id) whose deadline is the first deadline
-// AFTER the chosen start date. If the date is beyond all deadlines,
-// fall back to the last event.
+
+/** First event whose deadline is on/after the given date, else the last one. */
 export async function getEventForDate(dateISO: string): Promise<number> {
   const data = await fetchBootstrap();
   const events = data.events as Array<{ id: number; deadline_time: string }>;
   const ts = new Date(dateISO).getTime();
 
-  // Find the next event whose deadline is after the chosen date
-  const next = events.find(e => new Date(e.deadline_time).getTime() >= ts);
-  if (next) return next.id;
+  const next = events
+    .filter((e) => new Date(e.deadline_time).getTime() >= ts)
+    .sort((a, b) => new Date(a.deadline_time).getTime() - new Date(b.deadline_time).getTime())[0];
 
-  // Otherwise use the last one (late-season start)
-  return events[events.length - 1].id;
+  return next ? next.id : events[events.length - 1].id;
 }
