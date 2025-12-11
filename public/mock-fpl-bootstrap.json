@@ -1,0 +1,28 @@
+{
+  "events": [
+    {
+      "id": 16,
+      "name": "Gameweek 16",
+      "deadline_time": "2025-12-13T11:00:00Z",
+      "finished": false,
+      "is_current": true,
+      "is_next": false
+    },
+    {
+      "id": 17,
+      "name": "Gameweek 17",
+      "deadline_time": "2025-12-20T11:00:00Z",
+      "finished": false,
+      "is_current": false,
+      "is_next": true
+    },
+    {
+      "id": 18,
+      "name": "Gameweek 18",
+      "deadline_time": "2025-12-26T11:00:00Z",
+      "finished": false,
+      "is_current": false,
+      "is_next": false
+    }
+  ]
+}

@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 
 type FplEvent = {
   id: number;
-  name: string; // "Gameweek 1"
+  name: string;
   deadline_time: string; // ISO
   finished: boolean;
   is_current: boolean;
@@ -11,16 +11,28 @@ type FplEvent = {
 };
 
 type FplGwSelectProps = {
-  /** Selected FPL event id (1–38). If omitted, component manages its own. */
   value?: number;
-  /** Called when the user changes GW */
   onChange?: (eventId: number, event?: FplEvent) => void;
-  /** Optional label above the select */
   label?: string;
-  /** Include only upcoming events? */
   onlyUpcoming?: boolean;
   className?: string;
+  /** Optional alternate source if /fpl/api/bootstrap-static/ fails (403 etc.) */
+  fallbackUrl?: string; // defaults to /mock-fpl-bootstrap.json
 };
+
+async function loadBootstrap(): Promise<{ events: FplEvent[] }> {
+  // 1) Try live FPL (via our /fpl rewrite)
+  const live = await fetch("/fpl/api/bootstrap-static/");
+  if (live.ok) return live.json();
+
+  // 2) If that fails (403 etc), try fallback file
+  const backup = await fetch("/mock-fpl-bootstrap.json");
+  if (!backup.ok) {
+    const msg = `Failed to load FPL events: ${live.status}`;
+    throw new Error(msg);
+  }
+  return backup.json();
+}
 
 export function FplGwSelect({
   value,
@@ -40,35 +52,30 @@ export function FplGwSelect({
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch("/fpl/api/bootstrap-static/");
-        if (!res.ok) throw new Error(`Failed to load FPL events: ${res.status}`);
-        const data = await res.json();
-        const evs = (data.events || []) as FplEvent[];
+        const data = await loadBootstrap();
+        let evs = (data.events || []) as FplEvent[];
 
-        let filtered = evs;
         if (onlyUpcoming) {
           const now = Date.now();
-          filtered = evs.filter(
+          evs = evs.filter(
             (e) => !e.finished && Date.parse(e.deadline_time) >= now
           );
         }
 
         if (!isMounted) return;
-        setEvents(filtered);
+        setEvents(evs);
 
-        if (!value && filtered.length) {
-          // Prefer current / next GW when uncontrolled
+        if (!value && evs.length) {
           const current =
-            filtered.find((e) => e.is_current) ||
-            filtered.find((e) => e.is_next) ||
-            filtered[0];
+            evs.find((e) => e.is_current) ||
+            evs.find((e) => e.is_next) ||
+            evs[0];
           setSelected(current.id);
           onChange?.(current.id, current);
         } else if (value) {
           setSelected(value);
         }
       } catch (e: any) {
-        console.error(e);
         if (!isMounted) return;
         setError(e?.message ?? "Failed to load FPL calendar.");
       } finally {
@@ -81,7 +88,6 @@ export function FplGwSelect({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // keep internal state in sync when parent controls value
   useEffect(() => {
     if (typeof value === "number") setSelected(value);
   }, [value]);
@@ -96,11 +102,7 @@ export function FplGwSelect({
   if (loading && !events.length) {
     return (
       <div className={className}>
-        {label && (
-          <label className="label mb-1">
-            {label}
-          </label>
-        )}
+        {label && <label className="label mb-1">{label}</label>}
         <div className="text-xs text-slate-500">Loading FPL calendar…</div>
       </div>
     );
@@ -110,18 +112,16 @@ export function FplGwSelect({
     return (
       <div className={className}>
         {label && <label className="label mb-1">{label}</label>}
-        <div className="text-xs text-rose-600">{error}</div>
+        <div className="text-xs text-rose-600">
+          {error} — using fallback failed too.
+        </div>
       </div>
     );
   }
 
   return (
     <div className={className}>
-      {label && (
-        <label className="label mb-1">
-          {label}
-        </label>
-      )}
+      {label && <label className="label mb-1">{label}</label>}
       <select
         className="input"
         value={selected ?? ""}
@@ -137,7 +137,7 @@ export function FplGwSelect({
         })}
       </select>
       <p className="mt-1 text-[11px] text-slate-500">
-        Deadlines come directly from the official FPL API.
+        If the live FPL API blocks requests, we automatically use a local fallback.
       </p>
     </div>
   );
