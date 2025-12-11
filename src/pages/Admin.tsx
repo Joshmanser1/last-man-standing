@@ -1,6 +1,7 @@
 // src/pages/Admin.tsx
 import { useEffect, useMemo, useState } from "react";
 import { dataService } from "../data/service";
+import { FplGwSelect } from "../components/FplGwSelect";
 
 const STORE_KEY = "lms_store_v1";
 const SEED_SENTINEL = "lms_seed_done";
@@ -29,14 +30,14 @@ export function Admin() {
   const [refreshTick, setRefreshTick] = useState(0);
   const [fetchSummary, setFetchSummary] = useState<string>("");
 
-  // Next round (manual date)
+  // Next round (FPL)
+  const [nextFplEvent, setNextFplEvent] = useState<number | null>(null);
   const [nextDeadlineISO, setNextDeadlineISO] = useState<string | null>(null);
 
   // Fixtures table sorting
   const [sortKey, setSortKey] = useState<SortKey>("kickoff");
   const [sortAsc, setSortAsc] = useState<boolean>(true);
 
-  // ---------- helpers ----------
   function toast(msg: string) {
     alert(msg);
   }
@@ -47,7 +48,7 @@ export function Admin() {
     localStorage.setItem(STORE_KEY, JSON.stringify(s));
   }
 
-  // ---------- load leagues (filter out soft-deleted) ----------
+  // Load leagues (filter soft-deleted)
   useEffect(() => {
     (async () => {
       const serverList = await (dataService as any).listLeagues?.();
@@ -59,7 +60,7 @@ export function Admin() {
           return;
         }
       }
-      // first run: seed (mock/local)
+      // first run: seed
       if (!localStorage.getItem(SEED_SENTINEL)) {
         await (dataService as any).seed?.();
         localStorage.setItem(SEED_SENTINEL, "1");
@@ -74,7 +75,7 @@ export function Admin() {
     })();
   }, []);
 
-  // ---------- load selected league/round ----------
+  // Load selected league/round
   useEffect(() => {
     if (!selectedLeagueId) return;
     (async () => {
@@ -110,7 +111,7 @@ export function Admin() {
     })();
   }, [selectedLeagueId, refreshTick]);
 
-  // ---------- derived ----------
+  // Derived
   const store: Store | null = useMemo(() => {
     try {
       const raw = localStorage.getItem(STORE_KEY);
@@ -137,7 +138,7 @@ export function Admin() {
     return base + (round.round_number - 1);
   }, [league, round]);
 
-  // ---------- actions ----------
+  // Actions
   function toggleWinner(teamId: string) {
     setWinners((prev) => {
       const copy = new Set(prev);
@@ -211,14 +212,15 @@ export function Admin() {
 
   async function createNext() {
     if (!league) return;
-    if (!nextDeadlineISO) {
-      alert("Pick a deadline for the next round first.");
+    if (!nextDeadlineISO || !nextFplEvent) {
+      alert("Pick an FPL Gameweek for the next round first.");
       return;
     }
     setLoading(true);
     try {
       await dataService.createNextRound(league.id, nextDeadlineISO);
-      toast("Next round created.");
+      toast(`Next round created from FPL GW ${nextFplEvent}.`);
+      setNextFplEvent(null);
       setNextDeadlineISO(null);
       setFetchSummary("");
       setRefreshTick((x) => x + 1);
@@ -298,7 +300,7 @@ export function Admin() {
     }
   }
 
-  // ---------- fixtures (API + fallback) ----------
+  // Fixtures — FPL with local fallback
   async function importFixturesFromLocalBackup() {
     if (!league || !round) return 0;
     try {
@@ -416,7 +418,7 @@ export function Admin() {
     }
   }
 
-  // ---------- fixtures table views ----------
+  // Fixtures table
   const fixturesForRound = useMemo(() => {
     if (!store || !round) return [];
     return (store.fixtures || [])
@@ -659,7 +661,6 @@ export function Admin() {
           </button>
         </div>
 
-        {/* Fetch summary */}
         {fetchSummary && (
           <div className="mb-4 text-sm text-slate-700">{fetchSummary}</div>
         )}
@@ -698,21 +699,58 @@ export function Admin() {
           </p>
         </div>
 
+        {/* Fixtures Viewer */}
+        <div className="border-t pt-6 mt-8">
+          <h3 className="font-semibold mb-3">Fixtures (Current Round)</h3>
+          {sortedFixtures.length ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full border border-slate-200 text-sm">
+                <thead className="bg-slate-100 text-slate-700">
+                  <tr>
+                    <th className="px-3 py-2 w-1/4">{headerBtn("home", "Home")}</th>
+                    <th className="px-3 py-2 w-1/4">{headerBtn("away", "Away")}</th>
+                    <th className="px-3 py-2 w-1/4">{headerBtn("kickoff", "Kickoff")}</th>
+                    <th className="px-3 py-2 w-1/4">{headerBtn("result", "Result")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedFixtures.map((f: any, i: number) => (
+                    <tr key={i} className="border-t border-slate-200">
+                      <td className="px-3 py-2">{f.homeName}</td>
+                      <td className="px-3 py-2">{f.awayName}</td>
+                      <td className="px-3 py-2">
+                        {f.kickoff_utc
+                          ? new Date(f.kickoff_utc).toLocaleString()
+                          : "—"}
+                      </td>
+                      <td className={"px-3 py-2 font-medium " + resultClass(f.resultText)}>
+                        {f.resultText}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-slate-500 text-sm">
+              No fixtures found yet. Click <b>Fetch Fixtures (EPL)</b> to import.
+            </div>
+          )}
+        </div>
+
         {/* Create Next Round */}
         <div className="border-t pt-6 mt-8">
           <h3 className="font-semibold mb-2">Create Next Round</h3>
           <div className="flex flex-col sm:flex-row gap-3 items-start">
             <div className="flex-1 min-w-[220px]">
-              <label className="block text-xs font-medium mb-1">Pick deadline (UTC)</label>
-              <input
-                type="datetime-local"
-                className="input w-full"
-                value={nextDeadlineISO ?? ""}
-                onChange={(e) => setNextDeadlineISO(e.target.value ? new Date(e.target.value).toISOString() : null)}
+              <FplGwSelect
+                label="FPL Gameweek for next round"
+                onlyUpcoming
+                onChange={(id, ev) => {
+                  setNextFplEvent(id);
+                  if (ev) setNextDeadlineISO(ev.deadline_time);
+                }}
               />
-              <p className="mt-1 text-[11px] text-slate-500">
-                Use the official FPL GW deadline if known. You can also fetch fixtures later.
-              </p>
             </div>
             <button
               disabled={loading}
@@ -721,6 +759,10 @@ export function Admin() {
             >
               Create
             </button>
+            <span className="text-xs text-slate-500 max-w-xs">
+              This uses the official FPL deadline for the selected Gameweek as the pick
+              deadline for the new round.
+            </span>
           </div>
         </div>
       </div>
@@ -732,10 +774,8 @@ export function Admin() {
 
 function CreateGameInline({ onCreated }: { onCreated: (lg: any) => void }) {
   const [name, setName] = useState("LMS Game");
-  const [startDate, setStartDate] = useState<string>(() => {
-    const d = new Date(); d.setHours(0,0,0,0);
-    return d.toISOString().slice(0,10); // yyyy-mm-dd
-  });
+  const [startEvent, setStartEvent] = useState<number | null>(null);
+  const [startDeadlineISO, setStartDeadlineISO] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [makePublic, setMakePublic] = useState<boolean>(false);
 
@@ -744,16 +784,14 @@ function CreateGameInline({ onCreated }: { onCreated: (lg: any) => void }) {
       alert("Please enter a game name.");
       return;
     }
-    if (!startDate) {
-      alert("Pick a start date.");
+    if (!startDeadlineISO || !startEvent) {
+      alert("Pick a starting FPL Gameweek first.");
       return;
     }
 
     try {
       setSaving(true);
-      // Service maps this date to an FPL start GW internally
-      const startISO = new Date(startDate + "T00:00:00").toISOString();
-      const lg = await (dataService as any).createGame(name.trim(), startISO);
+      const lg = await (dataService as any).createGame(name.trim(), startDeadlineISO);
 
       if ((dataService as any).setLeagueVisibility) {
         await (dataService as any).setLeagueVisibility(lg.id, makePublic);
@@ -769,7 +807,7 @@ function CreateGameInline({ onCreated }: { onCreated: (lg: any) => void }) {
       }
 
       alert(
-        `Created: ${lg.name} (FPL start GW ${lg.fpl_start_event ?? "?"}) — ${
+        `Created: ${lg.name} (FPL start GW ${lg.fpl_start_event ?? startEvent}) — ${
           makePublic ? "Public" : "Private"
         }`
       );
@@ -791,16 +829,14 @@ function CreateGameInline({ onCreated }: { onCreated: (lg: any) => void }) {
         placeholder="Game name"
       />
       <div className="flex-1 min-w-[220px]">
-        <label className="block text-xs font-medium mb-1">Start date</label>
-        <input
-          type="date"
-          className="input w-full"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
+        <FplGwSelect
+          label="Start FPL Gameweek"
+          onlyUpcoming
+          onChange={(id, ev) => {
+            setStartEvent(id);
+            if (ev) setStartDeadlineISO(ev.deadline_time);
+          }}
         />
-        <p className="mt-1 text-[11px] text-slate-500">
-          We’ll pick the first FPL GW whose deadline is on/after this date.
-        </p>
       </div>
       <label className="text-sm text-slate-700 flex items-center gap-2">
         <input
@@ -826,11 +862,10 @@ function CreateGamePanel({ onCreated }: { onCreated: (lg: any) => void }) {
     <div className="w-full max-w-xl bg-white rounded-2xl shadow p-6 space-y-4">
       <h2 className="text-xl font-semibold">Create your first Last Man Standing game</h2>
       <p className="text-slate-600 text-sm">
-        Pick a start date. We’ll use the official FPL calendar to map Round 1 and the future rounds.
+        Pick a <b>starting FPL Gameweek</b>. We’ll use the official FPL deadline for Round 1 and map
+        future rounds to the FPL calendar.
       </p>
       <CreateGameInline onCreated={onCreated} />
     </div>
   );
 }
-
-export default Admin;
