@@ -4,13 +4,15 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
 import { GameSelector } from "./GameSelector";
 import { subscribeStore } from "../data/service";
+import { isAdminNow } from "../lib/auth";
 
 const linkCls = ({ isActive }: { isActive: boolean }) =>
   `nav-link ${isActive ? "nav-link-active" : ""}`;
 
 export function Header() {
   // Dev switcher is enabled when this flag is set (via ?dev=1 or env in App.tsx)
-  const devOn = typeof window !== "undefined" && localStorage.getItem("dev_switcher") === "1";
+  const devOn =
+    typeof window !== "undefined" && localStorage.getItem("dev_switcher") === "1";
 
   const [authed, setAuthed] = useState<boolean>(() => {
     const supaAuthed = false; // will be set in effect
@@ -18,13 +20,15 @@ export function Header() {
     return supaAuthed || localAuthed;
   });
 
-  const [hasLeague, setHasLeague] = useState<boolean>(!!localStorage.getItem("active_league_id"));
+  const [hasLeague, setHasLeague] = useState<boolean>(
+    !!localStorage.getItem("active_league_id")
+  );
   const [activeLeagueId, setActiveLeagueId] = useState<string | null>(
     localStorage.getItem("active_league_id")
   );
 
+  const [admin, setAdmin] = useState<boolean>(isAdminNow());
   const playerName = localStorage.getItem("player_name") || "";
-  const isAdmin = localStorage.getItem("is_admin") === "1";
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -33,16 +37,18 @@ export function Header() {
       const supaAuthed = !!data.session?.user?.id;
       const localAuthed = devOn && !!localStorage.getItem("player_id");
       setAuthed(supaAuthed || localAuthed);
+      setAdmin(isAdminNow());
     };
 
     // initial
     recomputeAuth();
 
-    // keep in sync with Supabase
+    // keep in sync with Supabase login state
     const { data: sub } = supa.auth.onAuthStateChange((_e, session) => {
       const supaAuthed = !!session?.user?.id;
       const localAuthed = devOn && !!localStorage.getItem("player_id");
       setAuthed(supaAuthed || localAuthed);
+      setAdmin(isAdminNow());
     });
 
     // react to our store changes (DevUserSwitcher fires this)
@@ -50,6 +56,7 @@ export function Header() {
       const id = localStorage.getItem("active_league_id");
       setActiveLeagueId(id);
       setHasLeague(!!id);
+      setAdmin(isAdminNow());
 
       const localAuthed = devOn && !!localStorage.getItem("player_id");
       setAuthed((prev) => prev || localAuthed);
@@ -80,8 +87,10 @@ export function Header() {
       localStorage.removeItem("player_id");
       localStorage.removeItem("player_name");
       localStorage.removeItem("active_league_id");
+      localStorage.removeItem("is_admin");
       setHasLeague(false);
       setActiveLeagueId(null);
+      setAdmin(false);
       setAuthed(false);
       navigate("/login");
     }
@@ -99,7 +108,7 @@ export function Header() {
             height={28}
             className="rounded-lg block"
           />
-        <span className="text-emerald-300 font-semibold tracking-tight whitespace-nowrap">
+          <span className="text-emerald-300 font-semibold tracking-tight whitespace-nowrap">
             Fantasy Command Centre
           </span>
         </NavLink>
@@ -110,18 +119,40 @@ export function Header() {
             <>
               {hasLeague && (
                 <>
-                  <NavLink to="/live" className={linkCls}>Live</NavLink>
-                  <NavLink to="/make-pick" className={linkCls}>Make Pick</NavLink>
-                  <NavLink to="/results" className={linkCls}>Results</NavLink>
-                  <NavLink to="/leaderboard" className={linkCls}>Leaderboard</NavLink>
-                  <NavLink to="/eliminations" className={linkCls}>Eliminations</NavLink>
-                  <NavLink to="/stats" className={linkCls}>Stats</NavLink>
-                  <NavLink to="/league" className={linkCls}>League</NavLink>
+                  <NavLink to="/live" className={linkCls}>
+                    Live
+                  </NavLink>
+                  <NavLink to="/make-pick" className={linkCls}>
+                    Make Pick
+                  </NavLink>
+                  <NavLink to="/results" className={linkCls}>
+                    Results
+                  </NavLink>
+                  <NavLink to="/leaderboard" className={linkCls}>
+                    Leaderboard
+                  </NavLink>
+                  <NavLink to="/eliminations" className={linkCls}>
+                    Eliminations
+                  </NavLink>
+                  <NavLink to="/stats" className={linkCls}>
+                    Stats
+                  </NavLink>
+                  <NavLink to="/league" className={linkCls}>
+                    League
+                  </NavLink>
                 </>
               )}
-              <NavLink to="/my-games" className={linkCls}>My Games</NavLink>
-              <NavLink to="/private" className={linkCls}>Private</NavLink>
-              {isAdmin && <NavLink to="/admin" className={linkCls}>Admin</NavLink>}
+              <NavLink to="/my-games" className={linkCls}>
+                My Games
+              </NavLink>
+              <NavLink to="/private" className={linkCls}>
+                Private
+              </NavLink>
+              {admin && (
+                <NavLink to="/admin" className={linkCls}>
+                  Admin
+                </NavLink>
+              )}
             </>
           )}
         </nav>
@@ -178,18 +209,40 @@ export function Header() {
         <div className="md:hidden border-t border-white/10 px-3 py-2 flex gap-1 overflow-x-auto">
           {hasLeague && (
             <>
-              <NavLink to="/live" className={linkCls}>Live</NavLink>
-              <NavLink to="/make-pick" className={linkCls}>Pick</NavLink>
-              <NavLink to="/results" className={linkCls}>Results</NavLink>
-              <NavLink to="/leaderboard" className={linkCls}>Leaderboard</NavLink>
-              <NavLink to="/eliminations" className={linkCls}>Elims</NavLink>
-              <NavLink to="/stats" className={linkCls}>Stats</NavLink>
-              <NavLink to="/league" className={linkCls}>League</NavLink>
+              <NavLink to="/live" className={linkCls}>
+                Live
+              </NavLink>
+              <NavLink to="/make-pick" className={linkCls}>
+                Pick
+              </NavLink>
+              <NavLink to="/results" className={linkCls}>
+                Results
+              </NavLink>
+              <NavLink to="/leaderboard" className={linkCls}>
+                Leaderboard
+              </NavLink>
+              <NavLink to="/eliminations" className={linkCls}>
+                Elims
+              </NavLink>
+              <NavLink to="/stats" className={linkCls}>
+                Stats
+              </NavLink>
+              <NavLink to="/league" className={linkCls}>
+                League
+              </NavLink>
             </>
           )}
-          <NavLink to="/my-games" className={linkCls}>My Games</NavLink>
-          <NavLink to="/private" className={linkCls}>Private</NavLink>
-          {isAdmin && <NavLink to="/admin" className={linkCls}>Admin</NavLink>}
+          <NavLink to="/my-games" className={linkCls}>
+            My Games
+          </NavLink>
+          <NavLink to="/private" className={linkCls}>
+            Private
+          </NavLink>
+          {admin && (
+            <NavLink to="/admin" className={linkCls}>
+              Admin
+            </NavLink>
+          )}
         </div>
       )}
     </header>
