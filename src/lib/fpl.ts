@@ -1,5 +1,5 @@
 // src/lib/fpl.ts
-// Direct calls to the public Fantasy Premier League API (no proxy needed).
+// Client-side FPL helpers (MUST use same-origin proxy to avoid CORS blocks)
 
 type FplTeam = { id: number; name: string; short_name: string };
 type FplFixture = {
@@ -14,11 +14,28 @@ type FplFixture = {
   finished_provisional: boolean;
 };
 
-const FPL_BASE = "https://fantasy.premierleague.com/api";
+// Same-origin Vercel function (created at /api/fpl.ts in project root)
+const FPL_PROXY = "/api/fpl";
 
-async function getJSON<T = any>(url: string): Promise<T> {
-  const res = await fetch(url, { credentials: "omit", cache: "no-store" });
-  if (!res.ok) throw new Error(`Failed to fetch FPL data: ${res.status} ${res.statusText}`);
+/**
+ * Fetch JSON from the FPL proxy.
+ * `path` must be an FPL API path like "/bootstrap-static/" or "/fixtures/?event=26".
+ */
+async function getJSON<T = any>(path: string): Promise<T> {
+  const url = `${FPL_PROXY}?path=${encodeURIComponent(path)}`;
+
+  const res = await fetch(url, { cache: "no-store" });
+
+  if (!res.ok) {
+    // Capture some response text for debugging (often useful if upstream returns HTML block page)
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `Failed to fetch FPL data via proxy: ${res.status} ${res.statusText}${
+        body ? ` :: ${body.slice(0, 200)}` : ""
+      }`
+    );
+  }
+
   return (await res.json()) as T;
 }
 
@@ -26,7 +43,7 @@ async function getJSON<T = any>(url: string): Promise<T> {
 // Fetch all FPL teams
 // ---------------------------------------------------------------------------
 export async function fetchFplTeams(): Promise<FplTeam[]> {
-  const data = await getJSON<{ teams: FplTeam[] }>(`${FPL_BASE}/bootstrap-static/`);
+  const data = await getJSON<{ teams: FplTeam[] }>("/bootstrap-static/");
   return data.teams;
 }
 
@@ -34,7 +51,7 @@ export async function fetchFplTeams(): Promise<FplTeam[]> {
 // Fetch all fixtures (for every gameweek)
 // ---------------------------------------------------------------------------
 export async function fetchFplFixtures(): Promise<FplFixture[]> {
-  return getJSON<FplFixture[]>(`${FPL_BASE}/fixtures/`);
+  return getJSON<FplFixture[]>("/fixtures/");
 }
 
 // ---------------------------------------------------------------------------
@@ -44,8 +61,8 @@ export async function fetchFplFixtures(): Promise<FplFixture[]> {
 // ---------------------------------------------------------------------------
 export async function fetchFplFixturesForEvent(eventNumber: number) {
   const [teamsData, fixturesData] = await Promise.all([
-    getJSON<{ teams: FplTeam[] }>(`${FPL_BASE}/bootstrap-static/`),
-    getJSON<FplFixture[]>(`${FPL_BASE}/fixtures/?event=${eventNumber}`),
+    getJSON<{ teams: FplTeam[] }>("/bootstrap-static/"),
+    getJSON<FplFixture[]>(`/fixtures/?event=${eventNumber}`),
   ]);
 
   const teamById = new Map<number, FplTeam>(teamsData.teams.map((t) => [t.id, t]));
@@ -54,6 +71,7 @@ export async function fetchFplFixturesForEvent(eventNumber: number) {
   return gw.map((f) => {
     const homeTeam = teamById.get(f.team_h);
     const awayTeam = teamById.get(f.team_a);
+
     return {
       fplId: f.id,
       kickoff: f.kickoff_time ?? undefined,
@@ -80,7 +98,7 @@ export async function fetchFplFixturesForEvent(eventNumber: number) {
 // Bootstrap + Smart Event (current → next → last finished)
 // ---------------------------------------------------------------------------
 export async function fetchBootstrap(): Promise<any> {
-  return getJSON(`${FPL_BASE}/bootstrap-static/`);
+  return getJSON("/bootstrap-static/");
 }
 
 /** Choose the most relevant GW: current → next → last finished. */
@@ -113,7 +131,10 @@ export async function getEventForDate(dateISO: string): Promise<number> {
 
   const next = events
     .filter((e) => new Date(e.deadline_time).getTime() >= ts)
-    .sort((a, b) => new Date(a.deadline_time).getTime() - new Date(b.deadline_time).getTime())[0];
+    .sort(
+      (a, b) =>
+        new Date(a.deadline_time).getTime() - new Date(b.deadline_time).getTime()
+    )[0];
 
   return next ? next.id : events[events.length - 1].id;
 }
