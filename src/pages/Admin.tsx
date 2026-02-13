@@ -823,13 +823,15 @@ function CreateGameInline({ onCreated }: { onCreated: (lg: any) => void }) {
   return (
     <div className="flex flex-col sm:flex-row items-start gap-2 w-full">
       <input
+        data-testid="admin-game-name"
         value={name}
         onChange={(e) => setName(e.target.value)}
         className="border rounded px-2 py-1 flex-1 min-w-[160px]"
         placeholder="Game name"
       />
-      <div className="flex-1 min-w-[220px]">
+      <div data-testid="admin-start-gw" className="flex-1 min-w-[220px]">
         <FplGwSelect
+          selectTestId="admin-start-gw-select"
           label="Start FPL Gameweek"
           onlyUpcoming
           onChange={(id, ev) => {
@@ -840,6 +842,7 @@ function CreateGameInline({ onCreated }: { onCreated: (lg: any) => void }) {
       </div>
       <label className="text-sm text-slate-700 flex items-center gap-2">
         <input
+          data-testid="admin-make-public"
           type="checkbox"
           checked={makePublic}
           onChange={(e) => setMakePublic(e.target.checked)}

@@ -16,8 +16,6 @@ type FplGwSelectProps = {
   label?: string;
   onlyUpcoming?: boolean;
   className?: string;
-  /** Optional data-testid for the <select> */
-  selectTestId?: string;
   /** Optional alternate source if /fpl/api/bootstrap-static/ fails (403 etc.) */
   fallbackUrl?: string; // defaults to /mock-fpl-bootstrap.json
 };
@@ -42,7 +40,6 @@ export function FplGwSelect({
   label = "Start FPL Gameweek",
   onlyUpcoming = false,
   className = "",
-  selectTestId,
 }: FplGwSelectProps) {
   const [events, setEvents] = useState<FplEvent[]>([]);
   const [selected, setSelected] = useState<number | undefined>(value);
@@ -126,7 +123,6 @@ export function FplGwSelect({
     <div className={className}>
       {label && <label className="label mb-1">{label}</label>}
       <select
-        data-testid={selectTestId}
         className="input"
         value={selected ?? ""}
         onChange={(e) => handleChange(e.target.value)}
