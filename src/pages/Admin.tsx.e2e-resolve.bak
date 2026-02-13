@@ -39,7 +39,6 @@ export function Admin() {
   const [sortKey, setSortKey] = useState<SortKey>("kickoff");
   const [sortAsc, setSortAsc] = useState<boolean>(true);
   const [e2eSeedStatus, setE2eSeedStatus] = useState<string>("");
-  const [e2eResolveStatus, setE2eResolveStatus] = useState<string>("");
 
   function toast(msg: string) {
     alert(msg);
@@ -210,63 +209,6 @@ export function Admin() {
       console.error(e);
       setE2eSeedStatus("failed");
       toast(e?.message ?? "E2E seed failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function e2eResolveRound() {
-    if (!league || !round) return;
-    setLoading(true);
-    setE2eResolveStatus("resolving");
-    try {
-      try {
-        await dataService.lockRound(round.id);
-      } catch {
-        // safe if already locked
-      }
-
-      const st = readStore();
-      const r = (st.rounds || []).find((x: any) => x.id === round.id);
-      const picksForRound = (st.picks || []).filter((p: any) => p.round_id === round.id);
-
-      if (!picksForRound.length) {
-        throw new Error("No picks found for this round (need players to pick first).");
-      }
-
-      const firstPlayable = picksForRound.find(
-        (p: any) => p.status !== "no-pick" && p.team_id
-      );
-      const winningTeamId = firstPlayable?.team_id || picksForRound[0].team_id;
-      if (!winningTeamId) throw new Error("Could not determine a winning team_id.");
-
-      picksForRound.forEach((p: any) => {
-        if (p.status === "no-pick") return;
-        if (p.team_id === winningTeamId) {
-          p.status = "through";
-          p.reason = undefined;
-        } else {
-          p.status = "eliminated";
-          p.reason = "loss";
-        }
-      });
-
-      if (r) r.status = "completed";
-      writeStore(st);
-
-      try {
-        await dataService.advanceRound(league.id);
-      } catch {
-        // best effort
-      }
-
-      setE2eResolveStatus("done");
-      toast("E2E resolve complete.");
-      setRefreshTick((x) => x + 1);
-    } catch (e: any) {
-      console.error(e);
-      setE2eResolveStatus("failed");
-      toast(e?.message ?? "E2E resolve failed");
     } finally {
       setLoading(false);
     }
@@ -765,19 +707,6 @@ export function Admin() {
                 </button>
                 <span data-testid="admin-e2e-seed-status" className="text-xs text-slate-500">
                   {e2eSeedStatus}
-                </span>
-                <button
-                  type="button"
-                  data-testid="admin-e2e-resolve-round-btn"
-                  disabled={loading}
-                  onClick={e2eResolveRound}
-                  className="text-sm rounded-lg border border-slate-300 px-3 py-1.5 text-slate-800 hover:bg-slate-50 disabled:opacity-60"
-                  title="Dev-only: lock + resolve results + advance (deterministic for E2E)"
-                >
-                  {e2eResolveStatus === "resolving" ? "Resolving..." : "E2E Resolve Round"}
-                </button>
-                <span data-testid="admin-e2e-resolve-status" className="text-xs text-slate-500">
-                  {e2eResolveStatus}
                 </span>
               </div>
             )}
