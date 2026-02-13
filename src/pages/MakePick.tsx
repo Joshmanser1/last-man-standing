@@ -170,7 +170,7 @@ export function MakePick() {
   // If no league is selected yet, show GameSelector and a small explainer
   if (!leagueId) {
     return (
-      <div className="container-page py-6">
+      <div data-testid="make-pick-page" className="container-page py-6">
         <div className="max-w-xl mx-auto card p-6 space-y-4">
           <div className="flex justify-between items-center gap-3">
             <h1 className="text-2xl font-bold">Make your pick</h1>
@@ -209,7 +209,7 @@ export function MakePick() {
 
   if (loading || !league || !round) {
     return (
-      <div className="min-h-[calc(100vh-4rem)] grid place-items-center">
+      <div data-testid="make-pick-page" className="min-h-[calc(100vh-4rem)] grid place-items-center">
         <div className="flex flex-col items-center gap-3">
           <GameSelector
             label="Viewing game"
@@ -225,7 +225,7 @@ export function MakePick() {
   }
 
   return (
-    <div className="container-page py-6">
+    <div data-testid="make-pick-page" className="container-page py-6">
       <div className="mb-4 flex justify-end">
         <GameSelector
           label="Viewing game"
@@ -286,6 +286,7 @@ export function MakePick() {
                 >
                   {/* Team pick button */}
                   <button
+                    data-testid="save-pick-btn"
                     type="button"
                     onClick={() => pick(t.id)}
                     disabled={disabled}

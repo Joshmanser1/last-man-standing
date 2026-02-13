@@ -9,6 +9,7 @@ import { Page } from "@playwright/test";
 export async function setUser(page: Page, playerId: string, isAdmin = false) {
   await page.addInitScript(
     ({ playerId, isAdmin }) => {
+      localStorage.setItem("dev_switcher", "1");
       localStorage.setItem("player_id", playerId);
       if (isAdmin) localStorage.setItem("is_admin", "1");
       else localStorage.removeItem("is_admin");

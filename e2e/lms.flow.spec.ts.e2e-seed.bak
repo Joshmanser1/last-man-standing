@@ -1,0 +1,81 @@
+import { test, expect } from "@playwright/test";
+import { setUser, goto } from "./helpers";
+import fs from "node:fs";
+
+const routes = JSON.parse(
+  fs.readFileSync(new URL("./routes.json", import.meta.url), "utf8")
+) as {
+  HOME_PATH: string;
+  ADMIN_PATH: string;
+  MAKE_PICK_PATH: string | null;
+};
+
+test.describe("LMS happy-path flow", () => {
+  test("Admin creates a public game, player joins, then makes a pick", async ({ page }) => {
+    await setUser(page, "e2e_admin", true);
+    await goto(page, routes.ADMIN_PATH);
+    await expect(page.getByTestId("admin-page")).toBeVisible();
+
+    const nameInput = page.getByTestId("admin-game-name");
+    if (await nameInput.isVisible().catch(() => false)) {
+      await nameInput.fill(`E2E FLOW ${Date.now()}`);
+    }
+
+    const makePublic = page.getByTestId("admin-make-public");
+    if (await makePublic.isVisible().catch(() => false)) {
+      const checked = await makePublic.isChecked();
+      if (!checked) await makePublic.click();
+    }
+
+    const gw = page.getByTestId("admin-start-gw-select");
+    if (await gw.isVisible().catch(() => false)) {
+      const opts = await gw.locator("option").all();
+      if (opts.length >= 2) {
+        const v = await opts[1].getAttribute("value");
+        if (v) await gw.selectOption(v);
+      } else if (opts.length === 1) {
+        const v = await opts[0].getAttribute("value");
+        if (v) await gw.selectOption(v);
+      }
+    }
+
+    page.once("dialog", async (d) => d.dismiss());
+    await page.getByTestId("admin-create-game-btn").click();
+
+    await setUser(page, `e2e_player_${Date.now()}`, false);
+    await goto(page, routes.HOME_PATH);
+    await expect(page.getByTestId("lms-dashboard")).toBeVisible();
+
+    const nameInputHome = page.getByPlaceholder(/e.g. Alex/i);
+    if (await nameInputHome.isVisible().catch(() => false)) {
+      await nameInputHome.fill("E2E Player");
+    }
+
+    const joinBtn = page.getByTestId("join-game-btn");
+    await expect(joinBtn).toBeVisible();
+    if (await joinBtn.isEnabled()) {
+      await joinBtn.click();
+    }
+
+    if (!routes.MAKE_PICK_PATH) test.skip(true, "MAKE_PICK_PATH not detected");
+    await page.evaluate(() => {
+      if (!localStorage.getItem("player_id")) {
+        localStorage.setItem("player_id", `e2e_player_${Date.now()}`);
+      }
+      if (!localStorage.getItem("active_league_id")) {
+        const select = document.querySelector("select") as HTMLSelectElement | null;
+        if (select?.value) localStorage.setItem("active_league_id", select.value);
+      }
+    });
+    await goto(page, routes.MAKE_PICK_PATH as string);
+    await expect(page.getByTestId("make-pick-page")).toBeVisible();
+
+    const pickBtn = page.getByTestId("save-pick-btn").first();
+    if ((await page.getByTestId("save-pick-btn").count()) === 0) {
+      test.skip(true, "No pick buttons available for the selected game");
+    }
+    page.once("dialog", async (d) => d.dismiss());
+    await expect(pickBtn).toBeVisible();
+    await pickBtn.click();
+  });
+});

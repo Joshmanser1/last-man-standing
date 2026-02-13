@@ -194,6 +194,7 @@ export function Home() {
 
             <div className="flex flex-wrap gap-3">
               <button
+                data-testid="join-game-btn"
                 disabled={loading}
                 onClick={join}
                 className="btn btn-primary"

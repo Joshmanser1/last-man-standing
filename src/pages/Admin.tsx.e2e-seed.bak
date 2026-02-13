@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataService } from "../data/service";
 import { FplGwSelect } from "../components/FplGwSelect";
-import { fetchBootstrap } from "../lib/fpl";
 
 const STORE_KEY = "lms_store_v1";
 const SEED_SENTINEL = "lms_seed_done";
@@ -38,7 +37,6 @@ export function Admin() {
   // Fixtures table sorting
   const [sortKey, setSortKey] = useState<SortKey>("kickoff");
   const [sortAsc, setSortAsc] = useState<boolean>(true);
-  const [e2eSeedStatus, setE2eSeedStatus] = useState<string>("");
 
   function toast(msg: string) {
     alert(msg);
@@ -141,79 +139,6 @@ export function Admin() {
   }, [league, round]);
 
   // Actions
-  function isE2ESwitchOn() {
-    try {
-      return localStorage.getItem("dev_switcher") === "1";
-    } catch {
-      return false;
-    }
-  }
-
-  async function e2eSeedGame() {
-    setLoading(true);
-    setE2eSeedStatus("seeding");
-    try {
-      const name = `E2E Seed ${new Date().toISOString().slice(0, 19)}`;
-      let startDeadlineISO = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      try {
-        const boot = await fetchBootstrap();
-        const events = (boot?.events || []) as Array<{
-          id: number;
-          is_next: boolean;
-          is_current: boolean;
-          finished: boolean;
-          deadline_time: string;
-        }>;
-        const chosen =
-          events.find((e) => e.is_next) ||
-          events.find((e) => e.is_current) ||
-          events.find((e) => !e.finished) ||
-          events[0];
-        if (chosen?.deadline_time) startDeadlineISO = chosen.deadline_time;
-      } catch {
-        // fallback above keeps seed deterministic enough for E2E
-      }
-
-      const lg = await (dataService as any).createGame(name, startDeadlineISO);
-
-      if ((dataService as any).setLeagueVisibility) {
-        await (dataService as any).setLeagueVisibility(lg.id, true);
-      } else if ((dataService as any).updateLeague) {
-        await (dataService as any).updateLeague(lg.id, { is_public: true });
-      } else {
-        const st = readStore() as any;
-        const idx = (st.leagues || []).findIndex((x: any) => x.id === lg.id);
-        if (idx >= 0) {
-          st.leagues[idx] = { ...st.leagues[idx], is_public: true };
-          writeStore(st);
-        }
-      }
-
-      localStorage.setItem("active_league_id", lg.id);
-      localStorage.setItem("e2e_last_league_id", lg.id);
-
-      if ((dataService as any).importFixturesForCurrentRound) {
-        try {
-          await (dataService as any).importFixturesForCurrentRound(lg.id);
-        } catch {
-          // best effort only
-        }
-      }
-
-      setAllLeagues((prev) => [...prev, { ...lg, is_public: true }]);
-      setSelectedLeagueId(lg.id);
-      setE2eSeedStatus("done");
-      toast("E2E seed complete.");
-      setRefreshTick((x) => x + 1);
-    } catch (e: any) {
-      console.error(e);
-      setE2eSeedStatus("failed");
-      toast(e?.message ?? "E2E seed failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   function toggleWinner(teamId: string) {
     setWinners((prev) => {
       const copy = new Set(prev);
@@ -693,23 +618,6 @@ export function Admin() {
             >
               Delete league
             </button>
-            {isE2ESwitchOn() && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  data-testid="admin-e2e-seed-game-btn"
-                  disabled={loading}
-                  onClick={e2eSeedGame}
-                  className="text-sm rounded-lg border border-emerald-300 px-3 py-1.5 text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
-                  title="Dev-only: create a public game and seed fixtures for E2E tests"
-                >
-                  {e2eSeedStatus === "seeding" ? "Seeding..." : "E2E Seed Game"}
-                </button>
-                <span data-testid="admin-e2e-seed-status" className="text-xs text-slate-500">
-                  {e2eSeedStatus}
-                </span>
-              </div>
-            )}
           </div>
         </div>
 
