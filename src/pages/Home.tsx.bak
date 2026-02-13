@@ -120,10 +120,7 @@ export function Home() {
   }
 
   return (
-    <div
-      data-testid="lms-dashboard"
-      className="min-h-[calc(100vh-5rem)] flex items-start sm:items-center justify-center p-4"
-    >
+    <div className="min-h-[calc(100vh-5rem)] flex items-start sm:items-center justify-center p-4">
       <div className="w-full max-w-3xl grid gap-6 sm:grid-cols-[2fr,1.5fr]">
         {/* Left: join public game */}
         <div className="card p-6 sm:p-8">
