@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { dataService, subscribeStore } from "../data/service";
 import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
+import { useNotifications } from "../components/Notifications";
+import { NotificationCentre } from "../components/NotificationCentre";
 
 const STORE_KEY = "lms_store_v1";
 const DEFAULT_LEAGUE_NAME = "English Premier League LMS";
@@ -16,6 +18,7 @@ type LeagueLite = {
 };
 
 export function Home() {
+  const { showDeadlineReminder } = useNotifications();
   const [leagues, setLeagues] = useState<LeagueLite[]>([]);
   const [selectedLeagueId, setSelectedLeagueId] = useState<string>("");
 
@@ -88,6 +91,31 @@ export function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const leagueId = localStorage.getItem("active_league_id") || activeLeague?.id;
+    const playerId = localStorage.getItem("player_id");
+    if (!leagueId || !playerId) return;
+
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return;
+
+    const s = JSON.parse(raw);
+    const league = (s.leagues || []).find((l: any) => l.id === leagueId);
+    if (!league) return;
+
+    const round = (s.rounds || []).find(
+      (r: any) => r.league_id === leagueId && r.round_number === league.current_round
+    );
+    if (!round?.id || !round?.pick_deadline_utc) return;
+
+    showDeadlineReminder({
+      leagueId,
+      roundId: round.id,
+      deadlineISO: round.pick_deadline_utc,
+      playerId,
+    });
+  }, [activeLeague, hasGame, showDeadlineReminder]);
+
   async function join() {
     if (!selectedLeagueId)
       return toast("Select a game to join.", { variant: "error" });
@@ -124,7 +152,9 @@ export function Home() {
       data-testid="lms-dashboard"
       className="min-h-[calc(100vh-5rem)] flex items-start sm:items-center justify-center p-4"
     >
-      <div className="w-full max-w-3xl grid gap-6 sm:grid-cols-[2fr,1.5fr]">
+      <div className="w-full max-w-3xl space-y-4">
+        <NotificationCentre />
+        <div className="grid gap-6 sm:grid-cols-[2fr,1.5fr]">
         {/* Left: join public game */}
         <div className="card p-6 sm:p-8">
           <div className="flex items-center justify-between mb-4">
@@ -244,6 +274,7 @@ export function Home() {
               Join a private league
             </span>
           </p>
+        </div>
         </div>
       </div>
     </div>

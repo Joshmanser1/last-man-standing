@@ -1,0 +1,156 @@
+import { useEffect, useState } from "react";
+import { WinnerConfetti } from "./WinnerConfetti";
+
+type Payload = {
+  type: "progressed" | "eliminated" | "winner";
+  title: string;
+  body: string;
+  emoji?: string;
+  key: string;
+  stats?: Array<{ label: string; value: string }>;
+  ctas?: Array<{ label: string; to?: string; action?: "share" | "close" }>;
+};
+
+export function OutcomeModal({ payload, onClose }: { payload: Payload; onClose: () => void }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setOpen(true), 10);
+    return () => clearTimeout(t);
+  }, []);
+
+  const accent =
+    payload.type === "winner"
+      ? "ring-amber-400/30"
+      : payload.type === "progressed"
+      ? "ring-emerald-400/30"
+      : "ring-rose-400/30";
+
+  const glow =
+    payload.type === "winner"
+      ? "shadow-[0_0_0_1px_rgba(251,191,36,0.25),0_20px_80px_rgba(0,0,0,0.6)]"
+      : payload.type === "progressed"
+      ? "shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_20px_80px_rgba(0,0,0,0.6)]"
+      : "shadow-[0_0_0_1px_rgba(244,63,94,0.18),0_20px_80px_rgba(0,0,0,0.6)]";
+
+  async function doShare() {
+    const url = window.location.href;
+    const text =
+      payload.type === "winner" ? "I just won Last Man Standing 🏆" : "Last Man Standing update";
+    try {
+      if ((navigator as any).share) {
+        await (navigator as any).share({
+          title: "Fantasy Command Centre",
+          text,
+          url,
+        });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+      }
+    } catch {
+      // ignore share failures
+    }
+  }
+
+  function handleCta(cta: { label: string; to?: string; action?: "share" | "close" }) {
+    if (cta.action === "share") {
+      void doShare();
+      return;
+    }
+    if (cta.to) {
+      onClose();
+      window.location.assign(cta.to);
+      return;
+    }
+    onClose();
+  }
+
+  return (
+    <>
+      <style>{`@keyframes winnerPulse{0%{transform:scale(.96);filter:brightness(1.2)}60%{transform:scale(1.03)}100%{transform:scale(1)}}`}</style>
+      {payload.type === "winner" && <WinnerConfetti />}
+      <div
+        data-testid="outcome-modal"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <div
+          className={[
+            payload.type === "winner" ? "animate-[winnerPulse_1.6s_ease-out]" : "",
+            "w-full max-w-md rounded-2xl border border-white/10",
+            "bg-gradient-to-b from-slate-900/80 to-slate-950/80",
+            "backdrop-blur-xl",
+            "ring-1",
+            accent,
+            glow,
+            "transition-all duration-200",
+            open ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]",
+          ].join(" ")}
+        >
+          <div className="p-6 sm:p-7">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/5 ring-1 ring-white/10 text-2xl">
+                {payload.emoji ?? "🔔"}
+              </div>
+
+              <div className="flex-1">
+                <h2 className="text-xl font-bold text-white">{payload.title}</h2>
+                <p className="mt-1 text-sm text-slate-300">{payload.body}</p>
+
+                {payload.stats?.length ? (
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    {payload.stats.map((s) => (
+                      <div
+                        key={s.label}
+                        className="rounded-xl bg-white/5 ring-1 ring-white/10 px-3 py-2"
+                      >
+                        <div className="text-[11px] uppercase tracking-wide text-slate-400">
+                          {s.label}
+                        </div>
+                        <div className="text-sm font-semibold text-white">{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col sm:flex-row gap-2">
+              {(payload.ctas?.length ? payload.ctas : [{ label: "Continue", action: "close" }]).map(
+                (cta, idx) => {
+                  const primary = idx === 0;
+                  return (
+                    <button
+                      key={cta.label}
+                      data-testid={primary ? "outcome-modal-continue" : undefined}
+                      onClick={() => handleCta(cta)}
+                      className={[
+                        "w-full rounded-xl px-4 py-2 text-sm font-semibold",
+                        "transition-colors",
+                        primary
+                          ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                          : "bg-white/5 text-slate-200 hover:bg-white/10 ring-1 ring-white/10",
+                      ].join(" ")}
+                    >
+                      {cta.label}
+                    </button>
+                  );
+                }
+              )}
+            </div>
+
+            <button
+              onClick={onClose}
+              className="mt-3 w-full text-xs text-slate-400 hover:text-slate-200"
+              aria-label="Close"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { NotificationsProvider } from "./components/Notifications";
 
 // === Sentry (v8) setup — only needs @sentry/react ===
 import * as Sentry from "@sentry/react";
@@ -32,7 +33,9 @@ ReactDOM.createRoot(rootElement).render(
         </div>
       }
     >
-      <App />
+      <NotificationsProvider>
+        <App />
+      </NotificationsProvider>
     </Sentry.ErrorBoundary>
   </React.StrictMode>
 );

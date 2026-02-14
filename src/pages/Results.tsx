@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
+import { useNotifications } from "../components/Notifications";
+import { computeOutcome } from "../lib/outcome";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -15,6 +17,7 @@ type Row = {
 type FilterKey = "all" | "pending" | "through" | "eliminated" | "no-pick";
 
 export function Results() {
+  const { showOutcome } = useNotifications();
   const [leagueId, setLeagueId] = useState<string>(
     () => localStorage.getItem("active_league_id") || ""
   );
@@ -44,6 +47,15 @@ export function Results() {
       }
     })();
   }, [leagueId, reloadTick]);
+
+  useEffect(() => {
+    if (!leagueId || !round) return;
+    const playerId = localStorage.getItem("player_id");
+    if (!playerId) return;
+
+    const outcome = computeOutcome(leagueId, playerId);
+    if (outcome) showOutcome(outcome);
+  }, [leagueId, round, showOutcome]);
 
   const rows: Row[] = useMemo(() => {
     if (!round) return [];

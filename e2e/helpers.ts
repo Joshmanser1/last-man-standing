@@ -21,3 +21,28 @@ export async function setUser(page: Page, playerId: string, isAdmin = false) {
 export async function goto(page: Page, path: string) {
   await page.goto(path, { waitUntil: "domcontentloaded" });
 }
+
+export async function forceDeadlineSoon(page: Page, minutesFromNow = 45) {
+  await page.evaluate((mins: number) => {
+    const STORE_KEY = "lms_store_v1";
+    const raw = localStorage.getItem(STORE_KEY) || "{}";
+    const st = JSON.parse(raw);
+
+    const leagueId = localStorage.getItem("active_league_id");
+    if (!leagueId) return;
+
+    const league = (st.leagues || []).find((l: any) => l.id === leagueId);
+    if (!league) return;
+
+    const r = (st.rounds || []).find(
+      (round: any) =>
+        round.league_id === leagueId && round.round_number === league.current_round
+    );
+    if (!r) return;
+
+    r.pick_deadline_utc = new Date(Date.now() + mins * 60_000).toISOString();
+    r.status = r.status || "upcoming";
+
+    localStorage.setItem(STORE_KEY, JSON.stringify(st));
+  }, minutesFromNow);
+}

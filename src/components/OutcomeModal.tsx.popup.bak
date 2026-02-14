@@ -1,0 +1,32 @@
+type OutcomePayload = {
+  type: "progressed" | "eliminated" | "winner";
+  title: string;
+  body: string;
+  emoji?: string;
+  key: string;
+};
+
+export function OutcomeModal({
+  payload,
+  onClose,
+}: {
+  payload: OutcomePayload;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-slate-900 text-white rounded-2xl shadow-xl p-6 max-w-sm w-full text-center">
+        <div className="text-4xl mb-2">{payload.emoji}</div>
+        <h2 className="text-xl font-bold mb-2">{payload.title}</h2>
+        <p className="text-slate-300 text-sm mb-4">{payload.body}</p>
+
+        <button
+          onClick={onClose}
+          className="bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-lg text-sm"
+        >
+          Continue
+        </button>
+      </div>
+    </div>
+  );
+}

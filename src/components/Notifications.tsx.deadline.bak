@@ -1,0 +1,46 @@
+import { createContext, useContext, useState } from "react";
+import { OutcomeModal } from "./OutcomeModal";
+
+type OutcomePayload = {
+  type: "progressed" | "eliminated" | "winner";
+  title: string;
+  body: string;
+  emoji?: string;
+  key: string;
+  stats?: Array<{ label: string; value: string }>;
+  ctas?: Array<{ label: string; to?: string; action?: "share" | "close" }>;
+};
+
+type Ctx = {
+  showOutcome: (p: OutcomePayload) => void;
+};
+
+const NotificationsCtx = createContext<Ctx | null>(null);
+
+export function NotificationsProvider({ children }: { children: React.ReactNode }) {
+  const [payload, setPayload] = useState<OutcomePayload | null>(null);
+
+  function showOutcome(p: OutcomePayload) {
+    const shown = localStorage.getItem(p.key);
+    if (shown) return;
+    localStorage.setItem(p.key, "1");
+    setPayload(p);
+  }
+
+  function close() {
+    setPayload(null);
+  }
+
+  return (
+    <NotificationsCtx.Provider value={{ showOutcome }}>
+      {children}
+      {payload && <OutcomeModal payload={payload} onClose={close} />}
+    </NotificationsCtx.Provider>
+  );
+}
+
+export function useNotifications() {
+  const ctx = useContext(NotificationsCtx);
+  if (!ctx) throw new Error("useNotifications must be used inside provider");
+  return ctx;
+}

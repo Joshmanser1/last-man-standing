@@ -1,0 +1,66 @@
+import { useEffect, useRef } from "react";
+
+export function WinnerConfetti() {
+  const ref = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const W = (canvas.width = window.innerWidth);
+    const H = (canvas.height = window.innerHeight);
+
+    const pieces = Array.from({ length: 120 }).map(() => ({
+      x: Math.random() * W,
+      y: Math.random() * -H,
+      r: Math.random() * 6 + 4,
+      d: Math.random() * 120,
+      color: ["#10b981", "#34d399", "#6ee7b7", "#fbbf24", "#fde68a"][
+        Math.floor(Math.random() * 5)
+      ],
+    }));
+
+    let angle = 0;
+    let frame = 0;
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      angle += 0.01;
+
+      pieces.forEach((p) => {
+        p.y += Math.cos(angle + p.d) + 2 + p.r / 2;
+        p.x += Math.sin(angle);
+
+        ctx.beginPath();
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, p.r, p.r);
+
+        if (p.y > H) {
+          p.y = -10;
+          p.x = Math.random() * W;
+        }
+      });
+
+      frame = requestAnimationFrame(draw);
+    }
+
+    draw();
+    const timeout = setTimeout(() => cancelAnimationFrame(frame), 1800);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timeout);
+    };
+  }, []);
+
+  return (
+    <canvas
+      className="fixed inset-0 pointer-events-none z-[60]"
+      style={{ width: "100%", height: "100%" }}
+      ref={ref}
+    />
+  );
+}

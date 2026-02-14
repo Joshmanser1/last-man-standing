@@ -1,0 +1,51 @@
+const STORE_KEY = "lms_store_v1";
+
+type Outcome = {
+  type: "progressed" | "eliminated" | "winner";
+  title: string;
+  body: string;
+  emoji?: string;
+  key: string;
+};
+
+export function computeOutcome(leagueId: string, playerId: string): Outcome | null {
+  const raw = localStorage.getItem(STORE_KEY);
+  if (!raw) return null;
+
+  const s = JSON.parse(raw);
+  const rounds = (s.rounds || [])
+    .filter((r: any) => r.league_id === leagueId && r.status === "completed")
+    .sort((a: any, b: any) => b.round_number - a.round_number);
+
+  if (!rounds.length) return null;
+  const round = rounds[0];
+
+  const pick = (s.picks || []).find(
+    (p: any) => p.round_id === round.id && p.player_id === playerId
+  );
+  if (!pick) return null;
+
+  const keyBase = `lms_outcome_shown_v1:${leagueId}:${round.round_number}:${playerId}`;
+
+  if (pick.status === "through") {
+    return {
+      type: "progressed",
+      title: "You're through",
+      body: `You survived Round ${round.round_number}.`,
+      emoji: "🎉",
+      key: `${keyBase}:progressed`,
+    };
+  }
+
+  if (pick.status === "eliminated" || pick.status === "no-pick") {
+    return {
+      type: "eliminated",
+      title: "You've been eliminated",
+      body: `You were knocked out in Round ${round.round_number}.`,
+      emoji: "❌",
+      key: `${keyBase}:eliminated`,
+    };
+  }
+
+  return null;
+}
