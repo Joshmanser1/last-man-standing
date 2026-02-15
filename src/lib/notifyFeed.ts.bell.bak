@@ -34,18 +34,3 @@ export function markAllRead(playerId: string) {
 export function clearNotifications(playerId: string) {
   localStorage.removeItem(getPlayerKey(playerId));
 }
-
-export function getUnreadCount(playerId: string) {
-  const arr = getNotifications(playerId);
-  return arr.filter((x: any) => !x.read).length;
-}
-
-export function markRead(playerId: string, id: string) {
-  const k = getPlayerKey(playerId);
-  const arr = JSON.parse(localStorage.getItem(k) || "[]");
-  const idx = arr.findIndex((x: any) => x.id === id);
-  if (idx >= 0) {
-    arr[idx].read = true;
-    localStorage.setItem(k, JSON.stringify(arr));
-  }
-}

@@ -5,7 +5,6 @@ import { supa } from "../lib/supabaseClient";
 import { GameSelector } from "./GameSelector";
 import { subscribeStore } from "../data/service";
 import { isAdminNow } from "../lib/auth";
-import { NotificationBell } from "./NotificationBell";
 
 const linkCls = ({ isActive }: { isActive: boolean }) =>
   `nav-link ${isActive ? "nav-link-active" : ""}`;
@@ -163,7 +162,6 @@ export function Header() {
 
         {/* Right side */}
         <div className="flex items-center gap-2 shrink-0">
-          {authed && <NotificationBell />}
           {/* Game selector — ONLY when authed */}
           {authed && (
             <div className="hidden sm:flex items-center gap-2">
