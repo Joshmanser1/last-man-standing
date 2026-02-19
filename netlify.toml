@@ -7,11 +7,10 @@
   command = "npm run build"
   publish = "dist"
 
+# --- FUNCTIONS (single block only) ---
 [functions]
-  node_bundler = "esbuild"
- [functions]
   directory = "netlify/functions"
-  node_bundler = "esbuild" 
+  node_bundler = "esbuild"
 
 # --- PROXY: forward FPL API requests ---
 [[redirects]]
@@ -35,6 +34,7 @@
     X-Content-Type-Options = "nosniff"
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
     Permissions-Policy = "geolocation=(), microphone=(), camera=()"
+
     # CSP: allow Umami, Supabase, Beehiiv, Google Fonts
     Content-Security-Policy = """
       default-src 'self';
