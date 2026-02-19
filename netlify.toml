@@ -9,6 +9,9 @@
 
 [functions]
   node_bundler = "esbuild"
+ [functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild" 
 
 # --- PROXY: forward FPL API requests ---
 [[redirects]]
