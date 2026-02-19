@@ -7,7 +7,6 @@
   command = "npm run build"
   publish = "dist"
 
-# --- FUNCTIONS (single block only) ---
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
@@ -19,16 +18,17 @@
   status = 200
   force = true
 
-# --- SPA fallback (must come AFTER the proxy) ---
+# --- API -> Netlify Functions (MUST be before SPA fallback) ---
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# --- SPA fallback ---
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
-
-  [[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
-
 
 # --- GLOBAL SECURITY HEADERS ---
 [[headers]]
@@ -39,8 +39,6 @@
     X-Content-Type-Options = "nosniff"
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
     Permissions-Policy = "geolocation=(), microphone=(), camera=()"
-
-    # CSP: allow Umami, Supabase, Beehiiv, Google Fonts
     Content-Security-Policy = """
       default-src 'self';
       script-src 'self' 'unsafe-inline' https://cloud.umami.is https://*.supabase.co https://*.beehiiv.com;
