@@ -25,6 +25,11 @@
   to = "/index.html"
   status = 200
 
+  [[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+
+
 # --- GLOBAL SECURITY HEADERS ---
 [[headers]]
   for = "/*"
