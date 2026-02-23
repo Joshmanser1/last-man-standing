@@ -17,16 +17,16 @@ type Req = {
 };
 
 type Res = {
-  status: (code: number) => Res;
+  statusCode: number;
   setHeader: (name: string, value: string) => void;
-  json: (body: TickResponse) => void;
+  end: (body: string) => void;
 };
 
 function sendJson(res: Res, status: number, body: TickResponse): void {
-  res.status(status);
+  res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
-  res.json(body);
+  res.end(JSON.stringify(body));
 }
 
 function getBearerToken(req: Req): string | null {
