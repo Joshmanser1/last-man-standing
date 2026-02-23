@@ -30,7 +30,9 @@ function sendJson(res: Res, status: number, body: TickResponse): void {
 }
 
 function getBearerToken(req: Req): string | null {
-  const authHeader = req.headers.authorization;
+  const authHeader =
+    req.headers.authorization ??
+    (req.headers as Record<string, string | string[] | undefined>).Authorization;
   if (!authHeader || Array.isArray(authHeader)) return null;
   const [scheme, token] = authHeader.split(" ");
   if (!scheme || !token) return null;
@@ -74,6 +76,10 @@ export default async function handler(req: Req, res: Res) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const envCheck = Boolean(supabaseUrl) && Boolean(serviceRoleKey);
+  console.log("tick env check", {
+    supabase_url_exists: Boolean(supabaseUrl),
+    supabase_service_role_key_exists: Boolean(serviceRoleKey),
+  });
 
   if (!envCheck) {
     return sendJson(res, 500, {
