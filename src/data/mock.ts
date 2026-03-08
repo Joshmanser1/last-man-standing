@@ -250,6 +250,10 @@ const mockService = {
 
     save(s);
     await ensureTeamsPresent(league.id);
+    const { data: authData } = await supa.auth.getUser();
+    const user = authData?.user;
+    if (!user) throw new Error("You must be logged in to create a league");
+
     const { data, error } = await supa
       .from("leagues")
       .insert({
@@ -259,6 +263,7 @@ const mockService = {
         current_round: league.current_round,
         start_date_utc: league.start_date_utc,
         fpl_start_event: league.fpl_start_event,
+        created_by: user.id,
       })
       .select("*")
       .maybeSingle();
