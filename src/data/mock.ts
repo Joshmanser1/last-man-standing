@@ -1,5 +1,6 @@
 // src/data/mock.ts
 import type { League, Round, Team, Player, Membership, Pick, Fixture, ID } from "./types";
+import { supa } from "../lib/supabaseClient";
 import {
   fetchFplFixturesForEvent,
   getSmartCurrentEvent,
@@ -249,7 +250,20 @@ const mockService = {
 
     save(s);
     await ensureTeamsPresent(league.id);
-    return league;
+    const { data, error } = await supa
+      .from("leagues")
+      .insert({
+        id: league.id,
+        name: league.name,
+        status: league.status,
+        current_round: league.current_round,
+        start_date_utc: league.start_date_utc,
+        fpl_start_event: league.fpl_start_event,
+      })
+      .select("*")
+      .maybeSingle();
+    if (error) throw error;
+    return (data as League) ?? league;
   },
 
   async getLeagueByName(name: string) {
@@ -402,6 +416,20 @@ const mockService = {
     league.status = "active";
     save(s);
     return r;
+  },
+
+  async setLeagueVisibility(leagueId: ID, isPublic: boolean): Promise<void> {
+    const s = load();
+    const i = s.leagues.findIndex((l: any) => l.id === leagueId);
+    if (i >= 0) {
+      s.leagues[i] = { ...s.leagues[i], is_public: isPublic };
+      save(s);
+    }
+    const { error } = await supa
+      .from("leagues")
+      .update({ is_public: isPublic })
+      .eq("id", leagueId);
+    if (error) throw error;
   },
 
   async syncTeams(leagueId: ID) {
