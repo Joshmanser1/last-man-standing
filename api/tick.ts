@@ -306,7 +306,7 @@ export default async function handler(req: Req, res: Res) {
 
               const picksResult = await supabase
                 .from("picks")
-                .select("id, team_id, status")
+                .select("id, team_id, status, player_id")
                 .eq("round_id", roundId);
 
               if (picksResult.error) {
@@ -315,8 +315,15 @@ export default async function handler(req: Req, res: Res) {
               }
 
               let survivors = 0;
+              const eliminatedPlayerIds = new Set<string>();
+              const noPickPlayerIds = new Set<string>();
               for (const pick of picksResult.data ?? []) {
-                if (pick.status === "no-pick") continue;
+                if (pick.status === "no-pick") {
+                  if (pick.player_id) {
+                    noPickPlayerIds.add(pick.player_id as string);
+                  }
+                  continue;
+                }
                 const teamId = pick.team_id as string | null;
                 if (teamId && winners.has(teamId)) {
                   await supabase
@@ -329,6 +336,25 @@ export default async function handler(req: Req, res: Res) {
                     .from("picks")
                     .update({ status: "eliminated", reason: "loss" })
                     .eq("id", pick.id);
+                  if (pick.player_id) {
+                    eliminatedPlayerIds.add(pick.player_id as string);
+                  }
+                }
+              }
+
+              const deactivateIds = new Set<string>([
+                ...Array.from(eliminatedPlayerIds),
+                ...Array.from(noPickPlayerIds),
+              ]);
+
+              if (deactivateIds.size > 0) {
+                const { error: membershipError } = await supabase
+                  .from("memberships")
+                  .update({ is_active: false })
+                  .eq("league_id", leagueId)
+                  .in("player_id", Array.from(deactivateIds));
+                if (membershipError) {
+                  actions.push({ league_id: leagueId, round_id: roundId, step: "deactivate_failed", error: membershipError.message });
                 }
               }
 
@@ -368,7 +394,7 @@ export default async function handler(req: Req, res: Res) {
             const winnerPlayerId = winnerResult.data?.player_id ?? null;
             await supabase
               .from("leagues")
-              .update({ status: "finished" })
+              .update({ status: "completed" })
               .eq("id", leagueId);
             actions.push({ league_id: leagueId, step: "winner", winner_player_id: winnerPlayerId });
           } else if (survivors === 0) {
