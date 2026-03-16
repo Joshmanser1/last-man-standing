@@ -444,24 +444,37 @@ export default async function handler(req: Req, res: Res) {
               .eq("league_id", leagueId)
               .eq("round_number", nextRoundNumber)
               .maybeSingle();
+            let canAdvance = false;
 
-            if (!nextRoundCheck.data) {
-              await supabase
+            if (nextRoundCheck.error) {
+              actions.push({ league_id: leagueId, step: "next_round_lookup_error", error: nextRoundCheck.error.message });
+            } else if (!nextRoundCheck.data) {
+              const { error: insertRoundError } = await supabase
                 .from("rounds")
                 .insert({
                   id: crypto.randomUUID(),
                   league_id: leagueId,
                   round_number: nextRoundNumber,
+                  name: `Round ${nextRoundNumber}`,
                   status: "upcoming",
                   pick_deadline_utc: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
                 });
+              if (insertRoundError) {
+                actions.push({ league_id: leagueId, step: "next_round_create_failed", error: insertRoundError.message, next_round: nextRoundNumber });
+              } else {
+                canAdvance = true;
+              }
+            } else {
+              canAdvance = true;
             }
 
-            await supabase
-              .from("leagues")
-              .update({ current_round: nextRoundNumber })
-              .eq("id", leagueId);
-            actions.push({ league_id: leagueId, step: "advance", next_round: nextRoundNumber });
+            if (canAdvance) {
+              await supabase
+                .from("leagues")
+                .update({ current_round: nextRoundNumber })
+                .eq("id", leagueId);
+              actions.push({ league_id: leagueId, step: "advance", next_round: nextRoundNumber });
+            }
           }
         }
       } catch (leagueError: any) {
