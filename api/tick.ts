@@ -267,12 +267,6 @@ export default async function handler(req: Req, res: Res) {
             actions.push({ league_id: leagueId, round_id: roundId, step: "lock_failed", error: lockRound.error.message });
           } else {
             roundStatus = "locked";
-            await supabase
-              .from("picks")
-              .update({ status: "no-pick", reason: "missed" })
-              .eq("round_id", roundId)
-              .is("team_id", null)
-              .or("status.is.null,status.eq.pending");
             const membersResult = await supabase
               .from("memberships")
               .select("player_id")
