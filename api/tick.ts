@@ -273,6 +273,43 @@ export default async function handler(req: Req, res: Res) {
               .eq("round_id", roundId)
               .is("team_id", null)
               .or("status.is.null,status.eq.pending");
+            const membersResult = await supabase
+              .from("memberships")
+              .select("player_id")
+              .eq("league_id", leagueId)
+              .eq("is_active", true);
+            const picksForRound = await supabase
+              .from("picks")
+              .select("player_id")
+              .eq("round_id", roundId);
+
+            if (membersResult.error) {
+              actions.push({ league_id: leagueId, round_id: roundId, step: "memberships_error", error: membersResult.error.message });
+            } else if (picksForRound.error) {
+              actions.push({ league_id: leagueId, round_id: roundId, step: "picks_error", error: picksForRound.error.message });
+            } else {
+              const pickedIds = new Set<string>(
+                (picksForRound.data ?? [])
+                  .map((p: any) => p.player_id)
+                  .filter((id: any) => typeof id === "string")
+              );
+              const missingPlayerIds = (membersResult.data ?? [])
+                .map((m: any) => m.player_id)
+                .filter((id: any) => typeof id === "string" && !pickedIds.has(id));
+
+              if (missingPlayerIds.length > 0) {
+                const { error: deactivateError } = await supabase
+                  .from("memberships")
+                  .update({ is_active: false })
+                  .eq("league_id", leagueId)
+                  .in("player_id", missingPlayerIds);
+                if (deactivateError) {
+                  actions.push({ league_id: leagueId, round_id: roundId, step: "no_pick_deactivate_failed", error: deactivateError.message });
+                } else {
+                  actions.push({ league_id: leagueId, round_id: roundId, step: "no_pick_members_eliminated", count: missingPlayerIds.length });
+                }
+              }
+            }
             actions.push({ league_id: leagueId, round_id: roundId, step: "lock" });
           }
         }
