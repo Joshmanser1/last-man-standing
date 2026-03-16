@@ -2,8 +2,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { FplGwSelect } from "../components/FplGwSelect";
 import { useToast } from "../components/Toast";
-
-const PRIVATE_STORE_KEY = "lms_private_leagues_v1";
+import { dataService } from "../data/service";
+import { supa } from "../lib/supabaseClient";
 
 type PrivateLeague = {
   id: string;
@@ -29,24 +29,6 @@ type PrivateStore = {
 
 // --------- helpers ---------
 
-function loadStore(): PrivateStore {
-  try {
-    const raw = localStorage.getItem(PRIVATE_STORE_KEY);
-    if (!raw) return { leagues: [], memberships: [] };
-    const parsed = JSON.parse(raw);
-    return {
-      leagues: parsed.leagues ?? [],
-      memberships: parsed.memberships ?? [],
-    };
-  } catch {
-    return { leagues: [], memberships: [] };
-  }
-}
-
-function saveStore(store: PrivateStore) {
-  localStorage.setItem(PRIVATE_STORE_KEY, JSON.stringify(store));
-}
-
 function generateInviteCode(existing: Set<string>): string {
   const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I
   while (true) {
@@ -54,13 +36,6 @@ function generateInviteCode(existing: Set<string>): string {
     for (let i = 0; i < 6; i++) code += alphabet[Math.floor(Math.random() * alphabet.length)];
     if (!existing.has(code)) return code;
   }
-}
-
-function uuid() {
-  if (typeof crypto !== "undefined" && (crypto as any).randomUUID) {
-    return (crypto as any).randomUUID();
-  }
-  return "priv-" + Math.random().toString(36).slice(2);
 }
 
 function getPlayerId() {
@@ -82,7 +57,7 @@ function getShareUrl(code: string) {
 
 export function PrivateLeagueCreate() {
   const toast = useToast();
-  const [store, setStore] = useState<PrivateStore>(() => loadStore());
+  const [store, setStore] = useState<PrivateStore>({ leagues: [], memberships: [] });
 
   const [name, setName] = useState("");
   const [startEventId, setStartEventId] = useState<number | null>(null);
@@ -102,8 +77,86 @@ export function PrivateLeagueCreate() {
   }, []);
 
   useEffect(() => {
-    saveStore(store);
-  }, [store]);
+    let mounted = true;
+    const load = async () => {
+      try {
+        const { data: authData } = await supa.auth.getUser();
+        const uid = authData?.user?.id ?? null;
+        if (!uid) {
+          if (mounted) setStore({ leagues: [], memberships: [] });
+          return;
+        }
+
+        const { data: myMemberships, error: myMemErr } = await supa
+          .from("memberships")
+          .select("league_id, player_id, joined_at")
+          .eq("player_id", uid);
+        if (myMemErr) throw myMemErr;
+
+        const leagueIds = (myMemberships ?? []).map((m: any) => m.league_id as string);
+        if (leagueIds.length === 0) {
+          if (mounted) setStore({ leagues: [], memberships: [] });
+          return;
+        }
+
+        const { data: leaguesData, error: leaguesErr } = await supa
+          .from("leagues")
+          .select("id, name, created_by, created_at, is_public, join_code, fpl_start_event, start_date_utc")
+          .in("id", leagueIds);
+        if (leaguesErr) throw leaguesErr;
+
+        const privateLeagues = (leaguesData ?? [])
+          .filter((l: any) => l.is_public !== true)
+          .map((l: any) => ({
+            id: l.id as string,
+            name: l.name as string,
+            ownerId: (l.created_by as string) ?? "",
+            createdAt: (l.created_at as string) ?? new Date().toISOString(),
+            startDateUtc: (l.start_date_utc as string) ?? undefined,
+            fplStartEvent: (l.fpl_start_event as number) ?? undefined,
+            inviteCode: (l.join_code as string) ?? "",
+          })) as PrivateLeague[];
+
+        const { data: allMemberships, error: memErr } = await supa
+          .from("memberships")
+          .select("league_id, player_id, joined_at")
+          .in("league_id", privateLeagues.map((l) => l.id));
+        if (memErr) throw memErr;
+
+        const playerIds = Array.from(
+          new Set((allMemberships ?? []).map((m: any) => m.player_id as string))
+        );
+        let profilesById = new Map<string, string>();
+        if (playerIds.length > 0) {
+          const { data: profiles, error: profErr } = await supa
+            .from("profiles")
+            .select("id, display_name")
+            .in("id", playerIds);
+          if (profErr) throw profErr;
+          profilesById = new Map(
+            (profiles ?? []).map((p: any) => [p.id as string, p.display_name as string])
+          );
+        }
+
+        const memberships = (allMemberships ?? []).map((m: any) => ({
+          leagueId: m.league_id as string,
+          playerId: m.player_id as string,
+          joinedAt: m.joined_at as string,
+          displayName: profilesById.get(m.player_id as string),
+        })) as PrivateMembership[];
+
+        if (mounted) setStore({ leagues: privateLeagues, memberships });
+      } catch (err: any) {
+        showFeedback(err?.message ?? "Failed to load private leagues.", "error");
+      } finally {
+        // no-op
+      }
+    };
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const myLeagues = useMemo(() => {
     const ids = new Set(
@@ -137,7 +190,7 @@ export function PrivateLeagueCreate() {
   }
 
   // Create: allow if player does NOT already own a league (they may still have joined one).
-  function handleCreate(e: React.FormEvent) {
+  async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
       showFeedback("Name your private league first.", "error");
@@ -154,44 +207,85 @@ export function PrivateLeagueCreate() {
     const inviteCodes = new Set(store.leagues.map(l => l.inviteCode));
     const code = generateInviteCode(inviteCodes);
 
-    const league: PrivateLeague = {
-      id: uuid(),
-      name: name.trim(),
-      ownerId: playerId,
-      createdAt: now,
-      startDateUtc: startDeadlineISO ?? undefined,
-      fplStartEvent: startEventId ?? undefined,
-      inviteCode: code,
-    };
+    try {
+      const startISO = startDeadlineISO ?? now;
+      const created = await (dataService as any).createGame(name.trim(), startISO);
+      await (dataService as any).upsertPlayer(playerName || "You");
+      await (dataService as any).ensureMembership(created.id, playerId);
+      await supa
+        .from("leagues")
+        .update({ is_public: false, join_code: code })
+        .eq("id", created.id);
 
-    // Owner auto-membership (this should NOT block joining one other league later)
-    const membership: PrivateMembership = {
-      leagueId: league.id,
-      playerId,
-      joinedAt: now,
-      displayName: playerName || "You",
-    };
+      setName("");
+      setStartEventId(null);
+      setStartDeadlineISO(null);
+      setActiveLeagueId(created.id);
+      showFeedback(
+        `Private league created. Invite code: ${code}${
+          startEventId ? ` (starts FPL GW ${startEventId})` : ""
+        }`,
+        "success"
+      );
 
-    const next: PrivateStore = {
-      leagues: [...store.leagues, league],
-      memberships: [...store.memberships, membership],
-    };
+      const { data: authData } = await supa.auth.getUser();
+      const uid = authData?.user?.id ?? null;
+      if (uid) {
+        const { data: myMemberships } = await supa
+          .from("memberships")
+          .select("league_id, player_id, joined_at")
+          .eq("player_id", uid);
+        const leagueIds = (myMemberships ?? []).map((m: any) => m.league_id as string);
+        if (leagueIds.length > 0) {
+          const { data: leaguesData } = await supa
+            .from("leagues")
+            .select("id, name, created_by, created_at, is_public, join_code, fpl_start_event, start_date_utc")
+            .in("id", leagueIds);
+          const privateLeagues = (leaguesData ?? [])
+            .filter((l: any) => l.is_public !== true)
+            .map((l: any) => ({
+              id: l.id as string,
+              name: l.name as string,
+              ownerId: (l.created_by as string) ?? "",
+              createdAt: (l.created_at as string) ?? new Date().toISOString(),
+              startDateUtc: (l.start_date_utc as string) ?? undefined,
+              fplStartEvent: (l.fpl_start_event as number) ?? undefined,
+              inviteCode: (l.join_code as string) ?? "",
+            })) as PrivateLeague[];
 
-    setStore(next);
-    setName("");
-    setStartEventId(null);
-    setStartDeadlineISO(null);
-    setActiveLeagueId(league.id);
-    showFeedback(
-      `Private league created. Invite code: ${code}${
-        league.fplStartEvent ? ` (starts FPL GW ${league.fplStartEvent})` : ""
-      }`,
-      "success"
-    );
+          const { data: allMemberships } = await supa
+            .from("memberships")
+            .select("league_id, player_id, joined_at")
+            .in("league_id", privateLeagues.map((l) => l.id));
+          const playerIds = Array.from(
+            new Set((allMemberships ?? []).map((m: any) => m.player_id as string))
+          );
+          let profilesById = new Map<string, string>();
+          if (playerIds.length > 0) {
+            const { data: profiles } = await supa
+              .from("profiles")
+              .select("id, display_name")
+              .in("id", playerIds);
+            profilesById = new Map(
+              (profiles ?? []).map((p: any) => [p.id as string, p.display_name as string])
+            );
+          }
+          const memberships = (allMemberships ?? []).map((m: any) => ({
+            leagueId: m.league_id as string,
+            playerId: m.player_id as string,
+            joinedAt: m.joined_at as string,
+            displayName: profilesById.get(m.player_id as string),
+          })) as PrivateMembership[];
+          setStore({ leagues: privateLeagues, memberships });
+        }
+      }
+    } catch (err: any) {
+      showFeedback(err?.message ?? "Failed to create private league.", "error");
+    }
   }
 
   // Join: allow if player has NOT already joined a non-owned league (they may own one).
-  function handleJoin(e: React.FormEvent) {
+  async function handleJoin(e: React.FormEvent) {
     e.preventDefault();
 
     // Check if user already joined a league they don't own
@@ -210,8 +304,16 @@ export function PrivateLeagueCreate() {
       showFeedback("Enter an invite code first.", "error");
       return;
     }
-    const league = store.leagues.find(l => l.inviteCode.toUpperCase() === code);
-    if (!league) {
+    const { data: league, error: leagueErr } = await supa
+      .from("leagues")
+      .select("id, name, created_by, created_at, is_public, join_code, fpl_start_event, start_date_utc")
+      .eq("join_code", code)
+      .maybeSingle();
+    if (leagueErr) {
+      showFeedback(leagueErr.message ?? "Failed to find league.", "error");
+      return;
+    }
+    if (!league || league.is_public) {
       showFeedback("No league found for that code.", "error");
       return;
     }
@@ -226,20 +328,42 @@ export function PrivateLeagueCreate() {
       return;
     }
 
-    const membership: PrivateMembership = {
-      leagueId: league.id,
-      playerId,
-      joinedAt: new Date().toISOString(),
-      displayName: playerName || "You",
-    };
+    try {
+      await (dataService as any).upsertPlayer(playerName || "You");
+      await (dataService as any).ensureMembership(league.id, playerId);
+      const now = new Date().toISOString();
+      const nextLeagues = store.leagues.some((l) => l.id === league.id)
+        ? store.leagues
+        : [
+            ...store.leagues,
+            {
+              id: league.id as string,
+              name: league.name as string,
+              ownerId: (league.created_by as string) ?? "",
+              createdAt: (league.created_at as string) ?? now,
+              startDateUtc: (league.start_date_utc as string) ?? undefined,
+              fplStartEvent: (league.fpl_start_event as number) ?? undefined,
+              inviteCode: (league.join_code as string) ?? "",
+            } as PrivateLeague,
+          ];
 
-    const next: PrivateStore = {
-      ...store,
-      memberships: [...store.memberships, membership],
-    };
-    setStore(next);
-    setActiveLeagueId(league.id);
-    showFeedback(`Joined "${league.name}".`, "success");
+      const membership: PrivateMembership = {
+        leagueId: league.id as string,
+        playerId,
+        joinedAt: now,
+        displayName: playerName || "You",
+      };
+
+      const next: PrivateStore = {
+        leagues: nextLeagues,
+        memberships: [...store.memberships, membership],
+      };
+      setStore(next);
+      setActiveLeagueId(league.id as string);
+      showFeedback(`Joined "${league.name}".`, "success");
+    } catch (err: any) {
+      showFeedback(err?.message ?? "Failed to join league.", "error");
+    }
   }
 
   function handleCopy(text: string, label: string) {
