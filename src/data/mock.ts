@@ -252,23 +252,31 @@ const mockService = {
     await ensureTeamsPresent(league.id);
     const { data: authData } = await supa.auth.getUser();
     const user = authData?.user;
-    if (!user) throw new Error("You must be logged in to create a league");
+    const createPayload: Record<string, unknown> = {
+      name: league.name,
+      start_date_utc: league.start_date_utc,
+      fpl_start_event: league.fpl_start_event,
+      is_public: false,
+    };
+    if (user) {
+      createPayload.created_by = user.id;
+    }
 
-    const { data, error } = await supa
-      .from("leagues")
-      .insert({
-        id: league.id,
-        name: league.name,
-        status: league.status,
-        current_round: league.current_round,
-        start_date_utc: league.start_date_utc,
-        fpl_start_event: league.fpl_start_event,
-        created_by: user.id,
-      })
-      .select("*")
-      .maybeSingle();
-    if (error) throw error;
-    return (data as League) ?? league;
+    try {
+      const res = await fetch("/api/create-league", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(createPayload),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as League | null;
+        if (data) return data;
+      }
+    } catch {
+      // best effort only; local store is the source of truth in dev mode
+    }
+
+    return league;
   },
 
   async getLeagueByName(name: string) {
