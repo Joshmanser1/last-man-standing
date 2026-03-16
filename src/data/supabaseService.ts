@@ -157,23 +157,30 @@ const supabaseService: IDataService = {
 
   // Admin convenience
   async createGame(name: string, startISO: string): Promise<League> {
-    const { data: league, error } = await supa
-      .from("leagues")
-      .insert({
-        name,
-        status: "upcoming",
-        current_round: 1,
-        // optional visibility flags; if your TS type doesn't have them, cast is fine
-        is_public: false as any,
-        join_open: true as any,
-      })
-      .select("*")
-      .maybeSingle();
-    if (error) throw error;
-    const lg = must(league as League, "Failed to create league");
-
     const fpl_start_event = await getEventForDate(startISO);
-    await supa.from("leagues").update({ fpl_start_event } as any).eq("id", lg.id).maybeSingle();
+    const { data: authData } = await supa.auth.getUser();
+    const created_by = authData?.user?.id ?? null;
+
+    const res = await fetch("/api/create-league", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        start_date_utc: startISO,
+        fpl_start_event,
+        is_public: false,
+        created_by,
+      }),
+    });
+    if (!res.ok) {
+      let msg = "Failed to create league";
+      try {
+        const err = await res.json();
+        msg = err?.error ?? msg;
+      } catch {}
+      throw new Error(msg);
+    }
+    const lg = must((await res.json()) as League, "Failed to create league");
 
     const d = new Date(startISO);
     d.setHours(17, 0, 0, 0);

@@ -86,7 +86,7 @@ export function subscribeStore(cb: () => void) {
 /* -----------------------------------------------------------------------------
    Backend selection
 ----------------------------------------------------------------------------- */
-const USE_SUPABASE_BACKEND = false;
+const USE_SUPABASE_BACKEND = true;
 const base = (USE_SUPABASE_BACKEND
   ? supabaseService
   : (mockService as unknown)) as IDataService;
