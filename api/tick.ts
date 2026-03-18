@@ -102,11 +102,11 @@ export default async function handler(req: Req, res: Res) {
     });
   }
 
-  let supabase: ReturnType<typeof createClient> | null = null;
+  let supabase: any | null = null;
   let tickRunId: string | null = null;
 
   try {
-    supabase = createClient(supabaseUrl, serviceRoleKey, {
+    supabase = createClient<any>(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
