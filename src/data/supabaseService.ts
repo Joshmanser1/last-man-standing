@@ -72,7 +72,7 @@ const supabaseService: IDataService = {
   async upsertPlayer(display_name: string): Promise<Player> {
     const uid = await currentUserId();
     const { data, error } = await supa
-      .from("players")
+      .from("profiles")
       .upsert({ id: uid, display_name }, { onConflict: "id" })
       .select("*")
       .maybeSingle();
