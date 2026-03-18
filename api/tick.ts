@@ -220,7 +220,7 @@ export default async function handler(req: Req, res: Res) {
       });
     }
 
-    const activeLeagues = (leaguesResult.data ?? []).filter((league) => {
+    const activeLeagues = (leaguesResult.data ?? []).filter((league: any) => {
       const status = league.status as string | null;
       return status == null || status === "active" || status === "running";
     });
@@ -323,7 +323,7 @@ export default async function handler(req: Req, res: Res) {
           if (fixtures.length === 0) {
             actions.push({ league_id: leagueId, round_id: roundId, step: "fixtures_missing" });
           } else {
-            const unresolved = fixtures.some((fixture) => {
+            const unresolved = fixtures.some((fixture: any) => {
               const result = fixture.result as string | null;
               const winningTeamId = fixture.winning_team_id as string | null;
               return !winningTeamId || !result || result === "not_set" || result === "pending";
