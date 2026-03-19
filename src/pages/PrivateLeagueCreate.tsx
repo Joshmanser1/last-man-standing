@@ -76,80 +76,82 @@ export function PrivateLeagueCreate() {
     if (code) setJoinCode(code.toUpperCase());
   }, []);
 
+  const reloadStore = async () => {
+    const { data: authData } = await supa.auth.getUser();
+    const uid = authData?.user?.id ?? null;
+    if (!uid) {
+      setStore({ leagues: [], memberships: [] });
+      return;
+    }
+
+    const { data: myMemberships, error: myMemErr } = await supa
+      .from("memberships")
+      .select("league_id, player_id, joined_at")
+      .eq("player_id", uid);
+    if (myMemErr) throw myMemErr;
+
+    const leagueIds = (myMemberships ?? []).map((m: any) => m.league_id as string);
+    if (leagueIds.length === 0) {
+      setStore({ leagues: [], memberships: [] });
+      return;
+    }
+
+    const { data: leaguesData, error: leaguesErr } = await supa
+      .from("leagues")
+      .select("id, name, created_by, created_at, is_public, join_code, fpl_start_event, start_date_utc")
+      .in("id", leagueIds);
+    if (leaguesErr) throw leaguesErr;
+
+    const privateLeagues = (leaguesData ?? [])
+      .filter((l: any) => l.is_public !== true)
+      .map((l: any) => ({
+        id: l.id as string,
+        name: l.name as string,
+        ownerId: (l.created_by as string) ?? "",
+        createdAt: (l.created_at as string) ?? new Date().toISOString(),
+        startDateUtc: (l.start_date_utc as string) ?? undefined,
+        fplStartEvent: (l.fpl_start_event as number) ?? undefined,
+        inviteCode: (l.join_code as string) ?? "",
+      })) as PrivateLeague[];
+
+    const { data: allMemberships, error: memErr } = await supa
+      .from("memberships")
+      .select("league_id, player_id, joined_at")
+      .in("league_id", privateLeagues.map((l) => l.id));
+    if (memErr) throw memErr;
+
+    const playerIds = Array.from(
+      new Set((allMemberships ?? []).map((m: any) => m.player_id as string))
+    );
+    let profilesById = new Map<string, string>();
+    if (playerIds.length > 0) {
+      const { data: profiles, error: profErr } = await supa
+        .from("profiles")
+        .select("id, display_name")
+        .in("id", playerIds);
+      if (profErr) throw profErr;
+      profilesById = new Map(
+        (profiles ?? []).map((p: any) => [p.id as string, p.display_name as string])
+      );
+    }
+
+    const memberships = (allMemberships ?? []).map((m: any) => ({
+      leagueId: m.league_id as string,
+      playerId: m.player_id as string,
+      joinedAt: m.joined_at as string,
+      displayName: profilesById.get(m.player_id as string),
+    })) as PrivateMembership[];
+
+    setStore({ leagues: privateLeagues, memberships });
+  };
+
   useEffect(() => {
     let mounted = true;
     const load = async () => {
       try {
-        const { data: authData } = await supa.auth.getUser();
-        const uid = authData?.user?.id ?? null;
-        if (!uid) {
-          if (mounted) setStore({ leagues: [], memberships: [] });
-          return;
-        }
-
-        const { data: myMemberships, error: myMemErr } = await supa
-          .from("memberships")
-          .select("league_id, player_id, joined_at")
-          .eq("player_id", uid);
-        if (myMemErr) throw myMemErr;
-
-        const leagueIds = (myMemberships ?? []).map((m: any) => m.league_id as string);
-        if (leagueIds.length === 0) {
-          if (mounted) setStore({ leagues: [], memberships: [] });
-          return;
-        }
-
-        const { data: leaguesData, error: leaguesErr } = await supa
-          .from("leagues")
-          .select("id, name, created_by, created_at, is_public, join_code, fpl_start_event, start_date_utc")
-          .in("id", leagueIds);
-        if (leaguesErr) throw leaguesErr;
-
-        const privateLeagues = (leaguesData ?? [])
-          .filter((l: any) => l.is_public !== true)
-          .map((l: any) => ({
-            id: l.id as string,
-            name: l.name as string,
-            ownerId: (l.created_by as string) ?? "",
-            createdAt: (l.created_at as string) ?? new Date().toISOString(),
-            startDateUtc: (l.start_date_utc as string) ?? undefined,
-            fplStartEvent: (l.fpl_start_event as number) ?? undefined,
-            inviteCode: (l.join_code as string) ?? "",
-          })) as PrivateLeague[];
-
-        const { data: allMemberships, error: memErr } = await supa
-          .from("memberships")
-          .select("league_id, player_id, joined_at")
-          .in("league_id", privateLeagues.map((l) => l.id));
-        if (memErr) throw memErr;
-
-        const playerIds = Array.from(
-          new Set((allMemberships ?? []).map((m: any) => m.player_id as string))
-        );
-        let profilesById = new Map<string, string>();
-        if (playerIds.length > 0) {
-          const { data: profiles, error: profErr } = await supa
-            .from("profiles")
-            .select("id, display_name")
-            .in("id", playerIds);
-          if (profErr) throw profErr;
-          profilesById = new Map(
-            (profiles ?? []).map((p: any) => [p.id as string, p.display_name as string])
-          );
-        }
-
-        const memberships = (allMemberships ?? []).map((m: any) => ({
-          leagueId: m.league_id as string,
-          playerId: m.player_id as string,
-          joinedAt: m.joined_at as string,
-          displayName: profilesById.get(m.player_id as string),
-        })) as PrivateMembership[];
-
-        if (mounted) setStore({ leagues: privateLeagues, memberships });
+        await reloadStore();
       } catch (err: any) {
-        showFeedback(err?.message ?? "Failed to load private leagues.", "error");
-      } finally {
-        // no-op
+        if (mounted) showFeedback(err?.message ?? "Failed to load private leagues.", "error");
       }
     };
     load();
@@ -167,6 +169,12 @@ export function PrivateLeagueCreate() {
     return leagues;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store, playerId]);
+
+  useEffect(() => {
+    if (!myLeagues.length) return;
+    const stillValid = activeLeagueId && myLeagues.some((l) => l.id === activeLeagueId);
+    if (!stillValid) setActiveLeagueId(myLeagues[0].id);
+  }, [myLeagues, activeLeagueId]);
 
   const activeLeague = useMemo(
     () => store.leagues.find(l => l.id === activeLeagueId) || null,
@@ -228,57 +236,7 @@ export function PrivateLeagueCreate() {
         "success"
       );
 
-      const { data: authData } = await supa.auth.getUser();
-      const uid = authData?.user?.id ?? null;
-      if (uid) {
-        const { data: myMemberships } = await supa
-          .from("memberships")
-          .select("league_id, player_id, joined_at")
-          .eq("player_id", uid);
-        const leagueIds = (myMemberships ?? []).map((m: any) => m.league_id as string);
-        if (leagueIds.length > 0) {
-          const { data: leaguesData } = await supa
-            .from("leagues")
-            .select("id, name, created_by, created_at, is_public, join_code, fpl_start_event, start_date_utc")
-            .in("id", leagueIds);
-          const privateLeagues = (leaguesData ?? [])
-            .filter((l: any) => l.is_public !== true)
-            .map((l: any) => ({
-              id: l.id as string,
-              name: l.name as string,
-              ownerId: (l.created_by as string) ?? "",
-              createdAt: (l.created_at as string) ?? new Date().toISOString(),
-              startDateUtc: (l.start_date_utc as string) ?? undefined,
-              fplStartEvent: (l.fpl_start_event as number) ?? undefined,
-              inviteCode: (l.join_code as string) ?? "",
-            })) as PrivateLeague[];
-
-          const { data: allMemberships } = await supa
-            .from("memberships")
-            .select("league_id, player_id, joined_at")
-            .in("league_id", privateLeagues.map((l) => l.id));
-          const playerIds = Array.from(
-            new Set((allMemberships ?? []).map((m: any) => m.player_id as string))
-          );
-          let profilesById = new Map<string, string>();
-          if (playerIds.length > 0) {
-            const { data: profiles } = await supa
-              .from("profiles")
-              .select("id, display_name")
-              .in("id", playerIds);
-            profilesById = new Map(
-              (profiles ?? []).map((p: any) => [p.id as string, p.display_name as string])
-            );
-          }
-          const memberships = (allMemberships ?? []).map((m: any) => ({
-            leagueId: m.league_id as string,
-            playerId: m.player_id as string,
-            joinedAt: m.joined_at as string,
-            displayName: profilesById.get(m.player_id as string),
-          })) as PrivateMembership[];
-          setStore({ leagues: privateLeagues, memberships });
-        }
-      }
+      await reloadStore();
     } catch (err: any) {
       showFeedback(err?.message ?? "Failed to create private league.", "error");
     }
@@ -343,34 +301,7 @@ export function PrivateLeagueCreate() {
         } catch {}
         throw new Error(msg);
       }
-      const now = new Date().toISOString();
-      const nextLeagues = store.leagues.some((l) => l.id === league.id)
-        ? store.leagues
-        : [
-            ...store.leagues,
-            {
-              id: league.id as string,
-              name: league.name as string,
-              ownerId: (league.created_by as string) ?? "",
-              createdAt: (league.created_at as string) ?? now,
-              startDateUtc: (league.start_date_utc as string) ?? undefined,
-              fplStartEvent: (league.fpl_start_event as number) ?? undefined,
-              inviteCode: (league.join_code as string) ?? "",
-            } as PrivateLeague,
-          ];
-
-      const membership: PrivateMembership = {
-        leagueId: league.id as string,
-        playerId,
-        joinedAt: now,
-        displayName: playerName || "You",
-      };
-
-      const next: PrivateStore = {
-        leagues: nextLeagues,
-        memberships: [...store.memberships, membership],
-      };
-      setStore(next);
+      await reloadStore();
       setActiveLeagueId(league.id as string);
       showFeedback(`Joined "${league.name}".`, "success");
     } catch (err: any) {
