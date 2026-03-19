@@ -211,7 +211,7 @@ export function PrivateLeagueCreate() {
       const startISO = startDeadlineISO ?? now;
       const created = await (dataService as any).createGame(name.trim(), startISO);
       await (dataService as any).upsertPlayer(playerName || "You");
-      await (dataService as any).ensureMembership(created.id, playerId);
+      // owner membership is created server-side during league creation
       await supa
         .from("leagues")
         .update({ is_public: false, join_code: code })
@@ -330,7 +330,19 @@ export function PrivateLeagueCreate() {
 
     try {
       await (dataService as any).upsertPlayer(playerName || "You");
-      await (dataService as any).ensureMembership(league.id, playerId);
+      const joinRes = await fetch("/api/join-league", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ league_id: league.id, player_id: playerId, role: "player" }),
+      });
+      if (!joinRes.ok) {
+        let msg = "Failed to join league";
+        try {
+          const err = await joinRes.json();
+          msg = err?.error ?? msg;
+        } catch {}
+        throw new Error(msg);
+      }
       const now = new Date().toISOString();
       const nextLeagues = store.leagues.some((l) => l.id === league.id)
         ? store.leagues
