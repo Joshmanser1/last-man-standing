@@ -114,6 +114,14 @@ function AppInner() {
             }
           />
           <Route
+            path="/private/create"
+            element={
+              <RequireAuth>
+                <PrivateLeagueCreate />
+              </RequireAuth>
+            }
+          />
+          <Route
             path="/admin"
             element={
               <RequireAdmin>
