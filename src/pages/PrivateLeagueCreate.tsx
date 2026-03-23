@@ -66,6 +66,7 @@ export function PrivateLeagueCreate() {
   const [joinCode, setJoinCode] = useState("");
   const [activeLeagueId, setActiveLeagueId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string>("");
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
 
   const playerId = getPlayerId();
   const playerName = getPlayerName();
@@ -79,6 +80,7 @@ export function PrivateLeagueCreate() {
   const reloadStore = async () => {
     const { data: authData } = await supa.auth.getUser();
     const uid = authData?.user?.id ?? null;
+    setAuthUserId(uid);
     if (!uid) {
       setStore({ leagues: [], memberships: [] });
       return;
@@ -161,14 +163,15 @@ export function PrivateLeagueCreate() {
   }, []);
 
   const myLeagues = useMemo(() => {
+    if (!authUserId) return [];
     const ids = new Set(
-      store.memberships.filter(m => m.playerId === playerId).map(m => m.leagueId)
+      store.memberships.filter(m => m.playerId === authUserId).map(m => m.leagueId)
     );
     const leagues = store.leagues.filter(l => ids.has(l.id));
     if (!activeLeagueId && leagues.length) setActiveLeagueId(leagues[0].id);
     return leagues;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store, playerId]);
+  }, [store, authUserId]);
 
   useEffect(() => {
     if (!myLeagues.length) return;
@@ -339,7 +342,7 @@ export function PrivateLeagueCreate() {
     showFeedback("Private league deleted.", "success");
   }
 
-  const isOwner = activeLeague && activeLeague.ownerId === playerId;
+  const isOwner = activeLeague && activeLeague.ownerId === authUserId;
 
   // --------- render ---------
 
