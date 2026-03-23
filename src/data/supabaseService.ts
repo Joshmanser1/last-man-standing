@@ -2,7 +2,7 @@
 import { supa } from "../lib/supabaseClient";
 import type { League, Round, Team, Player, Membership, Pick, Fixture, ID } from "./types";
 import type { IDataService } from "./service";
-import { fetchFplFixturesForEvent, getEventForDate, getSmartCurrentEvent } from "../lib/fpl";
+import { fetchFplFixturesForEvent, fetchFplTeams, getEventForDate, getSmartCurrentEvent } from "../lib/fpl";
 
 /** Helpers */
 function must<T>(val: T | null | undefined, msg = "Not found"): T {
@@ -185,10 +185,67 @@ const supabaseService: IDataService = {
     const d = new Date(startISO);
     d.setHours(17, 0, 0, 0);
     const r1Deadline = d.toISOString();
-    const { error: e2 } = await supa
+    const { data: r1, error: e2 } = await supa
       .from("rounds")
-      .insert({ league_id: lg.id, round_number: 1, name: "Round 1", pick_deadline_utc: r1Deadline, status: "upcoming" });
+      .insert({ league_id: lg.id, round_number: 1, name: "Round 1", pick_deadline_utc: r1Deadline, status: "upcoming" })
+      .select("id")
+      .maybeSingle();
     if (e2) throw e2;
+
+    const teams = await fetchFplTeams();
+    const teamRows = (teams ?? []).map((t: any) => {
+      const code = String(t.short_name ?? "").toUpperCase();
+      return {
+        id: crypto.randomUUID(),
+        league_id: lg.id,
+        name: t.name,
+        code,
+        logo_url: code ? `https://via.placeholder.com/96?text=${code}` : undefined,
+      };
+    });
+    if (teamRows.length) {
+      const { error: tErr } = await supa.from("teams").insert(teamRows as any);
+      if (tErr) throw tErr;
+    }
+
+    if (r1?.id && typeof fpl_start_event === "number") {
+      const byCode = new Map<string, Team>(
+        (teamRows ?? []).map((t: any) => [String(t.code).toUpperCase(), t as Team])
+      );
+      const fpl = await fetchFplFixturesForEvent(fpl_start_event);
+      const rows: Partial<Fixture>[] = [];
+      for (const fx of fpl ?? []) {
+        const home = byCode.get((fx.home?.short_name ?? "").toUpperCase());
+        const away = byCode.get((fx.away?.short_name ?? "").toUpperCase());
+        if (!home || !away) continue;
+
+        const result: Fixture["result"] =
+          fx.finished && fx.homeScore != null && fx.awayScore != null
+            ? fx.homeScore > fx.awayScore
+              ? "home_win"
+              : fx.awayScore > fx.homeScore
+              ? "away_win"
+              : "draw"
+            : "not_set";
+
+        rows.push({
+          round_id: r1.id as string,
+          home_team_id: home.id,
+          away_team_id: away.id,
+          kickoff_utc: fx.kickoff ?? undefined,
+          result,
+          winning_team_id: result === "home_win" ? home.id : result === "away_win" ? away.id : undefined,
+        });
+      }
+
+      if (rows.length) {
+        const { error: fErr } = await supa.from("fixtures").upsert(rows as any, {
+          ignoreDuplicates: true,
+          onConflict: "round_id,home_team_id,away_team_id",
+        });
+        if (fErr) throw fErr;
+      }
+    }
 
     return lg;
   },
