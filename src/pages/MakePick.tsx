@@ -5,6 +5,7 @@ import { dataService } from "../data/service";
 import { useCountdown } from "../hooks/useCountdown";
 import { GameSelector } from "../components/GameSelector";
 import { useToast } from "../components/Toast";
+import { supa } from "../lib/supabaseClient";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -23,18 +24,27 @@ export function MakePick() {
   const [opponentByTeamId, setOpponentByTeamId] = useState<OpponentMap>({});
   const [loading, setLoading] = useState(true);
   const [reloadTick, setReloadTick] = useState(0);
+  const [authUserId, setAuthUserId] = useState<string>("");
 
   const navigate = useNavigate();
   const toast = useToast();
 
-  const playerId = localStorage.getItem("player_id") || "";
+  const playerId = authUserId;
 
   // Kick to login/home if no player
   useEffect(() => {
-    if (!playerId) {
-      navigate("/login");
-    }
-  }, [playerId, navigate]);
+    let mounted = true;
+    const load = async () => {
+      const { data } = await supa.auth.getUser();
+      const uid = data?.user?.id ?? "";
+      if (mounted) setAuthUserId(uid);
+      if (!uid) navigate("/login");
+    };
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [navigate]);
 
   // Load league + round + teams + picks for current player
   useEffect(() => {
@@ -159,7 +169,24 @@ export function MakePick() {
         const ok = confirm("Replace your existing pick with this team?");
         if (!ok) return;
       }
-      await dataService.upsertPick(round, league.id, playerId, teamId);
+      const res = await fetch("/api/submit-pick", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          league_id: league.id,
+          round_id: round.id,
+          player_id: playerId,
+          team_id: teamId,
+        }),
+      });
+      if (!res.ok) {
+        let msg = "Could not save pick.";
+        try {
+          const err = await res.json();
+          msg = err?.error ?? msg;
+        } catch {}
+        throw new Error(msg);
+      }
       toast("Pick saved ✅", { variant: "success" });
       navigate("/results");
     } catch (e: any) {
