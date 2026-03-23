@@ -193,30 +193,31 @@ const supabaseService: IDataService = {
     if (e2) throw e2;
 
     const teams = await fetchFplTeams();
-    const teamRows = (teams ?? []).map((t: any) => {
+    const teamRows: Array<any> = [];
+    const teamByFplId = new Map<number, any>();
+    for (const t of teams ?? []) {
       const code = String(t.short_name ?? "").toUpperCase();
-      return {
+      const row = {
         id: crypto.randomUUID(),
         league_id: lg.id,
         name: t.name,
         code,
         logo_url: code ? `https://via.placeholder.com/96?text=${code}` : undefined,
       };
-    });
+      teamRows.push(row);
+      if (typeof t.id === "number") teamByFplId.set(t.id, row);
+    }
     if (teamRows.length) {
       const { error: tErr } = await supa.from("teams").insert(teamRows as any);
       if (tErr) throw tErr;
     }
 
     if (r1?.id && typeof fpl_start_event === "number") {
-      const byCode = new Map<string, Team>(
-        (teamRows ?? []).map((t: any) => [String(t.code).toUpperCase(), t as Team])
-      );
       const fpl = await fetchFplFixturesForEvent(fpl_start_event);
       const rows: Partial<Fixture>[] = [];
       for (const fx of fpl ?? []) {
-        const home = byCode.get((fx.home?.short_name ?? "").toUpperCase());
-        const away = byCode.get((fx.away?.short_name ?? "").toUpperCase());
+        const home = teamByFplId.get(fx.home?.id as number);
+        const away = teamByFplId.get(fx.away?.id as number);
         if (!home || !away) continue;
 
         const result: Fixture["result"] =
