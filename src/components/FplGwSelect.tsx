@@ -23,8 +23,8 @@ type FplGwSelectProps = {
 };
 
 async function loadBootstrap(): Promise<{ events: FplEvent[] }> {
-  // 1) Try live FPL (via our /fpl rewrite)
-  const live = await fetch("/fpl/api/bootstrap-static/");
+  // 1) Try live FPL via our Vercel proxy (matches src/lib/fpl.ts)
+  const live = await fetch("/api/fpl?path=%2Fbootstrap-static%2F", { cache: "no-store" });
   if (live.ok) return live.json();
 
   // 2) If that fails (403 etc), try fallback file
