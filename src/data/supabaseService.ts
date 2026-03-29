@@ -214,10 +214,13 @@ const supabaseService: IDataService = {
 
     if (r1?.id && typeof fpl_start_event === "number") {
       const fpl = await fetchFplFixturesForEvent(fpl_start_event);
+      if (!fpl || fpl.length === 0) {
+        throw new Error(`No fixtures returned for fpl_start_event=${fpl_start_event}; fixture_count=0`);
+      }
       const rows: Partial<Fixture>[] = [];
       for (const fx of fpl ?? []) {
-        const homeId = (fx as any).home?.id ?? (fx as any).team_h ?? (fx as any).home_id;
-        const awayId = (fx as any).away?.id ?? (fx as any).team_a ?? (fx as any).away_id;
+        const homeId = (fx as any).home?.id;
+        const awayId = (fx as any).away?.id;
         const home = teamByFplId.get(homeId as number);
         const away = teamByFplId.get(awayId as number);
         if (!home || !away) continue;
@@ -239,6 +242,12 @@ const supabaseService: IDataService = {
           result,
           winning_team_id: result === "home_win" ? home.id : result === "away_win" ? away.id : undefined,
         });
+      }
+
+      if (rows.length === 0) {
+        throw new Error(
+          `No fixtures mapped for fpl_start_event=${fpl_start_event}; fetched=${fpl.length}; mapped=${rows.length}`
+        );
       }
 
       if (rows.length) {
