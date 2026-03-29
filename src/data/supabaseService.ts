@@ -185,11 +185,10 @@ const supabaseService: IDataService = {
     const d = new Date(startISO);
     d.setHours(17, 0, 0, 0);
     const r1Deadline = d.toISOString();
-    const { data: r1, error: e2 } = await supa
+    const round1Id = crypto.randomUUID();
+    const { error: e2 } = await supa
       .from("rounds")
-      .insert({ league_id: lg.id, round_number: 1, name: "Round 1", pick_deadline_utc: r1Deadline, status: "upcoming" })
-      .select("id")
-      .maybeSingle();
+      .insert({ id: round1Id, league_id: lg.id, round_number: 1, name: "Round 1", pick_deadline_utc: r1Deadline, status: "upcoming" });
     if (e2) throw e2;
 
     const teams = await fetchFplTeams();
@@ -212,7 +211,7 @@ const supabaseService: IDataService = {
       if (tErr) throw tErr;
     }
 
-    if (r1?.id && typeof fpl_start_event === "number") {
+    if (typeof fpl_start_event === "number") {
       const fpl = await fetchFplFixturesForEvent(fpl_start_event);
       if (!fpl || fpl.length === 0) {
         throw new Error(`No fixtures returned for fpl_start_event=${fpl_start_event}; fixture_count=0`);
@@ -235,7 +234,7 @@ const supabaseService: IDataService = {
             : "not_set";
 
         rows.push({
-          round_id: r1.id as string,
+          round_id: round1Id,
           home_team_id: home.id,
           away_team_id: away.id,
           kickoff_utc: fx.kickoff ?? undefined,
