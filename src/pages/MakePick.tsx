@@ -93,7 +93,7 @@ export function MakePick() {
         const mine = picksThisRound.find((p: any) => p.player_id === playerId);
         setCurrentPick(mine ?? null);
 
-        // 4) Build "used by round" + opponent map from local store
+        // 4) Build "used by round" from local store
         const raw = localStorage.getItem(STORE_KEY);
         if (raw) {
           const s = JSON.parse(raw);
@@ -110,14 +110,18 @@ export function MakePick() {
             if (rnd) byTeam[p.team_id] = rnd.round_number;
           }
           setUsedByRound(byTeam);
+        } else {
+          setUsedByRound({});
+        }
 
-          // Opponent map from fixtures for THIS round
-          const roundFixtures = (s.fixtures || []).filter(
-            (f: any) => f.round_id === r.id
-          );
+        // 5) Opponent map from real fixtures in Supabase for THIS round
+        try {
+          const { data: roundFixtures } = await supa
+            .from("fixtures")
+            .select("home_team_id, away_team_id")
+            .eq("round_id", r.id);
           const opp: OpponentMap = {};
-
-          for (const f of roundFixtures) {
+          for (const f of roundFixtures ?? []) {
             const homeTeam = ts.find((t: any) => t.id === f.home_team_id);
             const awayTeam = ts.find((t: any) => t.id === f.away_team_id);
 
@@ -131,10 +135,8 @@ export function MakePick() {
               opp[f.away_team_id] = `vs ${home} (A)`;
             }
           }
-
           setOpponentByTeamId(opp);
-        } else {
-          setUsedByRound({});
+        } catch {
           setOpponentByTeamId({});
         }
       } finally {
