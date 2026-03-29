@@ -216,8 +216,10 @@ const supabaseService: IDataService = {
       const fpl = await fetchFplFixturesForEvent(fpl_start_event);
       const rows: Partial<Fixture>[] = [];
       for (const fx of fpl ?? []) {
-        const home = teamByFplId.get(fx.home?.id as number);
-        const away = teamByFplId.get(fx.away?.id as number);
+        const homeId = (fx as any).home?.id ?? (fx as any).team_h ?? (fx as any).home_id;
+        const awayId = (fx as any).away?.id ?? (fx as any).team_a ?? (fx as any).away_id;
+        const home = teamByFplId.get(homeId as number);
+        const away = teamByFplId.get(awayId as number);
         if (!home || !away) continue;
 
         const result: Fixture["result"] =
