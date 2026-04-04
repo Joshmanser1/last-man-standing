@@ -90,6 +90,33 @@ export default async function handler(req: Req, res: Res) {
       });
     }
 
+    if (!existing) {
+      const { data: otherMemberships, error: otherErr } = await supabase
+        .from("memberships")
+        .select("league_id, role, leagues!inner(is_public)")
+        .eq("player_id", playerId)
+        .eq("is_active", true);
+      if (otherErr) {
+        return sendJson(res, 502, {
+          error: otherErr.message,
+          code: otherErr.code,
+          details: otherErr.details,
+          hint: otherErr.hint,
+        });
+      }
+
+      const hasOtherPrivateNonOwner = (otherMemberships ?? []).some((m: any) => {
+        if (m.league_id === leagueId) return false;
+        if (m.role === "owner") return false;
+        return m.leagues?.is_public !== true;
+      });
+      if (hasOtherPrivateNonOwner) {
+        return sendJson(res, 409, {
+          error: "Already an active member of another private league",
+        });
+      }
+    }
+
     const { data, error } = existing
       ? await supabase
           .from("memberships")
