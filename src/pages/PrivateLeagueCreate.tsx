@@ -279,12 +279,14 @@ export function PrivateLeagueCreate() {
         body: JSON.stringify({ join_code: code, player_id: authUid, role: "player" }),
       });
       if (!joinRes.ok) {
-        let msg = "Failed to join league";
         try {
           const err = await joinRes.json();
-          msg = err?.error ?? msg;
+          if (err?.error) {
+            showFeedback(err.error, "error");
+            return;
+          }
         } catch {}
-        throw new Error(msg);
+        throw new Error("Failed to join league");
       }
       await reloadStore();
       const joined = store.leagues.find((l) => l.inviteCode.toUpperCase() === code) ?? null;
