@@ -248,12 +248,18 @@ export function PrivateLeagueCreate() {
   // Join: allow if player has NOT already joined a non-owned league (they may own one).
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault();
+    const { data: authData } = await supa.auth.getUser();
+    const authUid = authData?.user?.id ?? null;
+    if (!authUid) {
+      showFeedback("You must be logged in to join a private league.", "error");
+      return;
+    }
 
     // Check if user already joined a league they don't own
     const joinedNonOwned = store.memberships.some(m => {
-      if (m.playerId !== playerId) return false;
+      if (m.playerId !== authUid) return false;
       const league = store.leagues.find(l => l.id === m.leagueId);
-      return league ? league.ownerId !== playerId : false;
+      return league ? league.ownerId !== authUid : false;
     });
     if (joinedNonOwned) {
       showFeedback("You’ve already joined a private league. Limit is one joined league per player (plus one you own).", "error");
@@ -265,36 +271,12 @@ export function PrivateLeagueCreate() {
       showFeedback("Enter an invite code first.", "error");
       return;
     }
-    const { data: league, error: leagueErr } = await supa
-      .from("leagues")
-      .select("id, name, created_by, created_at, is_public, join_code, fpl_start_event, start_date_utc")
-      .eq("join_code", code)
-      .maybeSingle();
-    if (leagueErr) {
-      showFeedback(leagueErr.message ?? "Failed to find league.", "error");
-      return;
-    }
-    if (!league || league.is_public) {
-      showFeedback("No league found for that code.", "error");
-      return;
-    }
-
-    // If they’re already a member of THIS league, just surface info
-    const already = store.memberships.some(
-      m => m.leagueId === league.id && m.playerId === playerId
-    );
-    if (already) {
-      setActiveLeagueId(league.id);
-      showFeedback("You’re already in that private league.", "info");
-      return;
-    }
-
     try {
       await (dataService as any).upsertPlayer(playerName || "You");
       const joinRes = await fetch("/api/join-league", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ league_id: league.id, player_id: playerId, role: "player" }),
+        body: JSON.stringify({ join_code: code, player_id: authUid, role: "player" }),
       });
       if (!joinRes.ok) {
         let msg = "Failed to join league";
@@ -305,8 +287,9 @@ export function PrivateLeagueCreate() {
         throw new Error(msg);
       }
       await reloadStore();
-      setActiveLeagueId(league.id as string);
-      showFeedback(`Joined "${league.name}".`, "success");
+      const joined = store.leagues.find((l) => l.inviteCode.toUpperCase() === code) ?? null;
+      if (joined) setActiveLeagueId(joined.id);
+      showFeedback(`Joined private league.`, "success");
     } catch (err: any) {
       showFeedback(err?.message ?? "Failed to join league.", "error");
     }
