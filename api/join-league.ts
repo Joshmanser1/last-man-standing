@@ -75,19 +75,39 @@ export default async function handler(req: Req, res: Res) {
       leagueId = league.id as string;
     }
 
-    const { data, error } = await supabase
+    const { data: existing, error: existingErr } = await supabase
       .from("memberships")
-      .upsert(
-        {
-          league_id: leagueId,
-          player_id: playerId,
-          role,
-          is_active: true,
-        },
-        { onConflict: "league_id,player_id" }
-      )
-      .select("*")
+      .select("id")
+      .eq("league_id", leagueId)
+      .eq("player_id", playerId)
       .maybeSingle();
+    if (existingErr) {
+      return sendJson(res, 502, {
+        error: existingErr.message,
+        code: existingErr.code,
+        details: existingErr.details,
+        hint: existingErr.hint,
+      });
+    }
+
+    const { data, error } = existing
+      ? await supabase
+          .from("memberships")
+          .update({ is_active: true })
+          .eq("league_id", leagueId)
+          .eq("player_id", playerId)
+          .select("*")
+          .maybeSingle()
+      : await supabase
+          .from("memberships")
+          .insert({
+            league_id: leagueId,
+            player_id: playerId,
+            role,
+            is_active: true,
+          })
+          .select("*")
+          .maybeSingle();
 
     if (error) {
       return sendJson(res, 502, {
