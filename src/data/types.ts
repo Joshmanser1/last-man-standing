@@ -12,6 +12,7 @@ export type League = {
   join_code?: string | null;    // private invite code (for private leagues)
   deleted_at?: string | null;   // soft delete marker
   fpl_start_event?: number | null; // starting FPL event for mapping
+  created_by?: string | null; // owner user id
 };
 
 export type Round = {
