@@ -161,7 +161,7 @@ export function Leaderboard() {
       map.get(p.player_id)!.set(r.round_number, p);
     }
     return map;
-  }, [store, league, rounds]);
+  }, [league, rounds, picks]);
 
   const rows = useMemo(() => {
     // One row per membership (player in league)
