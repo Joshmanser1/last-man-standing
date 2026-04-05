@@ -13,6 +13,7 @@ type LeagueLite = {
   fpl_start_event?: number;
   is_public?: boolean;
   join_code?: string | null;
+  created_by?: string | null;
 };
 
 type Filter = "all" | "upcoming" | "active" | "completed";
@@ -50,7 +51,7 @@ export function LiveGames() {
   const navigate = useNavigate();
   const activeLeagueId = localStorage.getItem("active_league_id") || null;
 
-  // Load leagues + memberships
+  // Load leagues
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -58,16 +59,37 @@ export function LiveGames() {
         await (dataService as any).seed?.();
         const ls = ((await (dataService as any).listLeagues?.()) || []) as LeagueLite[];
         setLeagues(ls);
-
-        const { data: authData } = await supa.auth.getUser();
-        setAuthUserId(authData?.user?.id ?? null);
-
-        const { data: mems } = await supa.from("memberships").select("league_id, player_id, is_active");
-        setMemberships(mems || []);
       } finally {
         setLoading(false);
       }
     })();
+  }, []);
+
+  // Load memberships (re-run on auth state changes)
+  useEffect(() => {
+    let active = true;
+
+    const loadMemberships = async () => {
+      const { data: authData } = await supa.auth.getUser();
+      if (!active) return;
+      setAuthUserId(authData?.user?.id ?? null);
+
+      const { data: mems } = await supa
+        .from("memberships")
+        .select("league_id, player_id, is_active");
+      if (!active) return;
+      setMemberships(mems || []);
+    };
+
+    loadMemberships();
+    const { data: sub } = supa.auth.onAuthStateChange(() => {
+      loadMemberships();
+    });
+
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   // Membership / entrants maps
@@ -237,7 +259,7 @@ export function LiveGames() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredLeagues.map((l) => {
             const entrants = entrantsByLeague.get(l.id) ?? 0;
-            const mine = myLeagueIds.has(l.id);
+            const mine = myLeagueIds.has(l.id) || (authUserId && l.created_by === authUserId);
             const isActive = activeLeagueId === l.id;
 
             const roundLabel = `Round ${l.current_round}`;
