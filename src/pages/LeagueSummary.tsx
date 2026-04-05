@@ -160,7 +160,12 @@ export function LeagueSummary() {
 
         setLeague(lg);
 
-        const r = await dataService.getCurrentRound(lg.id);
+        let r: any = null;
+        try {
+          r = await dataService.getCurrentRound(lg.id);
+        } catch {
+          r = null;
+        }
         setRound(r);
 
         const ts = await dataService.listTeams(lg.id);
@@ -172,18 +177,23 @@ export function LeagueSummary() {
           .eq("league_id", lg.id);
         setMembershipsRaw(mems || []);
 
-        const { data: pickRows } = await supa
-          .from("picks")
-          .select("*")
-          .eq("league_id", lg.id)
-          .eq("round_id", r.id);
-        setPicks(pickRows || []);
+        if (r?.id) {
+          const { data: pickRows } = await supa
+            .from("picks")
+            .select("*")
+            .eq("league_id", lg.id)
+            .eq("round_id", r.id);
+          setPicks(pickRows || []);
 
-        const { data: fixtureRows } = await supa
-          .from("fixtures")
-          .select("*")
-          .eq("round_id", r.id);
-        setFixturesRaw(fixtureRows || []);
+          const { data: fixtureRows } = await supa
+            .from("fixtures")
+            .select("*")
+            .eq("round_id", r.id);
+          setFixturesRaw(fixtureRows || []);
+        } else {
+          setPicks([]);
+          setFixturesRaw([]);
+        }
 
         const playerIds = new Set<string>();
         (mems ?? []).forEach((m: any) => playerIds.add(m.player_id));
@@ -338,7 +348,7 @@ export function LeagueSummary() {
     );
   }
 
-  if (!league || !round) {
+  if (!league) {
     return (
       <div className="min-h-screen grid place-items-center p-6">
         <div className="max-w-lg text-center space-y-4">
@@ -374,6 +384,7 @@ export function LeagueSummary() {
     );
   }
 
+  const roundNumber = round?.round_number ?? league.current_round ?? "—";
   const pickRatio = kpis.entrants ? kpis.picksSubmitted / kpis.entrants : 0;
 
   return (
@@ -398,8 +409,8 @@ export function LeagueSummary() {
               <div className="flex items-center gap-2">
                 {leagueStatusPill(league.status)}
                 <span className="text-xs/5 opacity-90">
-                  GW {round.round_number} •{" "}
-                  {round.pick_deadline_utc
+                  GW {roundNumber} •{" "}
+                  {round?.pick_deadline_utc
                     ? new Date(
                         round.pick_deadline_utc
                       ).toLocaleString()
@@ -500,7 +511,7 @@ export function LeagueSummary() {
         <div className="lg:col-span-2 rounded-2xl border bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-lg font-semibold">
-              Fixtures — Round {round.round_number}
+              Fixtures — Round {roundNumber}
             </h2>
             <button
               onClick={() => navigate("/admin")}
