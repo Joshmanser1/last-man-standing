@@ -177,13 +177,15 @@ export function LeagueSummary() {
           .eq("league_id", lg.id);
         setMembershipsRaw(mems || []);
 
+        let pickRows: any[] = [];
         if (r?.id) {
-          const { data: pickRows } = await supa
+          const { data } = await supa
             .from("picks")
             .select("*")
             .eq("league_id", lg.id)
             .eq("round_id", r.id);
-          setPicks(pickRows || []);
+          pickRows = data || [];
+          setPicks(pickRows);
 
           const { data: fixtureRows } = await supa
             .from("fixtures")
