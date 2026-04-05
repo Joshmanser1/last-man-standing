@@ -74,6 +74,7 @@ const supabaseService: IDataService = {
     if (authErr || !authData?.user?.id) throw new Error("You must be logged in.");
     const uid = authData.user.id;
     const email = authData.user.email ?? null;
+    console.log("upsertPlayer auth", { uid, email });
 
     const { data: existing, error: existingErr } = await supa
       .from("profiles")
@@ -81,9 +82,11 @@ const supabaseService: IDataService = {
       .eq("id", uid)
       .maybeSingle();
     if (existingErr) throw existingErr;
+    console.log("upsertPlayer existing profile", { found: Boolean(existing), email: existing?.email ?? null });
 
     const payload: Record<string, unknown> = { id: uid, display_name };
     if (!existing?.email && email) payload.email = email;
+    console.log("upsertPlayer payload", payload);
 
     const { data, error } = await supa
       .from("profiles")
