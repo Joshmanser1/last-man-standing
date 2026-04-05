@@ -3,18 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
-
-const STORE_KEY = "lms_store_v1";
-
-type Store = {
-  leagues: Array<any>;
-  rounds: Array<any>;
-  teams: Array<any>;
-  players: Array<any>;
-  memberships: Array<any>;
-  picks: Array<any>;
-  fixtures: Array<any>;
-};
+import { supa } from "../lib/supabaseClient";
 
 type CardProps = {
   title: string;
@@ -123,49 +112,94 @@ function formatCountdown(targetIso?: string): {
 export function LeagueSummary() {
   const navigate = useNavigate();
 
-  const [store, setStore] = useState<Store | null>(null);
   const [league, setLeague] = useState<any>(null);
   const [round, setRound] = useState<any>(null);
   const [teams, setTeams] = useState<any[]>([]);
+  const [membershipsRaw, setMembershipsRaw] = useState<any[]>([]);
+  const [picks, setPicks] = useState<any[]>([]);
+  const [fixturesRaw, setFixturesRaw] = useState<any[]>([]);
+  const [playersById, setPlayersById] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [activeLeagueId, setActiveLeagueId] = useState<string>(
     () => localStorage.getItem("active_league_id") || ""
   );
   const [reloadTick, setReloadTick] = useState(0);
 
-  // bootstrap from local store + dataService fallbacks
+  // bootstrap from Supabase + dataService fallbacks
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
         await (dataService as any).seed?.();
 
-        const raw = localStorage.getItem(STORE_KEY);
-        const s = raw ? (JSON.parse(raw) as Store) : ({} as Store);
-        setStore(s);
+        let lg = null;
+        if (activeLeagueId) {
+          const { data } = await supa
+            .from("leagues")
+            .select("*")
+            .eq("id", activeLeagueId)
+            .maybeSingle();
+          lg = data ?? null;
+        }
 
-        const lg =
-          (s?.leagues || []).find((l: any) => l.id === activeLeagueId) ||
-          (await (dataService as any).listLeagues?.())?.[0] ||
-          null;
+        if (!lg) {
+          lg = (await (dataService as any).listLeagues?.())?.[0] || null;
+        }
+
         if (!lg) {
           setLeague(null);
           setRound(null);
           setTeams([]);
+          setMembershipsRaw([]);
+          setPicks([]);
+          setFixturesRaw([]);
+          setPlayersById({});
           setLoading(false);
           return;
         }
+
         setLeague(lg);
 
-        const r =
-          (s?.rounds || []).find(
-            (rr: any) =>
-              rr.league_id === lg.id && rr.round_number === lg.current_round
-          ) || null;
+        const r = await dataService.getCurrentRound(lg.id);
         setRound(r);
 
-        const ts = (s?.teams || []).filter((t: any) => t.league_id === lg.id);
-        setTeams([...ts].sort((a, b) => a.name.localeCompare(b.name)));
+        const ts = await dataService.listTeams(lg.id);
+        setTeams([...(ts || [])].sort((a, b) => a.name.localeCompare(b.name)));
+
+        const { data: mems } = await supa
+          .from("memberships")
+          .select("*")
+          .eq("league_id", lg.id);
+        setMembershipsRaw(mems || []);
+
+        const { data: pickRows } = await supa
+          .from("picks")
+          .select("*")
+          .eq("league_id", lg.id)
+          .eq("round_id", r.id);
+        setPicks(pickRows || []);
+
+        const { data: fixtureRows } = await supa
+          .from("fixtures")
+          .select("*")
+          .eq("round_id", r.id);
+        setFixturesRaw(fixtureRows || []);
+
+        const playerIds = new Set<string>();
+        (mems ?? []).forEach((m: any) => playerIds.add(m.player_id));
+        (pickRows ?? []).forEach((p: any) => playerIds.add(p.player_id));
+
+        if (playerIds.size) {
+          const { data: profiles } = await supa
+            .from("profiles")
+            .select("id, display_name")
+            .in("id", Array.from(playerIds));
+          const pb: Record<string, any> = {};
+          (profiles || []).forEach((p: any) => (pb[p.id] = p));
+          setPlayersById(pb);
+        } else {
+          setPlayersById({});
+        }
       } finally {
         setLoading(false);
       }
@@ -179,26 +213,19 @@ export function LeagueSummary() {
   }, [teams]);
 
   const memberships = useMemo(() => {
-    if (!store || !league) return [];
-    return (store.memberships || []).filter(
+    if (!league) return [];
+    return (membershipsRaw || []).filter(
       (m: any) => m.league_id === league.id && m.is_active
     );
-  }, [store, league]);
-
-  const playersById = useMemo(() => {
-    const map: Record<string, any> = {};
-    if (!store) return map;
-    for (const p of store.players || []) map[p.id] = p;
-    return map;
-  }, [store]);
+  }, [membershipsRaw, league]);
 
   // Picks for this round
   const roundPicks = useMemo(() => {
-    if (!store || !league || !round) return [];
-    return (store.picks || []).filter(
+    if (!league || !round) return [];
+    return (picks || []).filter(
       (p: any) => p.league_id === league.id && p.round_id === round.id
     );
-  }, [store, league, round]);
+  }, [picks, league, round]);
 
   // KPIs
   const kpis = useMemo(() => {
@@ -251,8 +278,8 @@ export function LeagueSummary() {
 
   // Fixture list for this round
   const fixtures = useMemo(() => {
-    if (!store || !round) return [];
-    return (store.fixtures || [])
+    if (!round) return [];
+    return (fixturesRaw || [])
       .filter((f: any) => f.round_id === round.id)
       .map((f: any) => ({
         ...f,
@@ -264,7 +291,7 @@ export function LeagueSummary() {
         const bt = b.kickoff_utc ? Date.parse(b.kickoff_utc) : 0;
         return at - bt;
       });
-  }, [store, round, byTeamId]);
+  }, [fixturesRaw, round, byTeamId]);
 
   // Per-team pick popularity (top 5)
   const popularity = useMemo(() => {

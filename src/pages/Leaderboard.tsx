@@ -2,8 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as htmlToImage from "html-to-image";
-
-const STORE_KEY = "lms_store_v1";
+import { supa } from "../lib/supabaseClient";
 
 type ID = string;
 
@@ -41,24 +40,7 @@ type Pick = {
   reason?: "loss" | "draw" | "no-pick";
 };
 type Team = { id: ID; league_id: ID; name: string; code: string };
-type Store = {
-  leagues?: League[];
-  rounds?: Round[];
-  players?: Player[];
-  memberships?: Membership[];
-  picks?: Pick[];
-  teams?: Team[];
-};
-
 type ViewMode = "leaderboard" | "matrix";
-
-function readStore(): Store {
-  try {
-    return JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
-  } catch {
-    return {};
-  }
-}
 
 function teamShort(name: string) {
   const cleaned = name.replace(/\s+/g, " ").trim();
@@ -74,9 +56,14 @@ function teamShort(name: string) {
 
 export function Leaderboard() {
   const navigate = useNavigate();
-  const [storeTick, setStoreTick] = useState(0);
   const [view, setView] = useState<ViewMode>("leaderboard");
   const [showElims, setShowElims] = useState(true);
+  const [league, setLeague] = useState<League | null>(null);
+  const [rounds, setRounds] = useState<Round[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [memberships, setMemberships] = useState<Membership[]>([]);
+  const [picks, setPicks] = useState<Pick[]>([]);
+  const [playersById, setPlayersById] = useState<Map<ID, Player>>(new Map());
 
   // node to export as PNG
   const exportRef = useRef<HTMLDivElement>(null);
@@ -84,52 +71,83 @@ export function Leaderboard() {
   // active league
   const activeLeagueId = localStorage.getItem("active_league_id") || "";
 
-  // re-poll local store when other pages mutate it
   useEffect(() => {
-    const h = () => setStoreTick((x) => x + 1);
-    window.addEventListener("lms:store-updated", h);
-    return () => window.removeEventListener("lms:store-updated", h);
-  }, []);
+    if (!activeLeagueId) {
+      setLeague(null);
+      setRounds([]);
+      setTeams([]);
+      setMemberships([]);
+      setPicks([]);
+      setPlayersById(new Map());
+      return;
+    }
 
-  const store = useMemo(() => readStore(), [storeTick]);
+    (async () => {
+      const { data: lg } = await supa
+        .from("leagues")
+        .select("*")
+        .eq("id", activeLeagueId)
+        .maybeSingle();
+      if (!lg) {
+        setLeague(null);
+        setRounds([]);
+        setTeams([]);
+        setMemberships([]);
+        setPicks([]);
+        setPlayersById(new Map());
+        return;
+      }
+      setLeague(lg as League);
 
-  const league: League | null = useMemo(() => {
-    return (store.leagues || []).find((l) => l.id === activeLeagueId) || null;
-  }, [store, activeLeagueId]);
+      const [roundsRes, teamsRes, membershipsRes, picksRes] = await Promise.all([
+        supa
+          .from("rounds")
+          .select("*")
+          .eq("league_id", activeLeagueId)
+          .order("round_number", { ascending: true }),
+        supa.from("teams").select("*").eq("league_id", activeLeagueId),
+        supa.from("memberships").select("*").eq("league_id", activeLeagueId),
+        supa.from("picks").select("*").eq("league_id", activeLeagueId),
+      ]);
 
-  const rounds = useMemo<Round[]>(() => {
-    if (!league) return [];
-    return (store.rounds || [])
-      .filter((r) => r.league_id === league.id)
-      .sort((a, b) => a.round_number - b.round_number);
-  }, [store, league]);
+      setRounds((roundsRes.data ?? []) as Round[]);
+      setTeams((teamsRes.data ?? []) as Team[]);
+      setMemberships((membershipsRes.data ?? []) as Membership[]);
+      setPicks((picksRes.data ?? []) as Pick[]);
+
+      const playerIds = new Set<string>();
+      (membershipsRes.data ?? []).forEach((m: any) => playerIds.add(m.player_id));
+      (picksRes.data ?? []).forEach((p: any) => playerIds.add(p.player_id));
+
+      if (playerIds.size) {
+        const { data: profiles } = await supa
+          .from("profiles")
+          .select("id, display_name")
+          .in("id", Array.from(playerIds));
+        const map = new Map<ID, Player>();
+        (profiles ?? []).forEach((p: any) => map.set(p.id, p));
+        setPlayersById(map);
+      } else {
+        setPlayersById(new Map());
+      }
+    })();
+  }, [activeLeagueId]);
 
   const teamsById = useMemo(() => {
     const map = new Map<ID, Team>();
-    for (const t of store.teams || []) map.set(t.id, t);
+    for (const t of teams || []) map.set(t.id, t);
     return map;
-  }, [store]);
-
-  const playersById = useMemo(() => {
-    const m = new Map<ID, Player>();
-    for (const p of store.players || []) m.set(p.id, p);
-    return m;
-  }, [store]);
-
-  const memberships = useMemo<Membership[]>(() => {
-    if (!league) return [];
-    return (store.memberships || []).filter((m) => m.league_id === league.id);
-  }, [store, league]);
+  }, [teams]);
 
   const picksByPlayerByRound = useMemo(() => {
     // map: player -> (round_number -> pick)
     const map = new Map<ID, Map<number, Pick>>();
     if (!league) return map;
-    const picks = (store.picks || []).filter((p) => p.league_id === league.id);
+    const leaguePicks = picks.filter((p) => p.league_id === league.id);
     const roundById = new Map<ID, Round>();
     for (const r of rounds) roundById.set(r.id, r);
 
-    for (const p of picks) {
+    for (const p of leaguePicks) {
       const r = roundById.get(p.round_id);
       if (!r) continue;
       if (!map.has(p.player_id)) map.set(p.player_id, new Map());

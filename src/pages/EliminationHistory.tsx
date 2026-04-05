@@ -2,8 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
-
-const STORE_KEY = "lms_store_v1";
+import { supa } from "../lib/supabaseClient";
 
 type Row = {
   roundNumber: number;
@@ -19,6 +18,7 @@ export function EliminationHistory() {
   );
   const [rounds, setRounds] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
+  const [picks, setPicks] = useState<any[]>([]);
   const [playersById, setPlayersById] = useState<Record<string, any>>({});
   const [roundFilter, setRoundFilter] = useState<number | "all">("all");
   const [q, setQ] = useState("");
@@ -28,34 +28,52 @@ export function EliminationHistory() {
     if (!leagueId) {
       setRounds([]);
       setTeams([]);
+      setPicks([]);
       setPlayersById({});
       return;
     }
 
     (async () => {
-      const raw = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
-      const rs = (raw.rounds || []).filter((r: any) => r.league_id === leagueId);
-      setRounds(rs);
+      const { data: rs } = await supa
+        .from("rounds")
+        .select("*")
+        .eq("league_id", leagueId)
+        .order("round_number", { ascending: true });
+      setRounds(rs || []);
 
       const ts = await dataService.listTeams(leagueId);
       setTeams(ts || []);
 
-      const pb: Record<string, any> = {};
-      (raw.players || []).forEach((p: any) => (pb[p.id] = p));
-      setPlayersById(pb);
+      const { data: pickRows } = await supa
+        .from("picks")
+        .select("*")
+        .eq("league_id", leagueId);
+      setPicks(pickRows || []);
+
+      const playerIds = Array.from(
+        new Set((pickRows ?? []).map((p: any) => p.player_id as string))
+      );
+      if (playerIds.length) {
+        const { data: profiles } = await supa
+          .from("profiles")
+          .select("id, display_name")
+          .in("id", playerIds);
+        const pb: Record<string, any> = {};
+        (profiles || []).forEach((p: any) => (pb[p.id] = p));
+        setPlayersById(pb);
+      } else {
+        setPlayersById({});
+      }
     })();
   }, [leagueId, reloadTick]);
 
   const rows = useMemo(() => {
     if (!leagueId) return [];
-    const raw = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
-    const picks: any[] = (raw.picks || []).filter(
-      (p: any) => p.league_id === leagueId
-    );
     const byRound = new Map<string, any>(rounds.map((r) => [r.id, r]));
     const teamName = (id: string) => teams.find((t) => t.id === id)?.name ?? "—";
 
-    const eliminated = picks
+    const eliminated = (picks || [])
+      .filter((p: any) => p.league_id === leagueId)
       .filter((p) => p.status === "eliminated" || p.status === "no-pick")
       .map((p) => {
         const r = byRound.get(p.round_id);
@@ -70,7 +88,7 @@ export function EliminationHistory() {
       });
 
     return eliminated;
-  }, [leagueId, rounds, teams, playersById]);
+  }, [leagueId, rounds, teams, playersById, picks]);
 
   const filtered = useMemo(() => {
     let arr = [...rows];
