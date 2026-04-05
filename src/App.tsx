@@ -106,6 +106,14 @@ function AppInner() {
             }
           />
           <Route
+            path="/league"
+            element={
+              <RequireAuth>
+                <LeagueSummary />
+              </RequireAuth>
+            }
+          />
+          <Route
             path="/private"
             element={
               <RequireAuth>
