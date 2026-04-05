@@ -112,6 +112,7 @@ function formatCountdown(targetIso?: string): {
 export function LeagueSummary() {
   const navigate = useNavigate();
 
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [league, setLeague] = useState<any>(null);
   const [round, setRound] = useState<any>(null);
   const [teams, setTeams] = useState<any[]>([]);
@@ -130,6 +131,7 @@ export function LeagueSummary() {
     (async () => {
       setLoading(true);
       try {
+        setLoadError(null);
         await (dataService as any).seed?.();
 
         let lg = null;
@@ -212,6 +214,8 @@ export function LeagueSummary() {
         } else {
           setPlayersById({});
         }
+      } catch (err: any) {
+        setLoadError(err?.message ?? "Failed to load league data");
       } finally {
         setLoading(false);
       }
@@ -400,6 +404,17 @@ export function LeagueSummary() {
             setReloadTick((x) => x + 1);
           }}
         />
+      </div>
+
+      {/* Minimal fallback summary */}
+      <div className="mb-4 rounded-2xl border bg-white p-4 text-sm text-slate-700">
+        <div className="font-semibold">{league.name}</div>
+        <div className="mt-1 text-slate-600">
+          Round {roundNumber} • Members: {memberships.length} • Picks: {roundPicks.length}
+        </div>
+        {loadError && (
+          <div className="mt-2 text-xs text-rose-600">{loadError}</div>
+        )}
       </div>
 
       {/* Premium Hero */}
