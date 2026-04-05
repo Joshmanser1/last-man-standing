@@ -145,7 +145,8 @@ export function MyGames() {
           const { data: leaguesData, error: leaguesErr } = await supa
             .from("leagues")
             .select("id, name, created_by, created_at, join_code, fpl_start_event, start_date_utc, is_public")
-            .in("id", privateLeagueIds);
+            .in("id", privateLeagueIds)
+            .eq("deleted_at", null);
           if (leaguesErr) throw leaguesErr;
 
           const privateLeagues = (leaguesData ?? [])

@@ -140,6 +140,7 @@ export function LeagueSummary() {
             .from("leagues")
             .select("*")
             .eq("id", activeLeagueId)
+            .eq("deleted_at", null)
             .maybeSingle();
           lg = data ?? null;
         }

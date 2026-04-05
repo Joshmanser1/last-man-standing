@@ -21,19 +21,34 @@ const supabaseService: IDataService = {
 
   // Lookups
   async listLeagues(): Promise<League[]> {
-    const { data, error } = await supa.from("leagues").select("*").order("created_at", { ascending: true });
+    const { data, error } = await supa
+      .from("leagues")
+      .select("*")
+      .eq("deleted_at", null)
+      .order("created_at", { ascending: true });
     if (error) throw error;
     return (data ?? []) as League[];
   },
 
   async getLeagueByName(name: string): Promise<League> {
-    const { data, error } = await supa.from("leagues").select("*").eq("name", name).limit(1).maybeSingle();
+    const { data, error } = await supa
+      .from("leagues")
+      .select("*")
+      .eq("name", name)
+      .eq("deleted_at", null)
+      .limit(1)
+      .maybeSingle();
     if (error) throw error;
     return must(data as League, `League '${name}' not found`);
   },
 
   async getCurrentRound(leagueId: ID): Promise<Round> {
-    const { data: league, error: e1 } = await supa.from("leagues").select("*").eq("id", leagueId).maybeSingle();
+    const { data: league, error: e1 } = await supa
+      .from("leagues")
+      .select("*")
+      .eq("id", leagueId)
+      .eq("deleted_at", null)
+      .maybeSingle();
     if (e1) throw e1;
     const num = must(league as League, "League not found").current_round;
 
@@ -126,7 +141,12 @@ const supabaseService: IDataService = {
 
   // Rounds (admin)
   async createNextRound(leagueId: ID, nextDeadlineISO?: string): Promise<Round> {
-    const { data: league, error: e1 } = await supa.from("leagues").select("*").eq("id", leagueId).maybeSingle();
+    const { data: league, error: e1 } = await supa
+      .from("leagues")
+      .select("*")
+      .eq("id", leagueId)
+      .eq("deleted_at", null)
+      .maybeSingle();
     if (e1) throw e1;
 
     const nextNum = (must(league as League).current_round as number) + 1;
@@ -279,7 +299,12 @@ const supabaseService: IDataService = {
   },
 
   async importFixturesForCurrentRound(leagueId: ID): Promise<{ event: number }> {
-    const { data: league, error: e0 } = await supa.from("leagues").select("*").eq("id", leagueId).maybeSingle();
+    const { data: league, error: e0 } = await supa
+      .from("leagues")
+      .select("*")
+      .eq("id", leagueId)
+      .eq("deleted_at", null)
+      .maybeSingle();
     if (e0) throw e0;
 
     const baseEvent: number =
