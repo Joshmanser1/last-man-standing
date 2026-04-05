@@ -4,6 +4,7 @@ import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
 import { useNotifications } from "../components/Notifications";
 import { computeOutcome } from "../lib/outcome";
+import { supa } from "../lib/supabaseClient";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -23,6 +24,7 @@ export function Results() {
   );
   const [round, setRound] = useState<any>(null);
   const [teams, setTeams] = useState<any[]>([]);
+  const [picks, setPicks] = useState<any[]>([]);
   const [playersById, setPlayersById] = useState<Record<string, any>>({});
   const [filter, setFilter] = useState<FilterKey>("all");
   const [reloadTick, setReloadTick] = useState(0);
@@ -37,13 +39,26 @@ export function Results() {
       const ts = await dataService.listTeams(leagueId);
       setTeams(ts || []);
 
-      // load players (mock store)
-      const raw = localStorage.getItem(STORE_KEY);
-      if (raw) {
-        const s = JSON.parse(raw);
+      const { data: pickRows } = await supa
+        .from("picks")
+        .select("*")
+        .eq("league_id", leagueId)
+        .eq("round_id", r.id);
+      setPicks(pickRows ?? []);
+
+      const playerIds = Array.from(
+        new Set((pickRows ?? []).map((p: any) => p.player_id as string))
+      );
+      if (playerIds.length) {
+        const { data: profiles } = await supa
+          .from("profiles")
+          .select("id, display_name")
+          .in("id", playerIds);
         const pb: Record<string, any> = {};
-        (s.players || []).forEach((p: any) => (pb[p.id] = p));
+        (profiles || []).forEach((p: any) => (pb[p.id] = p));
         setPlayersById(pb);
+      } else {
+        setPlayersById({});
       }
     })();
   }, [leagueId, reloadTick]);
@@ -59,16 +74,14 @@ export function Results() {
 
   const rows: Row[] = useMemo(() => {
     if (!round) return [];
-    const raw = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
-    const picks = (raw.picks || []).filter((p: any) => p.round_id === round.id);
     const teamName = (id: string) => teams.find((t: any) => t.id === id)?.name ?? "—";
-    return picks.map((p: any) => ({
+    return (picks || []).map((p: any) => ({
       player: playersById[p.player_id]?.display_name ?? p.player_id.slice(0, 6),
       team: teamName(p.team_id),
       status: (p.status ?? "pending") as Row["status"],
       reason: p.reason ?? "",
     }));
-  }, [round, teams, playersById]);
+  }, [round, teams, playersById, picks]);
 
   const filtered = useMemo(() => {
     if (filter === "all") return rows;
