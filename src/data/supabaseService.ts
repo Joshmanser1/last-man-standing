@@ -70,10 +70,24 @@ const supabaseService: IDataService = {
 
   // Players & membership
   async upsertPlayer(display_name: string): Promise<Player> {
-    const uid = await currentUserId();
+    const { data: authData, error: authErr } = await supa.auth.getUser();
+    if (authErr || !authData?.user?.id) throw new Error("You must be logged in.");
+    const uid = authData.user.id;
+    const email = authData.user.email ?? null;
+
+    const { data: existing, error: existingErr } = await supa
+      .from("profiles")
+      .select("email")
+      .eq("id", uid)
+      .maybeSingle();
+    if (existingErr) throw existingErr;
+
+    const payload: Record<string, unknown> = { id: uid, display_name };
+    if (!existing?.email && email) payload.email = email;
+
     const { data, error } = await supa
       .from("profiles")
-      .upsert({ id: uid, display_name }, { onConflict: "id" })
+      .upsert(payload, { onConflict: "id" })
       .select("*")
       .maybeSingle();
     if (error) throw error;
