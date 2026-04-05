@@ -4,8 +4,6 @@ import { dataService } from "../data/service";
 import { useNavigate } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
 
-const STORE_KEY = "lms_store_v1";
-
 type LeagueLite = {
   id: string;
   name: string;
@@ -15,12 +13,6 @@ type LeagueLite = {
   fpl_start_event?: number;
   is_public?: boolean;
   join_code?: string | null;
-};
-
-type Store = {
-  memberships?: any[];
-  rounds?: any[];
-  picks?: any[];
 };
 
 type Filter = "all" | "upcoming" | "active" | "completed";
@@ -50,15 +42,15 @@ function statusPill(status: string) {
 export function LiveGames() {
   const [leagues, setLeagues] = useState<LeagueLite[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
-  const [store, setStore] = useState<Store | null>(null);
+  const [memberships, setMemberships] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
 
   const navigate = useNavigate();
-  const playerId = localStorage.getItem("player_id") || null;
   const activeLeagueId = localStorage.getItem("active_league_id") || null;
 
-  // Load leagues + local store
+  // Load leagues + memberships
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -67,9 +59,11 @@ export function LiveGames() {
         const ls = ((await (dataService as any).listLeagues?.()) || []) as LeagueLite[];
         setLeagues(ls);
 
-        const raw = localStorage.getItem(STORE_KEY);
-        const s = raw ? (JSON.parse(raw) as Store) : {};
-        setStore(s);
+        const { data: authData } = await supa.auth.getUser();
+        setAuthUserId(authData?.user?.id ?? null);
+
+        const { data: mems } = await supa.from("memberships").select("league_id, player_id, is_active");
+        setMemberships(mems || []);
       } finally {
         setLoading(false);
       }
@@ -77,8 +71,6 @@ export function LiveGames() {
   }, []);
 
   // Membership / entrants maps
-  const memberships = useMemo(() => store?.memberships || [], [store]);
-
   const entrantsByLeague = useMemo(() => {
     const map = new Map<string, number>();
     for (const m of memberships) {
@@ -89,13 +81,14 @@ export function LiveGames() {
   }, [memberships]);
 
   const myLeagueIds = useMemo(() => {
-    if (!playerId) return new Set<string>();
+    const pid = authUserId || localStorage.getItem("player_id") || null;
+    if (!pid) return new Set<string>();
     const ids = new Set<string>();
     for (const m of memberships) {
-      if (m.player_id === playerId) ids.add(m.league_id);
+      if (m.player_id === pid) ids.add(m.league_id);
     }
     return ids;
-  }, [memberships, playerId]);
+  }, [memberships, authUserId]);
 
   const filteredLeagues = useMemo(() => {
     if (filter === "all") return leagues;
