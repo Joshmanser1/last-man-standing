@@ -87,15 +87,18 @@ export function MyGames() {
   useEffect(() => {
     if (!hydrated) return;
 
-    const pid = localStorage.getItem("player_id") || "";
-    if (!pid) {
-      setLoading(false);
-      return;
-    }
-
     (async () => {
       setLoading(true);
       try {
+        const { data: authData } = await supa.auth.getUser();
+        const pid = authData?.user?.id ?? "";
+        if (!pid) {
+          setPublicJoined([]);
+          setAllPublic([]);
+          setPrivateJoined([]);
+          return;
+        }
+
         // ---- Public LMS games the user is in ----
         let leagues: LeagueLite[] = [];
         let myLeagues: LeagueLite[] = [];
@@ -128,22 +131,35 @@ export function MyGames() {
         setAllPublic(leagues);
         setPublicJoined(myLeagues);
 
-        // ---- Private leagues from browser-local store ----
-        try {
-          const rawPriv = localStorage.getItem(PRIVATE_STORE_KEY);
-          if (rawPriv) {
-            const store: PrivateStore = JSON.parse(rawPriv);
-            const ids = new Set(
-              store.memberships
-                .filter((m) => m.playerId === pid)
-                .map((m) => m.leagueId)
-            );
-            setPrivateJoined(store.leagues.filter((l) => ids.has(l.id)));
-          } else {
-            setPrivateJoined([]);
-          }
-        } catch {
+        // ---- Private leagues from Supabase memberships ----
+        const { data: myMemberships, error: myMemErr } = await supa
+          .from("memberships")
+          .select("league_id")
+          .eq("player_id", pid);
+        if (myMemErr) throw myMemErr;
+
+        const privateLeagueIds = (myMemberships ?? []).map((m: any) => m.league_id as string);
+        if (privateLeagueIds.length === 0) {
           setPrivateJoined([]);
+        } else {
+          const { data: leaguesData, error: leaguesErr } = await supa
+            .from("leagues")
+            .select("id, name, created_by, created_at, join_code, fpl_start_event, start_date_utc, is_public")
+            .in("id", privateLeagueIds);
+          if (leaguesErr) throw leaguesErr;
+
+          const privateLeagues = (leaguesData ?? [])
+            .filter((l: any) => l.is_public !== true)
+            .map((l: any) => ({
+              id: l.id as string,
+              name: l.name as string,
+              ownerId: (l.created_by as string) ?? "",
+              createdAt: (l.created_at as string) ?? new Date().toISOString(),
+              inviteCode: (l.join_code as string) ?? "",
+              fplStartEvent: (l.fpl_start_event as number) ?? undefined,
+              startDateUtc: (l.start_date_utc as string) ?? undefined,
+            })) as PrivateLeague[];
+          setPrivateJoined(privateLeagues);
         }
       } finally {
         setLoading(false);
