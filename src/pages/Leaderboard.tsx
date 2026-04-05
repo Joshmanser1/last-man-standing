@@ -64,6 +64,7 @@ export function Leaderboard() {
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [picks, setPicks] = useState<Pick[]>([]);
   const [playersById, setPlayersById] = useState<Map<ID, Player>>(new Map());
+  const [loading, setLoading] = useState<boolean>(true);
 
   // node to export as PNG
   const exportRef = useRef<HTMLDivElement>(null);
@@ -79,56 +80,62 @@ export function Leaderboard() {
       setMemberships([]);
       setPicks([]);
       setPlayersById(new Map());
+      setLoading(false);
       return;
     }
 
     (async () => {
-      const { data: lg } = await supa
-        .from("leagues")
-        .select("*")
-        .eq("id", activeLeagueId)
-        .maybeSingle();
-      if (!lg) {
-        setLeague(null);
-        setRounds([]);
-        setTeams([]);
-        setMemberships([]);
-        setPicks([]);
-        setPlayersById(new Map());
-        return;
-      }
-      setLeague(lg as League);
-
-      const [roundsRes, teamsRes, membershipsRes, picksRes] = await Promise.all([
-        supa
-          .from("rounds")
+      setLoading(true);
+      try {
+        const { data: lg } = await supa
+          .from("leagues")
           .select("*")
-          .eq("league_id", activeLeagueId)
-          .order("round_number", { ascending: true }),
-        supa.from("teams").select("*").eq("league_id", activeLeagueId),
-        supa.from("memberships").select("*").eq("league_id", activeLeagueId),
-        supa.from("picks").select("*").eq("league_id", activeLeagueId),
-      ]);
+          .eq("id", activeLeagueId)
+          .maybeSingle();
+        if (!lg) {
+          setLeague(null);
+          setRounds([]);
+          setTeams([]);
+          setMemberships([]);
+          setPicks([]);
+          setPlayersById(new Map());
+          return;
+        }
+        setLeague(lg as League);
 
-      setRounds((roundsRes.data ?? []) as Round[]);
-      setTeams((teamsRes.data ?? []) as Team[]);
-      setMemberships((membershipsRes.data ?? []) as Membership[]);
-      setPicks((picksRes.data ?? []) as Pick[]);
+        const [roundsRes, teamsRes, membershipsRes, picksRes] = await Promise.all([
+          supa
+            .from("rounds")
+            .select("*")
+            .eq("league_id", activeLeagueId)
+            .order("round_number", { ascending: true }),
+          supa.from("teams").select("*").eq("league_id", activeLeagueId),
+          supa.from("memberships").select("*").eq("league_id", activeLeagueId),
+          supa.from("picks").select("*").eq("league_id", activeLeagueId),
+        ]);
 
-      const playerIds = new Set<string>();
-      (membershipsRes.data ?? []).forEach((m: any) => playerIds.add(m.player_id));
-      (picksRes.data ?? []).forEach((p: any) => playerIds.add(p.player_id));
+        setRounds((roundsRes.data ?? []) as Round[]);
+        setTeams((teamsRes.data ?? []) as Team[]);
+        setMemberships((membershipsRes.data ?? []) as Membership[]);
+        setPicks((picksRes.data ?? []) as Pick[]);
 
-      if (playerIds.size) {
-        const { data: profiles } = await supa
-          .from("profiles")
-          .select("id, display_name")
-          .in("id", Array.from(playerIds));
-        const map = new Map<ID, Player>();
-        (profiles ?? []).forEach((p: any) => map.set(p.id, p));
-        setPlayersById(map);
-      } else {
-        setPlayersById(new Map());
+        const playerIds = new Set<string>();
+        (membershipsRes.data ?? []).forEach((m: any) => playerIds.add(m.player_id));
+        (picksRes.data ?? []).forEach((p: any) => playerIds.add(p.player_id));
+
+        if (playerIds.size) {
+          const { data: profiles } = await supa
+            .from("profiles")
+            .select("id, display_name")
+            .in("id", Array.from(playerIds));
+          const map = new Map<ID, Player>();
+          (profiles ?? []).forEach((p: any) => map.set(p.id, p));
+          setPlayersById(map);
+        } else {
+          setPlayersById(new Map());
+        }
+      } finally {
+        setLoading(false);
       }
     })();
   }, [activeLeagueId]);
@@ -267,15 +274,27 @@ export function Leaderboard() {
     }
   }
 
+  if (loading && activeLeagueId) {
+    return (
+      <div className="container-page py-10 grid place-items-center text-slate-600">
+        <div className="text-center">
+          <div className="font-semibold mb-2">Loading active league…</div>
+        </div>
+      </div>
+    );
+  }
+
   if (!league) {
     return (
       <div className="container-page py-10 grid place-items-center text-slate-600">
         <div className="text-center">
           <div className="font-semibold mb-2">No active game selected</div>
         </div>
-        <button className="btn btn-primary" onClick={() => navigate("/live")}>
-          Pick a game from Live
-        </button>
+        {!activeLeagueId && (
+          <button className="btn btn-primary" onClick={() => navigate("/live")}>
+            Pick a game from Live
+          </button>
+        )}
       </div>
     );
   }
