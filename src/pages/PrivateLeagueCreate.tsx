@@ -232,6 +232,7 @@ export function PrivateLeagueCreate() {
       setStartEventId(null);
       setStartDeadlineISO(null);
       setActiveLeagueId(created.id);
+      localStorage.setItem("active_league_id", created.id);
       showFeedback(
         `Private league created. Invite code: ${code}${
           startEventId ? ` (starts FPL GW ${startEventId})` : ""
@@ -290,7 +291,10 @@ export function PrivateLeagueCreate() {
       }
       await reloadStore();
       const joined = store.leagues.find((l) => l.inviteCode.toUpperCase() === code) ?? null;
-      if (joined) setActiveLeagueId(joined.id);
+      if (joined) {
+        setActiveLeagueId(joined.id);
+        localStorage.setItem("active_league_id", joined.id);
+      }
       showFeedback(`Joined private league.`, "success");
     } catch (err: any) {
       showFeedback(err?.message ?? "Failed to join league.", "error");
