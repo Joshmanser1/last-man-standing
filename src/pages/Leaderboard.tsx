@@ -91,7 +91,7 @@ export function Leaderboard() {
           .from("leagues")
           .select("*")
           .eq("id", activeLeagueId)
-          .eq("deleted_at", null)
+          .is("deleted_at", null)
           .maybeSingle();
         if (!lg) {
           setLeague(null);

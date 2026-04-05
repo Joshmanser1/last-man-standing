@@ -146,7 +146,7 @@ export function MyGames() {
             .from("leagues")
             .select("id, name, created_by, created_at, join_code, fpl_start_event, start_date_utc, is_public")
             .in("id", privateLeagueIds)
-            .eq("deleted_at", null);
+            .is("deleted_at", null);
           if (leaguesErr) throw leaguesErr;
 
           const privateLeagues = (leaguesData ?? [])

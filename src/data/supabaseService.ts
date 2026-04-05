@@ -24,7 +24,7 @@ const supabaseService: IDataService = {
     const { data, error } = await supa
       .from("leagues")
       .select("*")
-      .eq("deleted_at", null)
+      .is("deleted_at", null)
       .order("created_at", { ascending: true });
     if (error) throw error;
     return (data ?? []) as League[];
@@ -35,7 +35,7 @@ const supabaseService: IDataService = {
       .from("leagues")
       .select("*")
       .eq("name", name)
-      .eq("deleted_at", null)
+      .is("deleted_at", null)
       .limit(1)
       .maybeSingle();
     if (error) throw error;
@@ -47,7 +47,7 @@ const supabaseService: IDataService = {
       .from("leagues")
       .select("*")
       .eq("id", leagueId)
-      .eq("deleted_at", null)
+      .is("deleted_at", null)
       .maybeSingle();
     if (e1) throw e1;
     const num = must(league as League, "League not found").current_round;
@@ -145,7 +145,7 @@ const supabaseService: IDataService = {
       .from("leagues")
       .select("*")
       .eq("id", leagueId)
-      .eq("deleted_at", null)
+      .is("deleted_at", null)
       .maybeSingle();
     if (e1) throw e1;
 
@@ -303,7 +303,7 @@ const supabaseService: IDataService = {
       .from("leagues")
       .select("*")
       .eq("id", leagueId)
-      .eq("deleted_at", null)
+      .is("deleted_at", null)
       .maybeSingle();
     if (e0) throw e0;
 

@@ -102,7 +102,7 @@ export function PrivateLeagueCreate() {
       .from("leagues")
       .select("id, name, created_by, created_at, is_public, join_code, fpl_start_event, start_date_utc")
       .in("id", leagueIds)
-      .eq("deleted_at", null);
+      .is("deleted_at", null);
     if (leaguesErr) throw leaguesErr;
 
     const privateLeagues = (leaguesData ?? [])
