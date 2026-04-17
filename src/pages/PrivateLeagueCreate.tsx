@@ -117,33 +117,26 @@ export function PrivateLeagueCreate() {
         inviteCode: (l.join_code as string) ?? "",
       })) as PrivateLeague[];
 
-    const { data: allMemberships, error: memErr } = await supa
-      .from("memberships")
-      .select("league_id, player_id, joined_at")
-      .in("league_id", privateLeagues.map((l) => l.id));
-    if (memErr) throw memErr;
-
-    const playerIds = Array.from(
-      new Set((allMemberships ?? []).map((m: any) => m.player_id as string))
+    const memberBatches = await Promise.all(
+      privateLeagues.map(async (l) => {
+        const resp = await fetch("/api/league-members", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ league_id: l.id }),
+        });
+        if (!resp.ok) throw new Error("Failed to load league members");
+        return (await resp.json()) as Array<any>;
+      })
     );
-    let profilesById = new Map<string, string>();
-    if (playerIds.length > 0) {
-      const { data: profiles, error: profErr } = await supa
-        .from("profiles")
-        .select("id, display_name")
-        .in("id", playerIds);
-      if (profErr) throw profErr;
-      profilesById = new Map(
-        (profiles ?? []).map((p: any) => [p.id as string, p.display_name as string])
-      );
-    }
 
-    const memberships = (allMemberships ?? []).map((m: any) => ({
-      leagueId: m.league_id as string,
-      playerId: m.player_id as string,
-      joinedAt: m.joined_at as string,
-      displayName: profilesById.get(m.player_id as string),
-    })) as PrivateMembership[];
+    const memberships = memberBatches
+      .flat()
+      .map((m: any) => ({
+        leagueId: m.league_id as string,
+        playerId: m.player_id as string,
+        joinedAt: m.joined_at as string,
+        displayName: (m.display_name as string | null) ?? undefined,
+      })) as PrivateMembership[];
 
     setStore({ leagues: privateLeagues, memberships });
   };

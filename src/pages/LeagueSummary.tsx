@@ -174,10 +174,20 @@ export function LeagueSummary() {
         const ts = await dataService.listTeams(lg.id);
         setTeams([...(ts || [])].sort((a, b) => a.name.localeCompare(b.name)));
 
-        const { data: mems } = await supa
-          .from("memberships")
-          .select("*")
-          .eq("league_id", lg.id);
+        const memberResp = await fetch("/api/league-members", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ league_id: lg.id }),
+        });
+        if (!memberResp.ok) throw new Error("Failed to load league members");
+        const memberRows = (await memberResp.json()) as Array<any>;
+        const mems = (memberRows ?? []).map((m: any) => ({
+          league_id: m.league_id,
+          player_id: m.player_id,
+          joined_at: m.joined_at,
+          role: m.role,
+          is_active: m.is_active,
+        }));
         setMembershipsRaw(mems || []);
 
         let pickRows: any[] = [];
@@ -200,21 +210,13 @@ export function LeagueSummary() {
           setFixturesRaw([]);
         }
 
-        const playerIds = new Set<string>();
-        (mems ?? []).forEach((m: any) => playerIds.add(m.player_id));
-        (pickRows ?? []).forEach((p: any) => playerIds.add(p.player_id));
-
-        if (playerIds.size) {
-          const { data: profiles } = await supa
-            .from("profiles")
-            .select("id, display_name")
-            .in("id", Array.from(playerIds));
-          const pb: Record<string, any> = {};
-          (profiles || []).forEach((p: any) => (pb[p.id] = p));
-          setPlayersById(pb);
-        } else {
-          setPlayersById({});
-        }
+        const pb: Record<string, any> = {};
+        (memberRows ?? []).forEach((m: any) => {
+          if (typeof m.player_id === "string") {
+            pb[m.player_id] = { id: m.player_id, display_name: m.display_name ?? null };
+          }
+        });
+        setPlayersById(pb);
       } catch (err: any) {
         setLoadError(err?.message ?? "Failed to load league data");
       } finally {
