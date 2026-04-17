@@ -113,6 +113,7 @@ export function LeagueSummary() {
   const navigate = useNavigate();
 
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
   const [league, setLeague] = useState<any>(null);
   const [round, setRound] = useState<any>(null);
   const [teams, setTeams] = useState<any[]>([]);
@@ -133,6 +134,8 @@ export function LeagueSummary() {
       try {
         setLoadError(null);
         await (dataService as any).seed?.();
+        const { data: authData } = await supa.auth.getUser();
+        setViewerUserId(authData?.user?.id ?? null);
 
         let lg = null;
         if (activeLeagueId) {
@@ -330,9 +333,18 @@ export function LeagueSummary() {
     return rows.map((r) => ({ ...r, pct: clamp01(r.count / max) }));
   }, [roundPicks, byTeamId]);
 
+  const beforeDeadline = !!round?.pick_deadline_utc && Date.parse(round.pick_deadline_utc) > Date.now();
+  const isHost = !!viewerUserId && league?.created_by === viewerUserId;
+  const visibleRoundPicks = useMemo(() => {
+    if (!viewerUserId) return [];
+    if (!beforeDeadline) return roundPicks;
+    if (isHost) return roundPicks;
+    return roundPicks.filter((p: any) => p.player_id === viewerUserId);
+  }, [roundPicks, beforeDeadline, isHost, viewerUserId]);
+
   // Who picked what (sample table, top 12)
   const whoPicked = useMemo(() => {
-    const rows = roundPicks
+    const rows = visibleRoundPicks
       .map((p: any) => ({
         player:
           playersById[p.player_id]?.display_name ?? p.player_id.slice(0, 6),
@@ -343,7 +355,7 @@ export function LeagueSummary() {
       .sort((a, b) => a.player.localeCompare(b.player))
       .slice(0, 12);
     return rows;
-  }, [roundPicks, playersById, byTeamId]);
+  }, [visibleRoundPicks, playersById, byTeamId]);
 
   const deadlineInfo = formatCountdown(round?.pick_deadline_utc);
 
@@ -637,6 +649,13 @@ export function LeagueSummary() {
             <h3 className="mb-2 text-base font-semibold">
               Who Picked (sample)
             </h3>
+            <p className="mb-2 text-xs text-slate-600">
+              {beforeDeadline
+                ? isHost
+                  ? "You can view all submitted picks as host until deadline."
+                  : "Only your pick is visible until deadline."
+                : "All picks are visible after deadline."}
+            </p>
             {whoPicked.length ? (
               <ul className="space-y-2">
                 {whoPicked.map((r, i) => (
