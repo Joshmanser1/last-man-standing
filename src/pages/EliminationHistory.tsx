@@ -19,6 +19,7 @@ export function EliminationHistory() {
   const [rounds, setRounds] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [picks, setPicks] = useState<any[]>([]);
+  const [memberships, setMemberships] = useState<any[]>([]);
   const [playersById, setPlayersById] = useState<Record<string, any>>({});
   const [roundFilter, setRoundFilter] = useState<number | "all">("all");
   const [q, setQ] = useState("");
@@ -29,6 +30,7 @@ export function EliminationHistory() {
       setRounds([]);
       setTeams([]);
       setPicks([]);
+      setMemberships([]);
       setPlayersById({});
       return;
     }
@@ -50,20 +52,21 @@ export function EliminationHistory() {
         .eq("league_id", leagueId);
       setPicks(pickRows || []);
 
-      const playerIds = Array.from(
-        new Set((pickRows ?? []).map((p: any) => p.player_id as string))
-      );
-      if (playerIds.length) {
-        const { data: profiles } = await supa
-          .from("profiles")
-          .select("id, display_name")
-          .in("id", playerIds);
-        const pb: Record<string, any> = {};
-        (profiles || []).forEach((p: any) => (pb[p.id] = p));
-        setPlayersById(pb);
-      } else {
-        setPlayersById({});
-      }
+      const memberResp = await fetch("/api/league-members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ league_id: leagueId }),
+      });
+      if (!memberResp.ok) throw new Error("Failed to load league members");
+      const memberRows = (await memberResp.json()) as Array<any>;
+      setMemberships(memberRows || []);
+      const pb: Record<string, any> = {};
+      (memberRows || []).forEach((m: any) => {
+        if (typeof m.player_id === "string") {
+          pb[m.player_id] = { id: m.player_id, display_name: m.display_name ?? null };
+        }
+      });
+      setPlayersById(pb);
     })();
   }, [leagueId, reloadTick]);
 
@@ -88,7 +91,7 @@ export function EliminationHistory() {
       });
 
     return eliminated;
-  }, [leagueId, rounds, teams, playersById, picks]);
+  }, [leagueId, rounds, teams, playersById, picks, memberships]);
 
   const filtered = useMemo(() => {
     let arr = [...rows];

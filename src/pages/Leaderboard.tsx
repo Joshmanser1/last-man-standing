@@ -104,37 +104,44 @@ export function Leaderboard() {
         }
         setLeague(lg as League);
 
-        const [roundsRes, teamsRes, membershipsRes, picksRes] = await Promise.all([
+        const [roundsRes, teamsRes, picksRes] = await Promise.all([
           supa
             .from("rounds")
             .select("*")
             .eq("league_id", activeLeagueId)
             .order("round_number", { ascending: true }),
           supa.from("teams").select("*").eq("league_id", activeLeagueId),
-          supa.from("memberships").select("*").eq("league_id", activeLeagueId),
           supa.from("picks").select("*").eq("league_id", activeLeagueId),
         ]);
 
+        const memberResp = await fetch("/api/league-members", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ league_id: activeLeagueId }),
+        });
+        if (!memberResp.ok) throw new Error("Failed to load league members");
+        const memberRows = (await memberResp.json()) as Array<any>;
+
         setRounds((roundsRes.data ?? []) as Round[]);
         setTeams((teamsRes.data ?? []) as Team[]);
-        setMemberships((membershipsRes.data ?? []) as Membership[]);
+        setMemberships(
+          (memberRows ?? []).map((m: any) => ({
+            id: `${m.league_id}:${m.player_id}`,
+            league_id: m.league_id,
+            player_id: m.player_id,
+            is_active: m.is_active,
+            joined_at: m.joined_at,
+          })) as Membership[]
+        );
         setPicks((picksRes.data ?? []) as Pick[]);
 
-        const playerIds = new Set<string>();
-        (membershipsRes.data ?? []).forEach((m: any) => playerIds.add(m.player_id));
-        (picksRes.data ?? []).forEach((p: any) => playerIds.add(p.player_id));
-
-        if (playerIds.size) {
-          const { data: profiles } = await supa
-            .from("profiles")
-            .select("id, display_name")
-            .in("id", Array.from(playerIds));
-          const map = new Map<ID, Player>();
-          (profiles ?? []).forEach((p: any) => map.set(p.id, p));
-          setPlayersById(map);
-        } else {
-          setPlayersById(new Map());
-        }
+        const map = new Map<ID, Player>();
+        (memberRows ?? []).forEach((m: any) => {
+          if (typeof m.player_id === "string") {
+            map.set(m.player_id, { id: m.player_id, display_name: m.display_name ?? "" });
+          }
+        });
+        setPlayersById(map);
       } finally {
         setLoading(false);
       }

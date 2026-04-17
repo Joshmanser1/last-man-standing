@@ -22,44 +22,74 @@ export function Results() {
   const [leagueId, setLeagueId] = useState<string>(
     () => localStorage.getItem("active_league_id") || ""
   );
+  const [leagueOwnerId, setLeagueOwnerId] = useState<string>("");
+  const [viewerId, setViewerId] = useState<string>("");
   const [round, setRound] = useState<any>(null);
   const [teams, setTeams] = useState<any[]>([]);
   const [picks, setPicks] = useState<any[]>([]);
+  const [memberships, setMemberships] = useState<any[]>([]);
   const [playersById, setPlayersById] = useState<Record<string, any>>({});
   const [filter, setFilter] = useState<FilterKey>("all");
   const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
-    if (!leagueId) return;
+    if (!leagueId) {
+      setLeagueOwnerId("");
+      setViewerId("");
+      setRound(null);
+      setTeams([]);
+      setPicks([]);
+      setMemberships([]);
+      setPlayersById({});
+      return;
+    }
 
     (async () => {
+      const [{ data: authData }, { data: leagueRow }] = await Promise.all([
+        supa.auth.getUser(),
+        supa
+          .from("leagues")
+          .select("id, created_by")
+          .eq("id", leagueId)
+          .is("deleted_at", null)
+          .maybeSingle(),
+      ]);
+      const authUid = authData?.user?.id ?? "";
+      setViewerId(authUid);
+      setLeagueOwnerId((leagueRow as any)?.created_by ?? "");
+
       const r = await dataService.getCurrentRound(leagueId);
       setRound(r);
 
       const ts = await dataService.listTeams(leagueId);
       setTeams(ts || []);
 
-      const { data: pickRows } = await supa
-        .from("picks")
-        .select("*")
-        .eq("league_id", leagueId)
-        .eq("round_id", r.id);
-      setPicks(pickRows ?? []);
-
-      const playerIds = Array.from(
-        new Set((pickRows ?? []).map((p: any) => p.player_id as string))
-      );
-      if (playerIds.length) {
-        const { data: profiles } = await supa
-          .from("profiles")
-          .select("id, display_name")
-          .in("id", playerIds);
-        const pb: Record<string, any> = {};
-        (profiles || []).forEach((p: any) => (pb[p.id] = p));
-        setPlayersById(pb);
-      } else {
-        setPlayersById({});
+      let pickRows: any[] = [];
+      if (r?.id) {
+        const { data } = await supa
+          .from("picks")
+          .select("*")
+          .eq("league_id", leagueId)
+          .eq("round_id", r.id);
+        pickRows = data ?? [];
       }
+      setPicks(pickRows);
+
+      const memberResp = await fetch("/api/league-members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ league_id: leagueId }),
+      });
+      if (!memberResp.ok) throw new Error("Failed to load league members");
+      const memberRows = (await memberResp.json()) as Array<any>;
+      setMemberships(memberRows || []);
+      const pb: Record<string, any> = {};
+      (memberRows || []).forEach((m: any) => {
+        if (typeof m.player_id === "string") {
+          pb[m.player_id] = { id: m.player_id, display_name: m.display_name ?? null };
+        }
+      });
+      setPlayersById(pb);
     })();
   }, [leagueId, reloadTick]);
 
@@ -72,16 +102,36 @@ export function Results() {
     if (outcome) showOutcome(outcome);
   }, [leagueId, round, showOutcome]);
 
+  const isHost = useMemo(() => {
+    if (!viewerId) return false;
+    if (leagueOwnerId && leagueOwnerId === viewerId) return true;
+    return memberships.some(
+      (m: any) =>
+        m.player_id === viewerId && (m.role === "owner" || m.role === "admin")
+    );
+  }, [viewerId, leagueOwnerId, memberships]);
+
+  const afterDeadline = useMemo(() => {
+    if (!round?.pick_deadline_utc) return true;
+    return new Date(round.pick_deadline_utc).getTime() <= Date.now();
+  }, [round]);
+
+  const visiblePicks = useMemo(() => {
+    if (afterDeadline || isHost) return picks || [];
+    if (!viewerId) return [];
+    return (picks || []).filter((p: any) => p.player_id === viewerId);
+  }, [picks, afterDeadline, isHost, viewerId]);
+
   const rows: Row[] = useMemo(() => {
     if (!round) return [];
     const teamName = (id: string) => teams.find((t: any) => t.id === id)?.name ?? "—";
-    return (picks || []).map((p: any) => ({
+    return (visiblePicks || []).map((p: any) => ({
       player: playersById[p.player_id]?.display_name ?? p.player_id.slice(0, 6),
       team: teamName(p.team_id),
       status: (p.status ?? "pending") as Row["status"],
       reason: p.reason ?? "",
     }));
-  }, [round, teams, playersById, picks]);
+  }, [round, teams, playersById, visiblePicks]);
 
   const filtered = useMemo(() => {
     if (filter === "all") return rows;
@@ -155,6 +205,12 @@ export function Results() {
             }}
           />
         </div>
+      </div>
+
+      <div className="mb-3 text-xs text-slate-600">
+        {!afterDeadline && !isHost && "Only your pick is visible until the deadline."}
+        {!afterDeadline && isHost && "As host, you can view all submitted picks before deadline."}
+        {afterDeadline && "All picks are visible after the deadline."}
       </div>
 
       {/* Quick filter */}
