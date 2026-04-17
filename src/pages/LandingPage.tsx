@@ -49,7 +49,7 @@ export default function LandingPage() {
 
               <Link
                 to={exploreHref}
-                className="px-6 py-3 rounded-xl border border-white/15 hover:border-white/30 transition"
+                className="px-6 py-3 rounded-xl border border-emerald-300/60 text-emerald-100 hover:text-white hover:border-emerald-200 hover:bg-emerald-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b1f20] transition"
               >
                 Explore public games
               </Link>
