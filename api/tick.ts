@@ -258,6 +258,13 @@ export default async function handler(req: Req, res: Res) {
         const roundId = roundResult.data.id as string;
         let roundStatus = (roundResult.data.status as string | null) ?? "upcoming";
         const pickDeadline = roundResult.data.pick_deadline_utc ? new Date(roundResult.data.pick_deadline_utc) : null;
+        if ((league.status as string | null) === "upcoming" && (roundStatus === "locked" || roundStatus === "completed")) {
+          await supabase
+            .from("leagues")
+            .update({ status: "active" })
+            .eq("id", leagueId)
+            .eq("status", "upcoming");
+        }
 
         if (roundStatus === "upcoming" && pickDeadline && pickDeadline.getTime() <= now.getTime()) {
           const lockRound = await supabase
@@ -270,6 +277,11 @@ export default async function handler(req: Req, res: Res) {
             actions.push({ league_id: leagueId, round_id: roundId, step: "lock_failed", error: lockRound.error.message });
           } else {
             roundStatus = "locked";
+            await supabase
+              .from("leagues")
+              .update({ status: "active" })
+              .eq("id", leagueId)
+              .eq("status", "upcoming");
             const membersResult = await supabase
               .from("memberships")
               .select("player_id")
@@ -329,7 +341,9 @@ export default async function handler(req: Req, res: Res) {
             const unresolved = fixtures.some((fixture: any) => {
               const result = fixture.result as string | null;
               const winningTeamId = fixture.winning_team_id as string | null;
-              return !winningTeamId || !result || result === "not_set" || result === "pending";
+              if (!result || result === "not_set" || result === "pending") return true;
+              if ((result === "home_win" || result === "away_win") && !winningTeamId) return true;
+              return false;
             });
 
             if (!unresolved) {
