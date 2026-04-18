@@ -67,6 +67,7 @@ export function PrivateLeagueCreate() {
   const [activeLeagueId, setActiveLeagueId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string>("");
   const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
 
   const playerId = getPlayerId();
   const playerName = getPlayerName();
@@ -243,6 +244,7 @@ export function PrivateLeagueCreate() {
   // Join: allow if player has NOT already joined a non-owned league (they may own one).
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault();
+    if (joining) return;
     const { data: authData } = await supa.auth.getUser();
     const authUid = authData?.user?.id ?? null;
     if (!authUid) {
@@ -267,6 +269,7 @@ export function PrivateLeagueCreate() {
       return;
     }
     try {
+      setJoining(true);
       await (dataService as any).upsertPlayer(playerName || "You");
       const joinRes = await fetch("/api/join-league", {
         method: "POST",
@@ -292,6 +295,8 @@ export function PrivateLeagueCreate() {
       showFeedback(`Joined private league.`, "success");
     } catch (err: any) {
       showFeedback(err?.message ?? "Failed to join league.", "error");
+    } finally {
+      setJoining(false);
     }
   }
 
@@ -409,8 +414,8 @@ export function PrivateLeagueCreate() {
                   }
                 />
               </div>
-              <button type="submit" className="btn btn-ghost">
-                Join league
+              <button type="submit" className="btn btn-ghost" disabled={joining}>
+                {joining ? "Joining..." : "Join league"}
               </button>
             </form>
           </section>
