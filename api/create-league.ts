@@ -58,6 +58,33 @@ export default async function handler(req: Req, res: Res) {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
+    if (createdBy && !isPublic) {
+      const { data: existingOwnerMemberships, error: existingOwnerMembershipsError } = await supabase
+        .from("memberships")
+        .select("league_id, leagues!inner(id, is_public, deleted_at)")
+        .eq("player_id", createdBy)
+        .eq("role", "owner")
+        .eq("is_active", true)
+        .eq("leagues.is_public", false)
+        .is("leagues.deleted_at", null)
+        .limit(1);
+
+      if (existingOwnerMembershipsError) {
+        return sendJson(res, 502, {
+          error: existingOwnerMembershipsError.message,
+          code: existingOwnerMembershipsError.code,
+          details: existingOwnerMembershipsError.details,
+          hint: existingOwnerMembershipsError.hint,
+        });
+      }
+
+      if ((existingOwnerMemberships ?? []).length > 0) {
+        return sendJson(res, 409, {
+          error: "User already owns an active private league",
+        });
+      }
+    }
+
     const leagueId = crypto.randomUUID();
     const { data: league, error } = await supabase
       .from("leagues")
