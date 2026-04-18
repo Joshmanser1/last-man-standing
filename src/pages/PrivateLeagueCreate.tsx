@@ -67,6 +67,7 @@ export function PrivateLeagueCreate() {
   const [activeLeagueId, setActiveLeagueId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string>("");
   const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [myLeagueIds, setMyLeagueIds] = useState<Set<string>>(new Set());
   const [joining, setJoining] = useState(false);
 
   const playerId = getPlayerId();
@@ -83,6 +84,7 @@ export function PrivateLeagueCreate() {
     const uid = authData?.user?.id ?? null;
     setAuthUserId(uid);
     if (!uid) {
+      setMyLeagueIds(new Set());
       setStore({ leagues: [], memberships: [] });
       return;
     }
@@ -94,6 +96,7 @@ export function PrivateLeagueCreate() {
     if (myMemErr) throw myMemErr;
 
     const leagueIds = (myMemberships ?? []).map((m: any) => m.league_id as string);
+    setMyLeagueIds(new Set(leagueIds));
     if (leagueIds.length === 0) {
       setStore({ leagues: [], memberships: [] });
       return;
@@ -158,15 +161,11 @@ export function PrivateLeagueCreate() {
   }, []);
 
   const myLeagues = useMemo(() => {
-    if (!authUserId) return [];
-    const ids = new Set(
-      store.memberships.filter(m => m.playerId === authUserId).map(m => m.leagueId)
-    );
-    const leagues = store.leagues.filter(l => ids.has(l.id));
+    const leagues = store.leagues.filter(l => myLeagueIds.has(l.id));
     if (!activeLeagueId && leagues.length) setActiveLeagueId(leagues[0].id);
     return leagues;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store, authUserId]);
+  }, [store, myLeagueIds]);
 
   useEffect(() => {
     if (!myLeagues.length) return;
