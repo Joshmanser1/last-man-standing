@@ -200,7 +200,7 @@ export default async function handler(req: Req, res: Res) {
     let processedLeagues = 0;
     const leaguesResult = await supabase
       .from("leagues")
-      .select("id, status, current_round")
+      .select("id, status, current_round, fpl_start_event")
       .is("deleted_at", null);
 
     if (leaguesResult.error) {
@@ -324,6 +324,69 @@ export default async function handler(req: Req, res: Res) {
         }
 
         if (roundStatus === "locked") {
+          if (typeof (league as any).fpl_start_event === "number") {
+            try {
+              const eventNumber = ((league as any).fpl_start_event as number) + currentRoundNumber - 1;
+              const [bootstrapRes, eventFixturesRes, leagueTeamsRes] = await Promise.all([
+                fetch("https://fantasy.premierleague.com/api/bootstrap-static/"),
+                fetch(`https://fantasy.premierleague.com/api/fixtures/?event=${eventNumber}`),
+                supabase.from("teams").select("id, code").eq("league_id", leagueId),
+              ]);
+
+              if (bootstrapRes.ok && eventFixturesRes.ok && !leagueTeamsRes.error) {
+                const bootstrap = (await bootstrapRes.json()) as any;
+                const eventFixtures = (await eventFixturesRes.json()) as any[];
+                const fplCodeById = new Map<number, string>(
+                  (bootstrap?.teams ?? [])
+                    .filter((t: any) => typeof t?.id === "number")
+                    .map((t: any) => [t.id as number, String(t.short_name ?? "").toUpperCase()])
+                );
+                const teamIdByCode = new Map<string, string>(
+                  (leagueTeamsRes.data ?? []).map((t: any) => [String(t.code ?? "").toUpperCase(), t.id as string])
+                );
+
+                const fixtureUpserts: Array<Record<string, unknown>> = [];
+                for (const fx of eventFixtures ?? []) {
+                  const homeCode = fplCodeById.get(Number(fx?.team_h));
+                  const awayCode = fplCodeById.get(Number(fx?.team_a));
+                  const homeTeamId = homeCode ? teamIdByCode.get(homeCode) : undefined;
+                  const awayTeamId = awayCode ? teamIdByCode.get(awayCode) : undefined;
+                  if (!homeTeamId || !awayTeamId) continue;
+
+                  let result: "not_set" | "home_win" | "away_win" | "draw" = "not_set";
+                  if (fx?.team_h_score != null && fx?.team_a_score != null) {
+                    if (fx.team_h_score > fx.team_a_score) result = "home_win";
+                    else if (fx.team_a_score > fx.team_h_score) result = "away_win";
+                    else result = "draw";
+                  }
+
+                  fixtureUpserts.push({
+                    round_id: roundId,
+                    home_team_id: homeTeamId,
+                    away_team_id: awayTeamId,
+                    result,
+                    winning_team_id: result === "home_win" ? homeTeamId : result === "away_win" ? awayTeamId : null,
+                  });
+                }
+
+                if (fixtureUpserts.length > 0) {
+                  const { error: fixtureUpsertError } = await supabase
+                    .from("fixtures")
+                    .upsert(fixtureUpserts as any, { onConflict: "round_id,home_team_id,away_team_id" });
+                  if (fixtureUpsertError) {
+                    actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_error", error: fixtureUpsertError.message });
+                  } else {
+                    actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest", event: eventNumber, updated: fixtureUpserts.length });
+                  }
+                }
+              } else {
+                actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_skipped", event: eventNumber });
+              }
+            } catch (ingestError: any) {
+              actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_error", error: ingestError?.message ?? "Fixture ingest failed" });
+            }
+          }
+
           const fixturesResult = await supabase
             .from("fixtures")
             .select("id, result, winning_team_id")
