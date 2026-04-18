@@ -225,7 +225,7 @@ export default async function handler(req: Req, res: Res) {
 
     const activeLeagues = (leaguesResult.data ?? []).filter((league: any) => {
       const status = league.status as string | null;
-      return status == null || status === "active" || status === "running";
+      return status == null || status === "upcoming" || status === "active" || status === "running";
     });
 
     for (const league of activeLeagues) {
