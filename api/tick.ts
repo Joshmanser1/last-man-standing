@@ -67,6 +67,9 @@ export default async function handler(req: Req, res: Res) {
   const queryKey = typeof req.query.key === "string" ? req.query.key : null;
 
   if (!cronSecret || (bearerToken !== cronSecret && queryKey !== cronSecret)) {
+    const authError = !cronSecret
+      ? "Unauthorized: missing CRON_SECRET env configuration"
+      : "Unauthorized: provide Authorization: Bearer <CRON_SECRET> or ?key=<CRON_SECRET>";
     return sendJson(res, 401, {
       ok: false,
       env_check: false,
@@ -76,7 +79,7 @@ export default async function handler(req: Req, res: Res) {
       duration_ms: Date.now() - started,
       actions: [],
       processed_leagues: 0,
-      error: "Unauthorized",
+      error: authError,
     });
   }
 
