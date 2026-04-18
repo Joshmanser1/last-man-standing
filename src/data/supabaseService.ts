@@ -21,13 +21,44 @@ const supabaseService: IDataService = {
 
   // Lookups
   async listLeagues(): Promise<League[]> {
-    const { data, error } = await supa
+    const { data: publicLeagues, error: publicError } = await supa
       .from("leagues")
       .select("*")
+      .eq("is_public", true)
       .is("deleted_at", null)
       .order("created_at", { ascending: true });
-    if (error) throw error;
-    return (data ?? []) as League[];
+    if (publicError) throw publicError;
+
+    const { data: authData } = await supa.auth.getUser();
+    const uid = authData?.user?.id ?? null;
+    if (!uid) return (publicLeagues ?? []) as League[];
+
+    const { data: myMemberships, error: membershipError } = await supa
+      .from("memberships")
+      .select("league_id")
+      .eq("player_id", uid);
+    if (membershipError) throw membershipError;
+
+    const myLeagueIds = Array.from(
+      new Set((myMemberships ?? []).map((m: any) => m.league_id).filter(Boolean))
+    ) as string[];
+    if (myLeagueIds.length === 0) return (publicLeagues ?? []) as League[];
+
+    const { data: myLeagues, error: myLeaguesError } = await supa
+      .from("leagues")
+      .select("*")
+      .in("id", myLeagueIds)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true });
+    if (myLeaguesError) throw myLeaguesError;
+
+    const merged = new Map<string, League>();
+    (publicLeagues ?? []).forEach((l: any) => merged.set(l.id as string, l as League));
+    (myLeagues ?? []).forEach((l: any) => merged.set(l.id as string, l as League));
+    return Array.from(merged.values()).sort(
+      (a: any, b: any) =>
+        new Date(a?.created_at ?? 0).getTime() - new Date(b?.created_at ?? 0).getTime()
+    );
   },
 
   async getLeagueByName(name: string): Promise<League> {

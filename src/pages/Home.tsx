@@ -57,10 +57,6 @@ export function Home() {
       const match = ls.find((x) => x.id === savedLeagueId) || null;
       setActiveLeague(match);
       setSelectedLeagueId(match ? match.id : ls[0]?.id ?? "");
-      if (!match) {
-        // clear ghost selection if it was deleted
-        localStorage.removeItem("active_league_id");
-      }
     } else if (ls.length && !selectedLeagueId) {
       setSelectedLeagueId(ls[0].id);
     }

@@ -31,17 +31,25 @@ export function GameSelector({
       | LeagueLite[]
       | undefined;
     const list = ls ?? [];
-    setLeagues(list);
 
     // keep selection valid
     const active = localStorage.getItem("active_league_id");
     const valid = active && list.some((l) => l.id === active);
+    const displayList =
+      active && !valid
+        ? [...list, { id: active, name: "Selected league" }]
+        : list;
+    setLeagues(displayList);
+
     if (!value) {
-      setSelected(valid ? (active as string) : list[0]?.id ?? "");
-      if (!valid && list[0]?.id) {
+      const nextSelected = valid
+        ? (active as string)
+        : active || list[0]?.id || "";
+      setSelected(nextSelected);
+      if (!active && list[0]?.id) {
         localStorage.setItem("active_league_id", list[0].id);
       }
-      if (!valid && !list.length) {
+      if (!active && !list.length) {
         localStorage.removeItem("active_league_id");
       }
     }
