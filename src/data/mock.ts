@@ -223,7 +223,11 @@ const mockService = {
     return load().leagues;
   },
 
-  async createGame(name: string, startDateISO: string) {
+  async createGame(
+    name: string,
+    startDateISO: string,
+    options?: { fplStartEvent?: number; joinCode?: string }
+  ) {
     const s = load();
     const league: League & { start_date_utc: string; fpl_start_event: number } = {
       id: uid(),
@@ -231,7 +235,11 @@ const mockService = {
       status: "upcoming",
       current_round: 1,
       start_date_utc: new Date(startDateISO).toISOString(),
-      fpl_start_event: await getEventForDate(startDateISO),
+      fpl_start_event:
+        typeof options?.fplStartEvent === "number"
+          ? options.fplStartEvent
+          : await getEventForDate(startDateISO),
+      join_code: options?.joinCode ?? null,
     };
     s.leagues.push(league);
 
@@ -260,6 +268,9 @@ const mockService = {
     };
     if (user) {
       createPayload.created_by = user.id;
+    }
+    if (options?.joinCode) {
+      createPayload.join_code = options.joinCode;
     }
 
     try {

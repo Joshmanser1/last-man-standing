@@ -19,6 +19,15 @@ type Store = {
 
 type SortKey = "home" | "away" | "kickoff" | "result";
 
+function generateInviteCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 6; i++) {
+    code += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return code;
+}
+
 export function Admin() {
   async function runTickNow() {
     try {
@@ -675,6 +684,14 @@ export function Admin() {
             }}
           />
         </div>
+        <div className="mb-6">
+          <CreateTestLeagueInline
+            onCreated={(lg) => {
+              setAllLeagues((prev) => [...prev, lg]);
+              setSelectedLeagueId(lg.id);
+            }}
+          />
+        </div>
 
         {/* Header row: left info + right controls */}
         <div className="flex items-start justify-between gap-4 mb-6">
@@ -1059,6 +1076,79 @@ function CreateGameInline({ onCreated }: { onCreated: (lg: any) => void }) {
   );
 }
 
+function CreateTestLeagueInline({ onCreated }: { onCreated: (lg: any) => void }) {
+  const [name, setName] = useState("Pre-Season Test League");
+  const [startEvent, setStartEvent] = useState<number | null>(null);
+  const [startDeadlineISO, setStartDeadlineISO] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function createIt() {
+    if (!name.trim()) {
+      alert("Please enter a league name.");
+      return;
+    }
+    if (!startDeadlineISO || !startEvent) {
+      alert("Pick an FPL Gameweek first.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const joinCode = generateInviteCode();
+      const lg = await (dataService as any).createGame(name.trim(), startDeadlineISO, {
+        fplStartEvent: startEvent,
+        joinCode,
+      });
+      alert(
+        `Created test league: ${lg.name} (historical FPL GW ${startEvent}) - invite code ${joinCode}`
+      );
+      onCreated({ ...lg, is_public: false, join_code: joinCode });
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message ?? "Failed to create test league.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+      <div>
+        <h3 className="font-semibold text-amber-900">Pre-Season Test Mode</h3>
+        <p className="text-xs text-amber-800">
+          Admin-only historical FPL league creation for off-season testing.
+        </p>
+      </div>
+
+      <div className="flex flex-col sm:flex-row items-start gap-2 w-full">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="border rounded px-2 py-1 flex-1 min-w-[160px] bg-white"
+          placeholder="Test league name"
+        />
+        <div className="flex-1 min-w-[220px]">
+          <FplGwSelect
+            label="Historical FPL Gameweek"
+            onChange={(id, ev) => {
+              setStartEvent(id);
+              if (ev) setStartDeadlineISO(ev.deadline_time);
+            }}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={createIt}
+          disabled={saving}
+          className="rounded-lg bg-amber-600 text-white px-3 py-1 hover:bg-amber-700 disabled:opacity-60"
+        >
+          {saving ? "Creating..." : "Create Test League"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CreateGamePanel({ onCreated }: { onCreated: (lg: any) => void }) {
   return (
     <div className="w-full max-w-xl bg-white rounded-2xl shadow p-6 space-y-4">
@@ -1068,6 +1158,7 @@ function CreateGamePanel({ onCreated }: { onCreated: (lg: any) => void }) {
         future rounds to the FPL calendar.
       </p>
       <CreateGameInline onCreated={onCreated} />
+      <CreateTestLeagueInline onCreated={onCreated} />
     </div>
   );
 }

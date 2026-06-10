@@ -43,7 +43,11 @@ export interface IDataService {
   advanceRound(leagueId: ID): Promise<void>;
 
   // admin convenience
-  createGame(name: string, startISO: string): Promise<League>;
+  createGame(
+    name: string,
+    startISO: string,
+    options?: { fplStartEvent?: number; joinCode?: string }
+  ): Promise<League>;
   importFixturesForCurrentRound(leagueId: ID): Promise<{ event: number }>;
   evaluateFromFixtures(roundId: ID): Promise<void>;
 
@@ -183,8 +187,12 @@ export const dataService: IDataService = {
   advanceRound: withNotify(base.advanceRound.bind(base)),
 
   // Create game, then (if private) guarantee a join code
-  createGame: withNotify(async (name: string, startISO: string) => {
-    const created = await base.createGame(name, startISO);
+  createGame: withNotify(async (
+    name: string,
+    startISO: string,
+    options?: { fplStartEvent?: number; joinCode?: string }
+  ) => {
+    const created = await base.createGame(name, startISO, options);
     // If backend didn’t set code and league is private, create a local one
     const s = readStore<any>();
     const found = (s.leagues || []).find((l: any) => l.id === created.id);

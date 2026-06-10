@@ -40,6 +40,7 @@ export default async function handler(req: Req, res: Res) {
   const fplStartEvent = payload?.fpl_start_event;
   const isPublic = typeof payload?.is_public === "boolean" ? payload.is_public : false;
   const createdBy = typeof payload?.created_by === "string" ? payload.created_by : null;
+  const joinCode = typeof payload?.join_code === "string" ? payload.join_code.trim() : null;
 
   if (!name || !startDateUtc || typeof fplStartEvent !== "number") {
     return sendJson(res, 400, {
@@ -57,6 +58,32 @@ export default async function handler(req: Req, res: Res) {
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+
+    if (!isPublic && joinCode) {
+      const { data: existingJoinCodeLeague, error: existingJoinCodeLeagueError } =
+        await supabase
+          .from("leagues")
+          .select("id")
+          .eq("join_code", joinCode)
+          .is("deleted_at", null)
+          .limit(1)
+          .maybeSingle();
+
+      if (existingJoinCodeLeagueError) {
+        return sendJson(res, 502, {
+          error: existingJoinCodeLeagueError.message,
+          code: existingJoinCodeLeagueError.code,
+          details: existingJoinCodeLeagueError.details,
+          hint: existingJoinCodeLeagueError.hint,
+        });
+      }
+
+      if (existingJoinCodeLeague) {
+        return sendJson(res, 409, {
+          error: "Invite code already exists",
+        });
+      }
+    }
 
     if (createdBy && !isPublic) {
       const { data: existingOwnerMemberships, error: existingOwnerMembershipsError } = await supabase
@@ -96,6 +123,7 @@ export default async function handler(req: Req, res: Res) {
         start_date_utc: startDateUtc,
         fpl_start_event: fplStartEvent,
         is_public: isPublic,
+        join_code: isPublic ? null : joinCode,
         ...(createdBy ? { created_by: createdBy } : {}),
       })
       .select("*")

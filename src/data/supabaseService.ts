@@ -224,8 +224,15 @@ const supabaseService: IDataService = {
   },
 
   // Admin convenience
-  async createGame(name: string, startISO: string): Promise<League> {
-    const fpl_start_event = await getEventForDate(startISO);
+  async createGame(
+    name: string,
+    startISO: string,
+    options?: { fplStartEvent?: number; joinCode?: string }
+  ): Promise<League> {
+    const fpl_start_event =
+      typeof options?.fplStartEvent === "number"
+        ? options.fplStartEvent
+        : await getEventForDate(startISO);
     const { data: authData } = await supa.auth.getUser();
     const created_by = authData?.user?.id ?? null;
 
@@ -236,6 +243,7 @@ const supabaseService: IDataService = {
         name,
         start_date_utc: startISO,
         fpl_start_event,
+        join_code: options?.joinCode ?? null,
         is_public: false,
         created_by,
       }),
