@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
 import { supa } from "../lib/supabaseClient";
+import { getEffectiveUserId } from "../lib/auth";
 
 type CardProps = {
   title: string;
@@ -134,8 +135,7 @@ export function LeagueSummary() {
       try {
         setLoadError(null);
         await (dataService as any).seed?.();
-        const { data: authData } = await supa.auth.getUser();
-        setViewerUserId(authData?.user?.id ?? null);
+        setViewerUserId(await getEffectiveUserId());
 
         let lg = null;
         if (activeLeagueId) {

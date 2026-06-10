@@ -5,6 +5,7 @@ import { GameSelector } from "../components/GameSelector";
 import { useNotifications } from "../components/Notifications";
 import { computeOutcome } from "../lib/outcome";
 import { supa } from "../lib/supabaseClient";
+import { getEffectiveUserId } from "../lib/auth";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -45,8 +46,8 @@ export function Results() {
     }
 
     (async () => {
-      const [{ data: authData }, { data: leagueRow }] = await Promise.all([
-        supa.auth.getUser(),
+      const [authUid, { data: leagueRow }] = await Promise.all([
+        getEffectiveUserId(),
         supa
           .from("leagues")
           .select("id, created_by")
@@ -54,8 +55,7 @@ export function Results() {
           .is("deleted_at", null)
           .maybeSingle(),
       ]);
-      const authUid = authData?.user?.id ?? "";
-      setViewerId(authUid);
+      setViewerId(authUid ?? "");
       setLeagueOwnerId((leagueRow as any)?.created_by ?? "");
 
       const r = await dataService.getCurrentRound(leagueId);

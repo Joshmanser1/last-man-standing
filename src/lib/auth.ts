@@ -1,15 +1,45 @@
 // src/lib/auth.ts
 import { supa } from "../lib/supabaseClient";
 
+export const hasTestUserOverride = () =>
+  typeof window !== "undefined" && !!localStorage.getItem("test_user_override");
+
+export const getEffectiveUserIdNow = () =>
+  typeof window !== "undefined"
+    ? localStorage.getItem("test_user_override") ||
+      (devOn() ? localStorage.getItem("player_id") : null)
+    : null;
+
 export const devOn = () =>
   typeof window !== "undefined" && localStorage.getItem("dev_switcher") === "1";
 
 export const localAuthed = () =>
-  typeof window !== "undefined" && !!localStorage.getItem("player_id");
+  typeof window !== "undefined" &&
+  (!!localStorage.getItem("test_user_override") ||
+    (devOn() && !!localStorage.getItem("player_id")));
+
+export async function getEffectiveUserId(): Promise<string | null> {
+  if (typeof window !== "undefined") {
+    const override = localStorage.getItem("test_user_override");
+    if (override) return override;
+  }
+
+  try {
+    const { data } = await supa.auth.getUser();
+    if (data?.user?.id) return data.user.id;
+  } catch {
+    // fall through to dev fallback
+  }
+
+  return devOn()
+    ? typeof window !== "undefined"
+      ? localStorage.getItem("player_id")
+      : null
+    : null;
+}
 
 export async function isAuthedAsync(): Promise<boolean> {
-  const { data } = await supa.auth.getSession();
-  const supaAuthed = !!data.session?.user?.id;
+  const supaAuthed = !!(await getEffectiveUserId());
   return supaAuthed || (devOn() && localAuthed());
 }
 

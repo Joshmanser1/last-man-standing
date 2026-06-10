@@ -3,6 +3,7 @@ import { supa } from "../lib/supabaseClient";
 import type { League, Round, Team, Player, Membership, Pick, Fixture, ID } from "./types";
 import type { IDataService } from "./service";
 import { fetchFplFixturesForEvent, fetchFplTeams, getEventForDate, getSmartCurrentEvent } from "../lib/fpl";
+import { getEffectiveUserId } from "../lib/auth";
 
 /** Helpers */
 function must<T>(val: T | null | undefined, msg = "Not found"): T {
@@ -10,9 +11,9 @@ function must<T>(val: T | null | undefined, msg = "Not found"): T {
   return val;
 }
 async function currentUserId(): Promise<string> {
-  const { data, error } = await supa.auth.getUser();
-  if (error || !data?.user?.id) throw new Error("You must be logged in.");
-  return data.user.id;
+  const uid = await getEffectiveUserId();
+  if (!uid) throw new Error("You must be logged in.");
+  return uid;
 }
 
 /** Supabase-backed data service */
@@ -29,8 +30,7 @@ const supabaseService: IDataService = {
       .order("created_at", { ascending: true });
     if (publicError) throw publicError;
 
-    const { data: authData } = await supa.auth.getUser();
-    const uid = authData?.user?.id ?? null;
+    const uid = await getEffectiveUserId();
     if (!uid) return (publicLeagues ?? []) as League[];
 
     const { data: myMemberships, error: membershipError } = await supa

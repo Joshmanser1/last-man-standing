@@ -4,6 +4,7 @@ import { FplGwSelect } from "../components/FplGwSelect";
 import { useToast } from "../components/Toast";
 import { dataService } from "../data/service";
 import { supa } from "../lib/supabaseClient";
+import { getEffectiveUserId } from "../lib/auth";
 
 type PrivateLeague = {
   id: string;
@@ -80,8 +81,7 @@ export function PrivateLeagueCreate() {
   }, []);
 
   const reloadStore = async () => {
-    const { data: authData } = await supa.auth.getUser();
-    const uid = authData?.user?.id ?? null;
+    const uid = await getEffectiveUserId();
     setAuthUserId(uid);
     if (!uid) {
       setMyLeagueIds(new Set());
@@ -244,8 +244,7 @@ export function PrivateLeagueCreate() {
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault();
     if (joining) return;
-    const { data: authData } = await supa.auth.getUser();
-    const authUid = authData?.user?.id ?? null;
+    const authUid = await getEffectiveUserId();
     if (!authUid) {
       showFeedback("You must be logged in to join a private league.", "error");
       return;

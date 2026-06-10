@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { dataService } from "../data/service";
 import { useNavigate } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
+import { getEffectiveUserId, hasTestUserOverride } from "../lib/auth";
 
 type LeagueLite = {
   id: string;
@@ -70,9 +71,9 @@ export function LiveGames() {
     let active = true;
 
     const loadMemberships = async () => {
-      const { data: authData } = await supa.auth.getUser();
+      const authUid = await getEffectiveUserId();
       if (!active) return;
-      setAuthUserId(authData?.user?.id ?? null);
+      setAuthUserId(authUid ?? null);
 
       const { data: mems } = await supa
         .from("memberships")
@@ -102,7 +103,7 @@ export function LiveGames() {
   }, [memberships]);
 
   const myLeagueIds = useMemo(() => {
-    const pid = authUserId || localStorage.getItem("player_id") || null;
+    const pid = authUserId || null;
     if (!pid) return new Set<string>();
     const ids = new Set<string>();
     for (const m of memberships) {
@@ -129,10 +130,8 @@ export function LiveGames() {
     if (joiningId) return;
     setJoiningId(l.id);
     try {
-      // Accept either a Supabase session OR dev local auth
-      const { data } = await supa.auth.getSession();
-      const supaAuthed = !!data.session?.user?.id;
-      const authed = supaAuthed || devAuthed();
+      const effectiveUserId = await getEffectiveUserId();
+      const authed = !!effectiveUserId || devAuthed();
 
       if (!authed) {
         localStorage.setItem("active_league_id", l.id);
@@ -150,12 +149,32 @@ export function LiveGames() {
         }
       }
 
-      // Ensure we have a player record (works in dev or real auth)
-      const displayName = localStorage.getItem("player_name") || "Manager";
-      const player = await dataService.upsertPlayer(displayName);
+      if (!effectiveUserId) {
+        throw new Error("No effective test user selected.");
+      }
 
-      // Ensure membership
-      await dataService.ensureMembership(l.id, player.id);
+      if (!hasTestUserOverride()) {
+        const displayName = localStorage.getItem("player_name") || "Manager";
+        await dataService.upsertPlayer(displayName);
+      }
+
+      const joinRes = await fetch("/api/join-league", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          league_id: l.id,
+          player_id: effectiveUserId,
+          role: "player",
+        }),
+      });
+      if (!joinRes.ok) {
+        let msg = "Failed to join this game.";
+        try {
+          const err = await joinRes.json();
+          msg = err?.error ?? msg;
+        } catch {}
+        throw new Error(msg);
+      }
 
       // Set active and go to My Games
       localStorage.setItem("active_league_id", l.id);

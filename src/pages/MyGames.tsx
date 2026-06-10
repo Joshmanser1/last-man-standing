@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { supa } from "../lib/supabaseClient";
 import { useToast } from "../components/Toast";
+import { getEffectiveUserId } from "../lib/auth";
 
 const STORE_KEY = "lms_store_v1";
 const PRIVATE_STORE_KEY = "lms_private_leagues_v1";
@@ -90,8 +91,7 @@ export function MyGames() {
     (async () => {
       setLoading(true);
       try {
-        const { data: authData } = await supa.auth.getUser();
-        const pid = authData?.user?.id ?? "";
+        const pid = (await getEffectiveUserId()) ?? "";
         if (!pid) {
           setPublicJoined([]);
           setAllPublic([]);

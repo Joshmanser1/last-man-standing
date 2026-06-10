@@ -6,6 +6,7 @@ import { useCountdown } from "../hooks/useCountdown";
 import { GameSelector } from "../components/GameSelector";
 import { useToast } from "../components/Toast";
 import { supa } from "../lib/supabaseClient";
+import { getEffectiveUserId } from "../lib/auth";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -35,8 +36,7 @@ export function MakePick() {
   useEffect(() => {
     let mounted = true;
     const load = async () => {
-      const { data } = await supa.auth.getUser();
-      const uid = data?.user?.id ?? "";
+      const uid = (await getEffectiveUserId()) ?? "";
       if (mounted) setAuthUserId(uid);
       if (!uid) navigate("/login");
     };

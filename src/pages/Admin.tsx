@@ -19,6 +19,12 @@ type Store = {
 
 type SortKey = "home" | "away" | "kickoff" | "result";
 
+const TEST_USERS = [
+  { id: "43951243-7e27-4af1-99ec-bf9d2eef195c", name: "Angel" },
+  { id: "31c1e106-1df5-4832-b3c3-576f2984c44e", name: "Josh M" },
+  { id: "cdf92fde-fd55-4688-8b8e-2330f6cdca9c", name: "Matthew Nixon" },
+] as const;
+
 function generateInviteCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
@@ -66,6 +72,24 @@ export function Admin() {
   const [sortAsc, setSortAsc] = useState<boolean>(true);
   const [e2eSeedStatus, setE2eSeedStatus] = useState<string>("");
   const [e2eResolveStatus, setE2eResolveStatus] = useState<string>("");
+  const [effectiveTestUserId, setEffectiveTestUserId] = useState<string>(
+    () => localStorage.getItem("test_user_override") || localStorage.getItem("player_id") || ""
+  );
+
+  useEffect(() => {
+    const syncEffectiveTestUser = () => {
+      setEffectiveTestUserId(
+        localStorage.getItem("test_user_override") || localStorage.getItem("player_id") || ""
+      );
+    };
+
+    window.addEventListener("storage", syncEffectiveTestUser);
+    window.addEventListener("lms:store-updated", syncEffectiveTestUser);
+    return () => {
+      window.removeEventListener("storage", syncEffectiveTestUser);
+      window.removeEventListener("lms:store-updated", syncEffectiveTestUser);
+    };
+  }, []);
 
   function toast(msg: string) {
     alert(msg);
@@ -75,6 +99,24 @@ export function Admin() {
   }
   function writeStore(s: Store) {
     localStorage.setItem(STORE_KEY, JSON.stringify(s));
+  }
+
+  function switchTestUser(userId: string, userName: string) {
+    localStorage.setItem("player_id", userId);
+    localStorage.setItem("player_name", userName);
+    localStorage.setItem("test_user_override", userId);
+    localStorage.removeItem("active_league_id");
+    setEffectiveTestUserId(userId);
+    window.dispatchEvent(new Event("lms:store-updated"));
+  }
+
+  function clearTestUserOverride() {
+    localStorage.removeItem("test_user_override");
+    localStorage.removeItem("player_id");
+    localStorage.removeItem("player_name");
+    localStorage.removeItem("active_league_id");
+    setEffectiveTestUserId("");
+    window.dispatchEvent(new Event("lms:store-updated"));
   }
 
   // Load leagues (filter soft-deleted)
@@ -644,6 +686,15 @@ export function Admin() {
     return "";
   }
 
+  const effectiveTestUser =
+    TEST_USERS.find((user) => user.id === effectiveTestUserId) ||
+    (effectiveTestUserId
+      ? {
+          id: effectiveTestUserId,
+          name: localStorage.getItem("player_name") || effectiveTestUserId,
+        }
+      : null);
+
   if (!selectedLeagueId || !league || !round) {
     return (
       <div data-testid="admin-page" className="min-h-screen grid place-items-center p-6">
@@ -833,6 +884,48 @@ export function Admin() {
             <span className="text-xs text-slate-500">
               Manually triggers cron lifecycle: lock -&gt; evaluate -&gt; advance.
             </span>
+          </div>
+        </div>
+
+        <div className="border-t pt-6 mt-8">
+          <h3 className="font-semibold mb-2">Test User Switcher</h3>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap gap-2">
+              {TEST_USERS.map((user) => {
+                const active = effectiveTestUserId === user.id;
+                return (
+                  <button
+                    key={user.id}
+                    type="button"
+                    onClick={() => switchTestUser(user.id, user.name)}
+                    className={[
+                      "rounded-lg border px-3 py-1.5 text-sm",
+                      active
+                        ? "border-emerald-700 bg-emerald-600 text-white"
+                        : "border-slate-300 bg-white hover:bg-slate-100",
+                    ].join(" ")}
+                  >
+                    {user.name}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={clearTestUserOverride}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-100"
+              >
+                Clear Override
+              </button>
+            </div>
+            <div className="mt-3 text-sm text-slate-600">
+              Current test user:{" "}
+              <b>{effectiveTestUser ? effectiveTestUser.name : "None"}</b>
+              {effectiveTestUser ? (
+                <span className="ml-2 font-mono text-xs text-slate-500">
+                  {effectiveTestUser.id}
+                </span>
+              ) : null}
+            </div>
           </div>
         </div>
 
