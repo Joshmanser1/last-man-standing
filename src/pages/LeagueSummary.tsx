@@ -236,9 +236,7 @@ export function LeagueSummary() {
 
   const memberships = useMemo(() => {
     if (!league) return [];
-    return (membershipsRaw || []).filter(
-      (m: any) => m.league_id === league.id && m.is_active
-    );
+    return (membershipsRaw || []).filter((m: any) => m.league_id === league.id);
   }, [membershipsRaw, league]);
 
   // Picks for this round

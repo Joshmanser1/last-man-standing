@@ -96,7 +96,6 @@ export function LiveGames() {
   const entrantsByLeague = useMemo(() => {
     const map = new Map<string, number>();
     for (const m of memberships) {
-      if (!m.is_active) continue;
       map.set(m.league_id, (map.get(m.league_id) || 0) + 1);
     }
     return map;

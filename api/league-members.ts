@@ -50,8 +50,7 @@ export default async function handler(req: Req, res: Res) {
     const { data: memberships, error: membershipError } = await supabase
       .from("memberships")
       .select("league_id, player_id, joined_at, role, is_active")
-      .eq("league_id", leagueId)
-      .eq("is_active", true);
+      .eq("league_id", leagueId);
 
     if (membershipError) {
       return sendJson(res, 502, {
@@ -101,4 +100,3 @@ export default async function handler(req: Req, res: Res) {
     return sendJson(res, 502, { error: err?.message ?? "Failed to load league members" });
   }
 }
-
