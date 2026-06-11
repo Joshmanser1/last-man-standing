@@ -39,8 +39,19 @@ const supabaseService: IDataService = {
       .eq("player_id", uid);
     if (membershipError) throw membershipError;
 
+    const { data: ownedLeagues, error: ownedLeaguesError } = await supa
+      .from("leagues")
+      .select("*")
+      .eq("created_by", uid)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true });
+    if (ownedLeaguesError) throw ownedLeaguesError;
+
     const myLeagueIds = Array.from(
-      new Set((myMemberships ?? []).map((m: any) => m.league_id).filter(Boolean))
+      new Set([
+        ...(myMemberships ?? []).map((m: any) => m.league_id).filter(Boolean),
+        ...(ownedLeagues ?? []).map((l: any) => l.id).filter(Boolean),
+      ])
     ) as string[];
     if (myLeagueIds.length === 0) return (publicLeagues ?? []) as League[];
 
@@ -55,6 +66,7 @@ const supabaseService: IDataService = {
     const merged = new Map<string, League>();
     (publicLeagues ?? []).forEach((l: any) => merged.set(l.id as string, l as League));
     (myLeagues ?? []).forEach((l: any) => merged.set(l.id as string, l as League));
+    (ownedLeagues ?? []).forEach((l: any) => merged.set(l.id as string, l as League));
     return Array.from(merged.values()).sort(
       (a: any, b: any) =>
         new Date(a?.created_at ?? 0).getTime() - new Date(b?.created_at ?? 0).getTime()

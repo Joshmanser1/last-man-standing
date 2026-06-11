@@ -95,7 +95,19 @@ export function PrivateLeagueCreate() {
       .eq("player_id", uid);
     if (myMemErr) throw myMemErr;
 
-    const leagueIds = (myMemberships ?? []).map((m: any) => m.league_id as string);
+    const { data: ownedLeagues, error: ownedErr } = await supa
+      .from("leagues")
+      .select("id")
+      .eq("created_by", uid)
+      .is("deleted_at", null);
+    if (ownedErr) throw ownedErr;
+
+    const leagueIds = Array.from(
+      new Set([
+        ...(myMemberships ?? []).map((m: any) => m.league_id as string),
+        ...(ownedLeagues ?? []).map((l: any) => l.id as string),
+      ])
+    );
     setMyLeagueIds(new Set(leagueIds));
     if (leagueIds.length === 0) {
       setStore({ leagues: [], memberships: [] });

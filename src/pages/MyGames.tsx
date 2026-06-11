@@ -107,8 +107,18 @@ export function MyGames() {
           .eq("player_id", pid);
         if (myMemErr) throw myMemErr;
 
+        const { data: ownedLeagues, error: ownedErr } = await supa
+          .from("leagues")
+          .select("id")
+          .eq("created_by", pid)
+          .is("deleted_at", null);
+        if (ownedErr) throw ownedErr;
+
         const membershipLeagueIds = Array.from(
-          new Set((myMemberships ?? []).map((m: any) => m.league_id as string))
+          new Set([
+            ...(myMemberships ?? []).map((m: any) => m.league_id as string),
+            ...(ownedLeagues ?? []).map((l: any) => l.id as string),
+          ])
         );
 
         const allPublicLeagues = (leagues ?? [])
