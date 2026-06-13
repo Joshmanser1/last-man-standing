@@ -91,55 +91,29 @@ export function PrivateLeagueCreate() {
 
   const reloadStore = async () => {
     const uid = (await getEffectiveUserId()) || localStorage.getItem("player_id");
-    console.log("[PrivateLeagueCreate] reloadStore uid", {
-      effectiveUserId: uid,
-      localPlayerId: localStorage.getItem("player_id"),
-      testUserOverride: localStorage.getItem("test_user_override"),
-    });
     setAuthUserId(uid);
     if (!uid) {
-      console.log("[PrivateLeagueCreate] reloadStore no uid");
       setMyLeagueIds(new Set());
       setStore({ leagues: [], memberships: [] });
       return;
     }
 
-    const { data: myMemberships, error: myMemErr } = await supa
-      .from("memberships")
-      .select("league_id, player_id, joined_at")
-      .eq("player_id", uid);
-    if (myMemErr) throw myMemErr;
-    console.log("[PrivateLeagueCreate] myMemberships", myMemberships);
-
-    const { data: ownedLeagues, error: ownedErr } = await supa
-      .from("leagues")
-      .select("id")
-      .eq("created_by", uid)
-      .is("deleted_at", null);
-    if (ownedErr) throw ownedErr;
-    console.log("[PrivateLeagueCreate] ownedLeagues", ownedLeagues);
+    const leaguesResp = await fetch("/api/user-leagues", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: uid }),
+    });
+    if (!leaguesResp.ok) throw new Error("Failed to load visible leagues");
+    const leaguesData = (await leaguesResp.json()) as Array<any>;
 
     const leagueIds = Array.from(
-      new Set([
-        ...(myMemberships ?? []).map((m: any) => m.league_id as string),
-        ...(ownedLeagues ?? []).map((l: any) => l.id as string),
-      ])
+      new Set((leaguesData ?? []).map((l: any) => l.id as string).filter(Boolean))
     );
-    console.log("[PrivateLeagueCreate] leagueIds", leagueIds);
     setMyLeagueIds(new Set(leagueIds));
     if (leagueIds.length === 0) {
-      console.log("[PrivateLeagueCreate] no visible private league ids");
       setStore({ leagues: [], memberships: [] });
       return;
     }
-
-    const { data: leaguesData, error: leaguesErr } = await supa
-      .from("leagues")
-      .select("id, name, created_by, created_at, is_public, join_code, fpl_start_event, start_date_utc")
-      .in("id", leagueIds)
-      .is("deleted_at", null);
-    if (leaguesErr) throw leaguesErr;
-    console.log("[PrivateLeagueCreate] leaguesData", leaguesData);
 
     const privateLeagues = (leaguesData ?? [])
       .filter((l: any) => l.is_public !== true)
@@ -152,7 +126,6 @@ export function PrivateLeagueCreate() {
         fplStartEvent: (l.fpl_start_event as number) ?? undefined,
         inviteCode: (l.join_code as string) ?? "",
       })) as PrivateLeague[];
-    console.log("[PrivateLeagueCreate] store.leagues", privateLeagues);
 
     const memberBatches = await Promise.all(
       privateLeagues.map(async (l) => {
@@ -195,11 +168,6 @@ export function PrivateLeagueCreate() {
 
   const myLeagues = useMemo(() => {
     const leagues = store.leagues.filter(l => myLeagueIds.has(l.id));
-    console.log("[PrivateLeagueCreate] myLeagues", {
-      myLeagueIds: Array.from(myLeagueIds),
-      storeLeagues: store.leagues,
-      result: leagues,
-    });
     if (!activeLeagueId && leagues.length) setActiveLeagueId(leagues[0].id);
     return leagues;
     // eslint-disable-next-line react-hooks/exhaustive-deps

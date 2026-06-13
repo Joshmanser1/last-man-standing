@@ -99,27 +99,14 @@ export function MyGames() {
           return;
         }
 
-        // ---- League visibility from Supabase memberships (do not gate by memberships.is_active) ----
         const leagues = ((await (dataService as any).listLeagues?.()) || []) as any[];
-        const { data: myMemberships, error: myMemErr } = await supa
-          .from("memberships")
-          .select("league_id")
-          .eq("player_id", pid);
-        if (myMemErr) throw myMemErr;
-
-        const { data: ownedLeagues, error: ownedErr } = await supa
-          .from("leagues")
-          .select("id")
-          .eq("created_by", pid)
-          .is("deleted_at", null);
-        if (ownedErr) throw ownedErr;
-
-        const membershipLeagueIds = Array.from(
-          new Set([
-            ...(myMemberships ?? []).map((m: any) => m.league_id as string),
-            ...(ownedLeagues ?? []).map((l: any) => l.id as string),
-          ])
-        );
+        const visibleResp = await fetch("/api/user-leagues", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: pid }),
+        });
+        if (!visibleResp.ok) throw new Error("Failed to load visible leagues");
+        const visibleLeagues = (await visibleResp.json()) as Array<any>;
 
         const allPublicLeagues = (leagues ?? [])
           .filter((l: any) => l.is_public !== false)
@@ -131,18 +118,11 @@ export function MyGames() {
           })) as LeagueLite[];
         setAllPublic(allPublicLeagues);
 
-        if (membershipLeagueIds.length === 0) {
+        if ((visibleLeagues ?? []).length === 0) {
           setPublicJoined([]);
           setPrivateJoined([]);
         } else {
-          const { data: leaguesData, error: leaguesErr } = await supa
-            .from("leagues")
-            .select("id, name, created_by, created_at, join_code, fpl_start_event, start_date_utc, is_public, current_round, status")
-            .in("id", membershipLeagueIds)
-            .is("deleted_at", null);
-          if (leaguesErr) throw leaguesErr;
-
-          const joinedPublic = (leaguesData ?? [])
+          const joinedPublic = (visibleLeagues ?? [])
             .filter((l: any) => l.is_public === true)
             .map((l: any) => ({
               id: l.id as string,
@@ -152,7 +132,7 @@ export function MyGames() {
             })) as LeagueLite[];
           setPublicJoined(joinedPublic);
 
-          const privateLeagues = (leaguesData ?? [])
+          const privateLeagues = (visibleLeagues ?? [])
             .filter((l: any) => l.is_public !== true)
             .map((l: any) => ({
               id: l.id as string,
