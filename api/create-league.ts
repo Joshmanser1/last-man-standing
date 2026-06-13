@@ -86,7 +86,7 @@ export default async function handler(req: Req, res: Res) {
       }
     }
 
-    if (createdBy && !isPublic) {
+    if (createdBy && !isPublic && !isTest) {
       const { data: existingOwnerMemberships, error: existingOwnerMembershipsError } = await supabase
         .from("memberships")
         .select("league_id, leagues!inner(id, is_public, deleted_at)")
