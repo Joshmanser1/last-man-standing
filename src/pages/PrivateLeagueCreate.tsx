@@ -75,6 +75,15 @@ export function PrivateLeagueCreate() {
   const playerName = getPlayerName();
 
   useEffect(() => {
+    console.log("[PrivateLeagueCreate] mounted", {
+      path: window.location.pathname,
+      playerId: localStorage.getItem("player_id"),
+      testUserOverride: localStorage.getItem("test_user_override"),
+      activeLeagueId: localStorage.getItem("active_league_id"),
+    });
+  }, []);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     if (code) setJoinCode(code.toUpperCase());
