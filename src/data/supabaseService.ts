@@ -215,7 +215,7 @@ const supabaseService: IDataService = {
   async createGame(
     name: string,
     startISO: string,
-    options?: { fplStartEvent?: number; joinCode?: string }
+    options?: { fplStartEvent?: number; joinCode?: string; isTest?: boolean }
   ): Promise<League> {
     const fpl_start_event =
       typeof options?.fplStartEvent === "number"
@@ -233,6 +233,7 @@ const supabaseService: IDataService = {
         fpl_start_event,
         join_code: options?.joinCode ?? null,
         is_public: false,
+        is_test: options?.isTest === true,
         created_by,
       }),
     });

@@ -1191,11 +1191,12 @@ function CreateTestLeagueInline({ onCreated }: { onCreated: (lg: any) => void })
       const lg = await (dataService as any).createGame(name.trim(), startDeadlineISO, {
         fplStartEvent: startEvent,
         joinCode,
+        isTest: true,
       });
       alert(
         `Created test league: ${lg.name} (historical FPL GW ${startEvent}) - invite code ${joinCode}`
       );
-      onCreated({ ...lg, is_public: false, join_code: joinCode });
+      onCreated({ ...lg, is_public: false, is_test: true, join_code: joinCode });
     } catch (err: any) {
       console.error(err);
       alert(err?.message ?? "Failed to create test league.");

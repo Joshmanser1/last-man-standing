@@ -46,7 +46,7 @@ export interface IDataService {
   createGame(
     name: string,
     startISO: string,
-    options?: { fplStartEvent?: number; joinCode?: string }
+    options?: { fplStartEvent?: number; joinCode?: string; isTest?: boolean }
   ): Promise<League>;
   importFixturesForCurrentRound(leagueId: ID): Promise<{ event: number }>;
   evaluateFromFixtures(roundId: ID): Promise<void>;
@@ -190,7 +190,7 @@ export const dataService: IDataService = {
   createGame: withNotify(async (
     name: string,
     startISO: string,
-    options?: { fplStartEvent?: number; joinCode?: string }
+    options?: { fplStartEvent?: number; joinCode?: string; isTest?: boolean }
   ) => {
     const created = await base.createGame(name, startISO, options);
     // If backend didn’t set code and league is private, create a local one

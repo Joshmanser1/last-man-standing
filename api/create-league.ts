@@ -39,6 +39,7 @@ export default async function handler(req: Req, res: Res) {
     typeof payload?.start_date_utc === "string" ? payload.start_date_utc : "";
   const fplStartEvent = payload?.fpl_start_event;
   const isPublic = typeof payload?.is_public === "boolean" ? payload.is_public : false;
+  const isTest = typeof payload?.is_test === "boolean" ? payload.is_test : false;
   const createdBy = typeof payload?.created_by === "string" ? payload.created_by : null;
   const joinCode = typeof payload?.join_code === "string" ? payload.join_code.trim() : null;
 
@@ -123,6 +124,7 @@ export default async function handler(req: Req, res: Res) {
         start_date_utc: startDateUtc,
         fpl_start_event: fplStartEvent,
         is_public: isPublic,
+        is_test: isTest,
         join_code: isPublic ? null : joinCode,
         ...(createdBy ? { created_by: createdBy } : {}),
       })

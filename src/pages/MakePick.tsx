@@ -147,11 +147,12 @@ export function MakePick() {
 
   // Countdown based on the round pick deadline (which you can set from FPL’s GW deadline)
   const timeLeft = useCountdown(round?.pick_deadline_utc);
+  const isTestMode = !!league?.is_test;
 
   // Hard lock if round is locked/completed OR countdown has hit zero
   const hardLocked =
     !!round && (round.status === "locked" || round.status === "completed");
-  const locked = hardLocked || timeLeft === "00:00:00";
+  const locked = hardLocked || (!isTestMode && timeLeft === "00:00:00");
 
   const teamsAZ = useMemo(() => {
     // de-dupe then A→Z
@@ -279,6 +280,11 @@ export function MakePick() {
                 : "—"}{" "}
               • ⏱ <span className="font-mono">{timeLeft}</span>
             </p>
+            {isTestMode && (
+              <p className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                TEST MODE â€” deadline bypass active
+              </p>
+            )}
             {hardLocked && (
               <p className="mt-1 text-xs font-medium text-rose-600">
                 This round is locked. Picks are closed.

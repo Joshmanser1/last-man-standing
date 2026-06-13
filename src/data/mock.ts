@@ -226,7 +226,7 @@ const mockService = {
   async createGame(
     name: string,
     startDateISO: string,
-    options?: { fplStartEvent?: number; joinCode?: string }
+    options?: { fplStartEvent?: number; joinCode?: string; isTest?: boolean }
   ) {
     const s = load();
     const league: League & { start_date_utc: string; fpl_start_event: number } = {
@@ -240,6 +240,7 @@ const mockService = {
           ? options.fplStartEvent
           : await getEventForDate(startDateISO),
       join_code: options?.joinCode ?? null,
+      is_test: options?.isTest === true,
     };
     s.leagues.push(league);
 
@@ -265,6 +266,7 @@ const mockService = {
       start_date_utc: league.start_date_utc,
       fpl_start_event: league.fpl_start_event,
       is_public: false,
+      is_test: options?.isTest === true,
     };
     if (user) {
       createPayload.created_by = user.id;

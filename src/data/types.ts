@@ -13,6 +13,7 @@ export type League = {
   deleted_at?: string | null;   // soft delete marker
   fpl_start_event?: number | null; // starting FPL event for mapping
   created_by?: string | null; // owner user id
+  is_test?: boolean;
 };
 
 export type Round = {
