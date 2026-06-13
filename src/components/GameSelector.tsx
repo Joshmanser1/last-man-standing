@@ -48,9 +48,11 @@ export function GameSelector({
       setSelected(nextSelected);
       if (!active && list[0]?.id) {
         localStorage.setItem("active_league_id", list[0].id);
+        window.dispatchEvent(new Event("lms:store-updated"));
       }
       if (!active && !list.length) {
         localStorage.removeItem("active_league_id");
+        window.dispatchEvent(new Event("lms:store-updated"));
       }
     }
   }
@@ -75,6 +77,7 @@ export function GameSelector({
     if (!id) return;
     localStorage.setItem("active_league_id", id);
     setSelected(id);
+    window.dispatchEvent(new Event("lms:store-updated"));
     onChange?.(id);
   }
 

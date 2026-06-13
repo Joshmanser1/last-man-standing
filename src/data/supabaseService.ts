@@ -32,41 +32,17 @@ const supabaseService: IDataService = {
 
     const uid = await getEffectiveUserId();
     if (!uid) return (publicLeagues ?? []) as League[];
-
-    const { data: myMemberships, error: membershipError } = await supa
-      .from("memberships")
-      .select("league_id")
-      .eq("player_id", uid);
-    if (membershipError) throw membershipError;
-
-    const { data: ownedLeagues, error: ownedLeaguesError } = await supa
-      .from("leagues")
-      .select("*")
-      .eq("created_by", uid)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: true });
-    if (ownedLeaguesError) throw ownedLeaguesError;
-
-    const myLeagueIds = Array.from(
-      new Set([
-        ...(myMemberships ?? []).map((m: any) => m.league_id).filter(Boolean),
-        ...(ownedLeagues ?? []).map((l: any) => l.id).filter(Boolean),
-      ])
-    ) as string[];
-    if (myLeagueIds.length === 0) return (publicLeagues ?? []) as League[];
-
-    const { data: myLeagues, error: myLeaguesError } = await supa
-      .from("leagues")
-      .select("*")
-      .in("id", myLeagueIds)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: true });
-    if (myLeaguesError) throw myLeaguesError;
+    const visibleResp = await fetch("/api/user-leagues", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: uid }),
+    });
+    if (!visibleResp.ok) throw new Error("Failed to load visible leagues");
+    const myLeagues = (await visibleResp.json()) as League[];
 
     const merged = new Map<string, League>();
     (publicLeagues ?? []).forEach((l: any) => merged.set(l.id as string, l as League));
     (myLeagues ?? []).forEach((l: any) => merged.set(l.id as string, l as League));
-    (ownedLeagues ?? []).forEach((l: any) => merged.set(l.id as string, l as League));
     return Array.from(merged.values()).sort(
       (a: any, b: any) =>
         new Date(a?.created_at ?? 0).getTime() - new Date(b?.created_at ?? 0).getTime()

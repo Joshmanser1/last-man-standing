@@ -171,9 +171,9 @@ export function Header() {
               <GameSelector
                 variant="header"
                 value={activeLeagueId ?? undefined}
-                onChange={(_id) => {
-                  setHasLeague(!!_id);
-                  setActiveLeagueId(_id);
+                onChange={(id) => {
+                  setHasLeague(!!id);
+                  setActiveLeagueId(id);
                 }}
               />
             </div>
