@@ -263,8 +263,37 @@ export function PrivateLeagueCreate() {
       showFeedback("Enter an invite code first.", "error");
       return;
     }
+
     try {
       setJoining(true);
+      const targetLeague =
+        store.leagues.find((l) => l.inviteCode.toUpperCase() === code) ??
+        ((await (async () => {
+          const resp = await fetch("/api/league-by-code", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ join_code: code }),
+          });
+          if (!resp.ok) return null;
+          return (await resp.json()) as any;
+        })()) as any);
+
+      if (!targetLeague) {
+        showFeedback("League not found for that invite code.", "error");
+        return;
+      }
+
+      // Check if user already joined a league they don't own
+      const joinedNonOwned = store.memberships.some(m => {
+        if (m.playerId !== authUid) return false;
+        const league = store.leagues.find(l => l.id === m.leagueId);
+        return league ? league.ownerId !== authUid : false;
+      });
+      if (joinedNonOwned && targetLeague.is_test !== true) {
+        showFeedback("You've already joined a private league. Limit is one joined league per player (plus one you own).", "error");
+        return;
+      }
+
       await (dataService as any).upsertPlayer(playerName || "You");
       const joinRes = await fetch("/api/join-league", {
         method: "POST",
@@ -282,10 +311,9 @@ export function PrivateLeagueCreate() {
         throw new Error("Failed to join league");
       }
       await reloadStore();
-      const joined = store.leagues.find((l) => l.inviteCode.toUpperCase() === code) ?? null;
-      if (joined) {
-        setActiveLeagueId(joined.id);
-        localStorage.setItem("active_league_id", joined.id);
+      if (targetLeague?.id) {
+        setActiveLeagueId(targetLeague.id);
+        localStorage.setItem("active_league_id", targetLeague.id);
       }
       showFeedback(`Joined private league.`, "success");
     } catch (err: any) {
