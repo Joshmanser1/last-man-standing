@@ -55,10 +55,11 @@ export default async function handler(req: Req, res: Res) {
     });
 
     let leagueId = leagueIdInput;
+    let targetLeague: any = null;
     if (!leagueId) {
       const { data: league, error: leagueErr } = await supabase
         .from("leagues")
-        .select("id")
+        .select("id, is_public, is_test")
         .eq("join_code", joinCode)
         .maybeSingle();
       if (leagueErr) {
@@ -73,6 +74,25 @@ export default async function handler(req: Req, res: Res) {
         return sendJson(res, 404, { error: "League not found for join_code" });
       }
       leagueId = league.id as string;
+      targetLeague = league;
+    } else {
+      const { data: league, error: leagueErr } = await supabase
+        .from("leagues")
+        .select("id, is_public, is_test")
+        .eq("id", leagueId)
+        .maybeSingle();
+      if (leagueErr) {
+        return sendJson(res, 502, {
+          error: leagueErr.message,
+          code: leagueErr.code,
+          details: leagueErr.details,
+          hint: leagueErr.hint,
+        });
+      }
+      if (!league?.id) {
+        return sendJson(res, 404, { error: "League not found" });
+      }
+      targetLeague = league;
     }
 
     const { data: existing, error: existingErr } = await supabase
@@ -90,7 +110,7 @@ export default async function handler(req: Req, res: Res) {
       });
     }
 
-    if (!existing) {
+    if (!existing && targetLeague?.is_test !== true) {
       const { data: otherMemberships, error: otherErr } = await supabase
         .from("memberships")
         .select("league_id, role, leagues!inner(is_public)")
