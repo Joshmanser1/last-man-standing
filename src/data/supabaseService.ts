@@ -2,7 +2,7 @@
 import { supa } from "../lib/supabaseClient";
 import type { League, Round, Team, Player, Membership, Pick, Fixture, ID } from "./types";
 import type { IDataService } from "./service";
-import { fetchFplFixturesForEvent, fetchFplTeams, getEventForDate, getSmartCurrentEvent } from "../lib/fpl";
+import { fetchFplFixturesForEvent, getEventForDate, getSmartCurrentEvent } from "../lib/fpl";
 import { getEffectiveUserId } from "../lib/auth";
 
 /** Helpers */
@@ -245,85 +245,7 @@ const supabaseService: IDataService = {
       } catch {}
       throw new Error(msg);
     }
-    const lg = must((await res.json()) as League, "Failed to create league");
-
-    const d = new Date(startISO);
-    d.setHours(17, 0, 0, 0);
-    const r1Deadline = d.toISOString();
-    const round1Id = crypto.randomUUID();
-    const { error: e2 } = await supa
-      .from("rounds")
-      .insert({ id: round1Id, league_id: lg.id, round_number: 1, name: "Round 1", pick_deadline_utc: r1Deadline, status: "upcoming" });
-    if (e2) throw e2;
-
-    const teams = await fetchFplTeams();
-    const teamRows: Array<any> = [];
-    const teamByFplId = new Map<number, any>();
-    for (const t of teams ?? []) {
-      const code = String(t.short_name ?? "").toUpperCase();
-      const row = {
-        id: crypto.randomUUID(),
-        league_id: lg.id,
-        name: t.name,
-        code,
-        logo_url: code ? `https://via.placeholder.com/96?text=${code}` : undefined,
-      };
-      teamRows.push(row);
-      if (typeof t.id === "number") teamByFplId.set(t.id, row);
-    }
-    if (teamRows.length) {
-      const { error: tErr } = await supa.from("teams").insert(teamRows as any);
-      if (tErr) throw tErr;
-    }
-
-    if (typeof fpl_start_event === "number") {
-      const fpl = await fetchFplFixturesForEvent(fpl_start_event);
-      if (!fpl || fpl.length === 0) {
-        throw new Error(`No fixtures returned for fpl_start_event=${fpl_start_event}; fixture_count=0`);
-      }
-      const rows: Partial<Fixture>[] = [];
-      for (const fx of fpl ?? []) {
-        const homeId = (fx as any).home?.id;
-        const awayId = (fx as any).away?.id;
-        const home = teamByFplId.get(homeId as number);
-        const away = teamByFplId.get(awayId as number);
-        if (!home || !away) continue;
-
-        const result: Fixture["result"] =
-          fx.finished && fx.homeScore != null && fx.awayScore != null
-            ? fx.homeScore > fx.awayScore
-              ? "home_win"
-              : fx.awayScore > fx.homeScore
-              ? "away_win"
-              : "draw"
-            : "not_set";
-
-        rows.push({
-          round_id: round1Id,
-          home_team_id: home.id,
-          away_team_id: away.id,
-          kickoff_utc: fx.kickoff ?? undefined,
-          result,
-          winning_team_id: result === "home_win" ? home.id : result === "away_win" ? away.id : undefined,
-        });
-      }
-
-      if (rows.length === 0) {
-        throw new Error(
-          `No fixtures mapped for fpl_start_event=${fpl_start_event}; fetched=${fpl.length}; mapped=${rows.length}`
-        );
-      }
-
-      if (rows.length) {
-        const { error: fErr } = await supa.from("fixtures").upsert(rows as any, {
-          ignoreDuplicates: true,
-          onConflict: "round_id,home_team_id,away_team_id",
-        });
-        if (fErr) throw fErr;
-      }
-    }
-
-    return lg;
+    return must((await res.json()) as League, "Failed to create league");
   },
 
   async importFixturesForCurrentRound(leagueId: ID): Promise<{ event: number }> {
