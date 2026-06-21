@@ -114,16 +114,19 @@ export function MakePick() {
           setUsedByRound({});
         }
 
-        // 5) Opponent map from real fixtures in Supabase for THIS round
+        // 5) Opponent map from fixtures for this round
         try {
+          const byTeamId = new Map<string, any>(
+            (ts ?? []).map((team: any) => [team.id, team])
+          );
           const { data: roundFixtures } = await supa
             .from("fixtures")
-            .select("home_team_id, away_team_id")
+            .select("*")
             .eq("round_id", r.id);
           const opp: OpponentMap = {};
           for (const f of roundFixtures ?? []) {
-            const homeTeam = ts.find((t: any) => t.id === f.home_team_id);
-            const awayTeam = ts.find((t: any) => t.id === f.away_team_id);
+            const homeTeam = byTeamId.get(f.home_team_id);
+            const awayTeam = byTeamId.get(f.away_team_id);
 
             const home = homeTeam?.name ?? "";
             const away = awayTeam?.name ?? "";
@@ -134,6 +137,14 @@ export function MakePick() {
               // Away team: (A)
               opp[f.away_team_id] = `vs ${home} (A)`;
             }
+          }
+          if ((roundFixtures?.length ?? 0) > 0 && Object.keys(opp).length === 0) {
+            console.warn("[MakePick] Fixtures loaded but no team-opponent mappings were built", {
+              leagueId,
+              roundId: r.id,
+              fixtureCount: roundFixtures?.length ?? 0,
+              teamCount: ts?.length ?? 0,
+            });
           }
           setOpponentByTeamId(opp);
         } catch {
@@ -337,7 +348,7 @@ export function MakePick() {
 
                   {/* Opponent bubble */}
                   <span className="text-xs px-3 py-1 rounded-full border bg-slate-50 text-slate-700">
-                    {opp ?? "No fixture"}
+                    {opp ?? `Fixture unavailable for Round ${round.round_number}`}
                   </span>
 
                   {/* Status badges */}
