@@ -172,17 +172,36 @@ export function Leaderboard() {
   }, [league, rounds, picks]);
 
   const rows = useMemo(() => {
-    // One row per membership (player in league)
-    const items = memberships.map((m) => {
-      const player = playersById.get(m.player_id);
+    const membershipByPlayerId = new Map<ID, Membership>();
+    for (const membership of memberships) {
+      membershipByPlayerId.set(membership.player_id, membership);
+    }
+    const playerIds = Array.from(
+      new Set([
+        ...memberships.map((m) => m.player_id),
+        ...picks.map((p) => p.player_id),
+      ])
+    );
+
+    const items = playerIds.map((playerId) => {
+      const membership =
+        membershipByPlayerId.get(playerId) ??
+        ({
+          id: `${league?.id ?? activeLeagueId}:${playerId}`,
+          league_id: league?.id ?? activeLeagueId,
+          player_id: playerId,
+          is_active: false,
+          joined_at: "",
+        } as Membership);
+      const player = playersById.get(playerId);
       const display = player?.display_name || "Unknown";
-      const alive = !!m.is_active;
+      const alive = !!membership.is_active;
       const state = alive ? "Alive" : "Eliminated";
       const lastElimRound = (() => {
         if (alive) return undefined;
         // find earliest pick marked eliminated/no-pick
         let elim: number | undefined = undefined;
-        const perRound = picksByPlayerByRound.get(m.player_id);
+        const perRound = picksByPlayerByRound.get(playerId);
         if (perRound) {
           for (const [rd, p] of Array.from(perRound.entries()).sort(
             (a, b) => a[0] - b[0]
@@ -200,8 +219,8 @@ export function Leaderboard() {
       const sortKey = alive ? 1e9 : lastElimRound ?? 0;
 
       return {
-        membership: m,
-        playerId: m.player_id,
+        membership,
+        playerId,
         name: display,
         alive,
         state,
