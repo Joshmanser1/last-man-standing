@@ -104,14 +104,18 @@ export function Leaderboard() {
         }
         setLeague(lg as League);
 
-        const [roundsRes, teamsRes, picksRes] = await Promise.all([
+        const [roundsRes, teamsRes, picksResp] = await Promise.all([
           supa
             .from("rounds")
             .select("*")
             .eq("league_id", activeLeagueId)
             .order("round_number", { ascending: true }),
           supa.from("teams").select("*").eq("league_id", activeLeagueId),
-          supa.from("picks").select("*").eq("league_id", activeLeagueId),
+          fetch("/api/league-picks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ league_id: activeLeagueId }),
+          }),
         ]);
 
         const memberResp = await fetch("/api/league-members", {
@@ -120,7 +124,9 @@ export function Leaderboard() {
           body: JSON.stringify({ league_id: activeLeagueId }),
         });
         if (!memberResp.ok) throw new Error("Failed to load league members");
+        if (!picksResp.ok) throw new Error("Failed to load league picks");
         const memberRows = (await memberResp.json()) as Array<any>;
+        const pickRows = (await picksResp.json()) as Pick[];
 
         setRounds((roundsRes.data ?? []) as Round[]);
         setTeams((teamsRes.data ?? []) as Team[]);
@@ -133,7 +139,7 @@ export function Leaderboard() {
             joined_at: m.joined_at,
           })) as Membership[]
         );
-        setPicks((picksRes.data ?? []) as Pick[]);
+        setPicks(pickRows ?? []);
 
         const map = new Map<ID, Player>();
         (memberRows ?? []).forEach((m: any) => {
@@ -142,6 +148,15 @@ export function Leaderboard() {
           }
         });
         setPlayersById(map);
+
+        console.log("[Leaderboard] load diagnostics", {
+          leagueId: activeLeagueId,
+          membershipsCount: memberRows?.length ?? 0,
+          picksCount: pickRows?.length ?? 0,
+          uniquePickPlayerIds: Array.from(
+            new Set((pickRows ?? []).map((p: any) => p.player_id).filter(Boolean))
+          ),
+        });
       } finally {
         setLoading(false);
       }
@@ -237,8 +252,15 @@ export function Leaderboard() {
       return a.name.localeCompare(b.name);
     });
 
+    console.log("[Leaderboard] matrix diagnostics", {
+      membershipsCount: memberships.length,
+      picksCount: picks.length,
+      uniquePickPlayerIds: Array.from(new Set(picks.map((p) => p.player_id))),
+      matrixRowCount: filtered.length,
+    });
+
     return filtered;
-  }, [memberships, playersById, picksByPlayerByRound, showElims]);
+  }, [memberships, playersById, picksByPlayerByRound, showElims, picks]);
 
   const maxRound =
     rounds.length > 0 ? Math.max(...rounds.map((r) => r.round_number)) : 0;
