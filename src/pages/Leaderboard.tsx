@@ -277,33 +277,45 @@ export function Leaderboard() {
 
   async function exportPNG() {
     if (!exportRef.current || !league) return;
-    const node = exportRef.current;
+    const source = exportRef.current;
+    const clone = source.cloneNode(true) as HTMLDivElement;
+    const wrapper = document.createElement("div");
+    wrapper.style.position = "fixed";
+    wrapper.style.left = "-100000px";
+    wrapper.style.top = "0";
+    wrapper.style.background = "#ffffff";
+    wrapper.style.padding = "0";
+    wrapper.style.margin = "0";
+    wrapper.style.zIndex = "-1";
 
-    // Capture the full scrolled size so nothing gets cropped
-    const width = Math.max(node.scrollWidth, node.clientWidth);
-    const height = Math.max(node.scrollHeight, node.clientHeight);
+    clone.style.width = `${Math.max(source.scrollWidth, source.clientWidth)}px`;
+    clone.style.height = "auto";
+    clone.style.overflow = "visible";
+    clone.style.background = "#ffffff";
 
-    // Temp style so html-to-image renders at full size
-    const prevStyle = {
-      width: node.style.width,
-      height: node.style.height,
-      overflow: node.style.overflow,
-    };
-    node.style.width = `${width}px`;
-    node.style.height = `${height}px`;
-    node.style.overflow = "visible";
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
 
     try {
-      const dataUrl = await htmlToImage.toPng(node, {
+      const width = Math.max(clone.scrollWidth, clone.clientWidth);
+      const height = Math.max(clone.scrollHeight, clone.clientHeight);
+      const pixelRatio = width * height > 6_000_000 ? 1 : 2;
+
+      console.log("[Leaderboard] export diagnostics", {
+        width,
+        height,
+        pixelRatio,
+        view,
+      });
+
+      const dataUrl = await htmlToImage.toPng(clone, {
         backgroundColor: "#ffffff",
-        pixelRatio: 2,
+        pixelRatio,
         width,
         height,
         style: {
-          transform: "scale(1)",
-          transformOrigin: "top left",
-          // Ensure border-radius/shadows don't clip content
           overflow: "visible",
+          backgroundColor: "#ffffff",
         },
         cacheBust: true,
       });
@@ -316,10 +328,7 @@ export function Leaderboard() {
       console.error("PNG export failed", err);
       alert("Failed to export PNG.");
     } finally {
-      // restore styles
-      node.style.width = prevStyle.width;
-      node.style.height = prevStyle.height;
-      node.style.overflow = prevStyle.overflow;
+      wrapper.remove();
     }
   }
 
