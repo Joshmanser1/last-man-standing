@@ -25,6 +25,8 @@ export function Results() {
   );
   const [leagueOwnerId, setLeagueOwnerId] = useState<string>("");
   const [viewerId, setViewerId] = useState<string>("");
+  const [rounds, setRounds] = useState<any[]>([]);
+  const [selectedRoundId, setSelectedRoundId] = useState<string>("");
   const [round, setRound] = useState<any>(null);
   const [teams, setTeams] = useState<any[]>([]);
   const [picks, setPicks] = useState<any[]>([]);
@@ -37,6 +39,8 @@ export function Results() {
     if (!leagueId) {
       setLeagueOwnerId("");
       setViewerId("");
+      setRounds([]);
+      setSelectedRoundId("");
       setRound(null);
       setTeams([]);
       setPicks([]);
@@ -58,19 +62,36 @@ export function Results() {
       setViewerId(authUid ?? "");
       setLeagueOwnerId((leagueRow as any)?.created_by ?? "");
 
-      const r = await dataService.getCurrentRound(leagueId);
-      setRound(r);
+      const { data: roundRows } = await supa
+        .from("rounds")
+        .select("*")
+        .eq("league_id", leagueId)
+        .order("round_number", { ascending: true });
+      const allRounds = roundRows ?? [];
+      setRounds(allRounds);
+
+      const currentRound = await dataService.getCurrentRound(leagueId);
+      const nextSelectedRoundId =
+        selectedRoundId && allRounds.some((rr: any) => rr.id === selectedRoundId)
+          ? selectedRoundId
+          : currentRound?.id ?? allRounds[allRounds.length - 1]?.id ?? "";
+      if (nextSelectedRoundId !== selectedRoundId) {
+        setSelectedRoundId(nextSelectedRoundId);
+      }
+      const selectedRound =
+        allRounds.find((rr: any) => rr.id === nextSelectedRoundId) ?? currentRound ?? null;
+      setRound(selectedRound);
 
       const ts = await dataService.listTeams(leagueId);
       setTeams(ts || []);
 
       let pickRows: any[] = [];
-      if (r?.id) {
+      if (selectedRound?.id) {
         const { data } = await supa
           .from("picks")
           .select("*")
           .eq("league_id", leagueId)
-          .eq("round_id", r.id);
+          .eq("round_id", selectedRound.id);
         pickRows = data ?? [];
       }
       setPicks(pickRows);
@@ -91,7 +112,7 @@ export function Results() {
       });
       setPlayersById(pb);
     })();
-  }, [leagueId, reloadTick]);
+  }, [leagueId, reloadTick, selectedRoundId]);
 
   useEffect(() => {
     if (!leagueId || !round) return;
@@ -197,10 +218,22 @@ export function Results() {
               No-pick: <b>{counts["no-pick"]}</b>
             </span>
           </div>
+          <select
+            className="rounded border px-2 py-1 text-sm"
+            value={selectedRoundId}
+            onChange={(e) => setSelectedRoundId(e.target.value)}
+          >
+            {rounds.map((r: any) => (
+              <option key={r.id} value={r.id}>
+                Round {r.round_number}
+              </option>
+            ))}
+          </select>
           <GameSelector
             label="Viewing game"
             onChange={(id) => {
               setLeagueId(id);
+              setSelectedRoundId("");
               setReloadTick((x) => x + 1);
             }}
           />
