@@ -29,6 +29,13 @@ type PrivateStore = {
   memberships: PrivateMembership[];
 };
 
+type PostJoinState = {
+  leagueId: string;
+  leagueName: string;
+  roundNumber?: number;
+  deadlineUtc?: string;
+};
+
 // --------- helpers ---------
 
 function generateInviteCode(existing: Set<string>): string {
@@ -72,6 +79,7 @@ export function PrivateLeagueCreate() {
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [myLeagueIds, setMyLeagueIds] = useState<Set<string>>(new Set());
   const [joining, setJoining] = useState(false);
+  const [postJoin, setPostJoin] = useState<PostJoinState | null>(null);
 
   const playerId = getPlayerId();
   const playerName = getPlayerName();
@@ -226,6 +234,7 @@ export function PrivateLeagueCreate() {
       setStartDeadlineISO(null);
       setActiveLeagueId(created.id);
       localStorage.setItem("active_league_id", created.id);
+      setPostJoin(null);
       showFeedback(
         `Private league created. Invite code: ${code}${
           startEventId ? ` (starts FPL GW ${startEventId})` : ""
@@ -317,6 +326,20 @@ export function PrivateLeagueCreate() {
         setActiveLeagueId(targetLeague.id);
         localStorage.setItem("active_league_id", targetLeague.id);
       }
+      let joinedRound: any = null;
+      if (targetLeague?.id) {
+        try {
+          joinedRound = await dataService.getCurrentRound(targetLeague.id);
+        } catch {
+          joinedRound = null;
+        }
+        setPostJoin({
+          leagueId: targetLeague.id,
+          leagueName: targetLeague.name ?? "League",
+          roundNumber: joinedRound?.round_number,
+          deadlineUtc: joinedRound?.pick_deadline_utc,
+        });
+      }
       showFeedback(`Joined private league.`, "success");
     } catch (err: any) {
       showFeedback(err?.message ?? "Failed to join league.", "error");
@@ -379,6 +402,32 @@ export function PrivateLeagueCreate() {
       {feedback && (
         <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-800">
           {feedback}
+        </div>
+      )}
+
+      {postJoin && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+          <div className="text-base font-semibold text-emerald-900">
+            Joined {postJoin.leagueName}
+          </div>
+          <div className="mt-2 text-sm text-emerald-900">
+            Next step:
+          </div>
+          <div className="text-sm text-emerald-800">
+            Make your Round {postJoin.roundNumber ?? 1} pick
+            {postJoin.deadlineUtc
+              ? ` before ${new Date(postJoin.deadlineUtc).toLocaleString()}.`
+              : "."}
+          </div>
+          <div className="mt-3">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => goToPick(postJoin.leagueId)}
+            >
+              Make Pick
+            </button>
+          </div>
         </div>
       )}
 
