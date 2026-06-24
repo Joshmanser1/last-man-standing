@@ -315,7 +315,19 @@ export function Results() {
           </tbody>
         </table>
       ) : (
-        <div className="text-slate-500">No picks yet.</div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-700">
+          <div className="font-semibold">No results yet.</div>
+          <div className="mt-1 text-slate-600">
+            Results appear once picks have been submitted and the round is processed.
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary mt-4"
+            onClick={() => navigate("/make-pick")}
+          >
+            Make Pick
+          </button>
+        </div>
       )}
     </div>
   );

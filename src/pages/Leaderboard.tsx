@@ -440,7 +440,7 @@ export function Leaderboard() {
                   {rows.length === 0 && (
                     <tr>
                       <td className="px-3 py-6 text-center text-slate-500" colSpan={3}>
-                        No entrants yet.
+                        No entrants yet. Share your invite code to get players into the league.
                       </td>
                     </tr>
                   )}
@@ -490,7 +490,7 @@ export function Leaderboard() {
                   {rows.length === 0 && (
                     <tr>
                       <td className="px-3 py-6 text-center text-slate-500" colSpan={2 + maxRound}>
-                        No entrants yet.
+                        No entrants yet. Share your invite code to get players into the league.
                       </td>
                     </tr>
                   )}

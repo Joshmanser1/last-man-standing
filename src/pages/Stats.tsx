@@ -121,6 +121,29 @@ export function Stats() {
     );
   }
 
+  if (!rows.length) {
+    return (
+      <div className="mx-auto max-w-6xl p-4 md:p-6">
+        {guidance.shouldGuide ? (
+          <div className="card p-6 mb-6">
+            <div className="font-semibold">Stats appear once picks are submitted.</div>
+            <button
+              type="button"
+              className="btn btn-primary mt-4"
+              onClick={() => navigate("/make-pick")}
+            >
+              Make Pick
+            </button>
+          </div>
+        ) : (
+          <div className="card p-6">
+            <div className="font-semibold">Stats will appear once league activity begins.</div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-6xl p-4 md:p-6">
       {guidance.shouldGuide ? (

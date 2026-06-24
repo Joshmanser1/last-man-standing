@@ -228,7 +228,12 @@ export function EliminationHistory() {
           </table>
         </div>
       ) : (
-        <div className="text-slate-500">No eliminations yet.</div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-700">
+          <div className="font-semibold">No eliminations yet.</div>
+          <div className="mt-1 text-slate-600">
+            Eliminated players will appear here after a round is processed.
+          </div>
+        </div>
       )}
     </div>
   );
