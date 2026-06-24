@@ -9,9 +9,7 @@ import { useToast } from "../components/Toast";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
 
-const STORE_KEY = "lms_store_v1";
-
-type OpponentMap = Record<string, string>; // teamId -> "vs Team Name (H/A)";
+type OpponentMap = Record<string, string>;
 
 export function MakePick() {
   const [leagueId, setLeagueId] = useState<string>(
@@ -33,7 +31,6 @@ export function MakePick() {
 
   const playerId = authUserId;
 
-  // Kick to login/home if no player
   useEffect(() => {
     let mounted = true;
     const load = async () => {
@@ -41,13 +38,12 @@ export function MakePick() {
       if (mounted) setAuthUserId(uid);
       if (!uid) navigate("/login");
     };
-    load();
+    void load();
     return () => {
       mounted = false;
     };
   }, [navigate]);
 
-  // Load league + round + teams + picks for current player
   useEffect(() => {
     if (!leagueId || !playerId) {
       setLeague(null);
@@ -64,12 +60,11 @@ export function MakePick() {
     (async () => {
       setLoading(true);
       try {
-        // 1) League + round + teams
         const leagues = await (dataService as any).listLeagues();
-        const l = leagues.find((x: any) => x.id === leagueId) || null;
-        setLeague(l);
+        const activeLeague = leagues.find((x: any) => x.id === leagueId) || null;
+        setLeague(activeLeague);
 
-        if (!l) {
+        if (!activeLeague) {
           setRound(null);
           setTeams([]);
           setUsedTeamIds(new Set());
@@ -79,72 +74,71 @@ export function MakePick() {
           return;
         }
 
-        const r = await dataService.getCurrentRound(leagueId);
-        setRound(r);
+        const currentRound = await dataService.getCurrentRound(leagueId);
+        setRound(currentRound);
 
-        const ts = await dataService.listTeams(leagueId);
-        setTeams(ts ?? []);
+        const leagueTeams = await dataService.listTeams(leagueId);
+        setTeams(leagueTeams ?? []);
 
-        // 2) Used teams for this player
         const used = await dataService.listUsedTeamIds(leagueId, playerId);
         setUsedTeamIds(used);
 
-        // 3) Current pick for this round
-        const picksThisRound = await dataService.listPicks(r.id);
+        const picksThisRound = await dataService.listPicks(currentRound.id);
         const mine = picksThisRound.find((p: any) => p.player_id === playerId);
         setCurrentPick(mine ?? null);
 
-        // 4) Build "used by round" from local store
-        const raw = localStorage.getItem(STORE_KEY);
-        if (raw) {
-          const s = JSON.parse(raw);
+        try {
+          const [{ data: myPicks }, { data: roundRows }] = await Promise.all([
+            supa
+              .from("picks")
+              .select("team_id, round_id")
+              .eq("league_id", leagueId)
+              .eq("player_id", playerId),
+            supa.from("rounds").select("id, round_number").eq("league_id", leagueId),
+          ]);
 
-          // teamId -> round_number
-          const byTeam: Record<string, number> = {};
-          const myPicks = (s.picks as any[]).filter(
-            (p) => p.league_id === leagueId && p.player_id === playerId
+          const roundById = new Map<string, number>(
+            (roundRows ?? []).map((rr: any) => [String(rr.id), rr.round_number as number])
           );
-          for (const p of myPicks) {
-            const rnd = (s.rounds as any[]).find(
-              (rr: any) => rr.id === p.round_id
-            );
-            if (rnd) byTeam[p.team_id] = rnd.round_number;
+          const byTeam: Record<string, number> = {};
+          for (const p of myPicks ?? []) {
+            const roundNumber = roundById.get(String(p.round_id));
+            if (p.team_id && roundNumber != null) {
+              byTeam[String(p.team_id)] = roundNumber;
+            }
           }
           setUsedByRound(byTeam);
-        } else {
+        } catch {
           setUsedByRound({});
         }
 
-        // 5) Opponent map from fixtures for this round
         try {
           const byTeamId = new Map<string, any>(
-            (ts ?? []).map((team: any) => [team.id, team])
+            (leagueTeams ?? []).map((team: any) => [String(team.id), team])
           );
           const { data: roundFixtures } = await supa
             .from("fixtures")
             .select("*")
-            .eq("round_id", r.id);
+            .eq("round_id", currentRound.id);
           const opp: OpponentMap = {};
           for (const f of roundFixtures ?? []) {
-            const homeTeam = byTeamId.get(f.home_team_id);
-            const awayTeam = byTeamId.get(f.away_team_id);
+            const homeTeam = byTeamId.get(String(f.home_team_id));
+            const awayTeam = byTeamId.get(String(f.away_team_id));
 
             const home = homeTeam?.name ?? "";
             const away = awayTeam?.name ?? "";
 
             if (home && away) {
-              // Home team: (H)
-              opp[f.home_team_id] = `vs ${away} (H)`;
-              // Away team: (A)
-              opp[f.away_team_id] = `vs ${home} (A)`;
+              opp[String(f.home_team_id)] = `vs ${away} (H)`;
+              opp[String(f.away_team_id)] = `vs ${home} (A)`;
             }
           }
           if ((roundFixtures?.length ?? 0) > 0 && Object.keys(opp).length === 0) {
             console.warn("[MakePick] Fixtures loaded but no team-opponent mappings were built", {
               leagueId,
-              roundId: r.id,
+              roundId: currentRound.id,
               fixtureCount: roundFixtures?.length ?? 0,
-              teamCount: ts?.length ?? 0,
+              teamCount: leagueTeams?.length ?? 0,
             });
           }
           setOpponentByTeamId(opp);
@@ -157,17 +151,14 @@ export function MakePick() {
     })();
   }, [leagueId, playerId, reloadTick]);
 
-  // Countdown based on the round pick deadline (which you can set from FPL’s GW deadline)
   const timeLeft = useCountdown(round?.pick_deadline_utc);
   const isTestMode = !!league?.is_test;
 
-  // Hard lock if round is locked/completed OR countdown has hit zero
   const hardLocked =
     !!round && (round.status === "locked" || round.status === "completed");
   const locked = hardLocked || (!isTestMode && timeLeft === "00:00:00");
 
   const teamsAZ = useMemo(() => {
-    // de-dupe then A→Z
     const uniq = new Map<string, any>();
     for (const t of teams) if (!uniq.has(t.id)) uniq.set(t.id, t);
     return Array.from(uniq.values()).sort((a, b) =>
@@ -202,14 +193,13 @@ export function MakePick() {
         } catch {}
         throw new Error(msg);
       }
-      toast("Pick saved ✅", { variant: "success" });
+      toast("Pick saved", { variant: "success" });
       navigate("/results");
     } catch (e: any) {
       toast(e?.message ?? "Could not save pick.", { variant: "error" });
     }
   }
 
-  // If no league is selected yet, show GameSelector and a small explainer
   if (!leagueId) {
     return (
       <div data-testid="make-pick-page" className="container-page py-6">
@@ -251,7 +241,10 @@ export function MakePick() {
 
   if (loading || !league || !round) {
     return (
-      <div data-testid="make-pick-page" className="min-h-[calc(100vh-4rem)] grid place-items-center">
+      <div
+        data-testid="make-pick-page"
+        className="min-h-[calc(100vh-4rem)] grid place-items-center"
+      >
         <div className="flex flex-col items-center gap-3">
           <GameSelector
             label="Viewing game"
@@ -260,7 +253,7 @@ export function MakePick() {
               setReloadTick((x) => x + 1);
             }}
           />
-          <div className="text-slate-500 text-sm">Loading picks…</div>
+          <div className="text-slate-500 text-sm">Loading picks...</div>
         </div>
       </div>
     );
@@ -282,22 +275,21 @@ export function MakePick() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
-        {/* Left: pick list */}
         <div className="card p-6 sm:p-7">
           <div className="mb-4">
             <h1 className="text-2xl font-bold">
-              Round {round.round_number} — Make your pick
+              Round {round.round_number} - Make your pick
             </h1>
             <p className="mt-1 text-sm text-slate-600">
               Locks{" "}
               {round.pick_deadline_utc
                 ? new Date(round.pick_deadline_utc).toLocaleString()
                 : "—"}{" "}
-              • ⏱ <span className="font-mono">{timeLeft}</span>
+              • <span className="font-mono">{timeLeft}</span>
             </p>
             {isTestMode && (
               <p className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                TEST MODE â€” deadline bypass active
+                TEST MODE - deadline bypass active
               </p>
             )}
             {hardLocked && (
@@ -312,8 +304,7 @@ export function MakePick() {
               <div>
                 <div className="font-semibold text-sm">Current pick</div>
                 <div className="text-sm">
-                  {teamsAZ.find((t) => t.id === currentPick.team_id)?.name ??
-                    "—"}
+                  {teamsAZ.find((t) => t.id === currentPick.team_id)?.name ?? "—"}
                 </div>
                 <div className="text-[11px] text-teal-800 mt-0.5">
                   You can change it any time before the deadline.
@@ -326,15 +317,14 @@ export function MakePick() {
             {teamsAZ.map((t) => {
               const alreadyUsed = usedTeamIds.has(t.id);
               const disabled = alreadyUsed || locked;
-              const usedRound = usedByRound[t.id];
-              const opp = opponentByTeamId[t.id]; // e.g., "vs Man City (H)"
+              const usedRound = usedByRound[String(t.id)];
+              const opp = opponentByTeamId[String(t.id)];
 
               return (
                 <div
                   key={t.id}
                   className="flex flex-wrap items-center gap-2 sm:gap-3"
                 >
-                  {/* Team pick button */}
                   <button
                     data-testid="save-pick-btn"
                     type="button"
@@ -350,15 +340,13 @@ export function MakePick() {
                     <span className="font-medium">{t.name}</span>
                   </button>
 
-                  {/* Opponent bubble */}
                   <span className="text-xs px-3 py-1 rounded-full border bg-slate-50 text-slate-700">
                     {opp ?? `Fixture unavailable for Round ${round.round_number}`}
                   </span>
 
-                  {/* Status badges */}
                   {alreadyUsed && (
                     <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">
-                      Used R{usedRound ?? "?"}
+                      {usedRound != null ? `Used R${usedRound}` : "Used"}
                     </span>
                   )}
                   {locked && !alreadyUsed && (
@@ -389,7 +377,6 @@ export function MakePick() {
           </div>
         </div>
 
-        {/* Right: round & league summary */}
         <aside className="card p-5 space-y-4">
           <div>
             <div className="text-xs uppercase tracking-wide text-slate-500">
@@ -412,7 +399,7 @@ export function MakePick() {
                 : "—"}
             </div>
             <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-              ⏱ Time left: <span className="font-mono">{timeLeft}</span>
+              Time left: <span className="font-mono">{timeLeft}</span>
             </div>
           </div>
 
