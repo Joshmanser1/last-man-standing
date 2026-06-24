@@ -331,7 +331,7 @@ export function LiveGames() {
                         className="btn btn-primary text-xs"
                         onClick={() => makeActiveAndGo(l.id, "/make-pick")}
                       >
-                        Go to Picks
+                        Make Pick
                       </button>
                       <button
                         className="btn btn-ghost text-xs"

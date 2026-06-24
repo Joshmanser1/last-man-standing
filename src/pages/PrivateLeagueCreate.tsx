@@ -1,5 +1,6 @@
 // src/pages/PrivateLeagueCreate.tsx
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { FplGwSelect } from "../components/FplGwSelect";
 import { useToast } from "../components/Toast";
 import { dataService } from "../data/service";
@@ -57,6 +58,7 @@ function getShareUrl(code: string) {
 // --------- main page ---------
 
 export function PrivateLeagueCreate() {
+  const navigate = useNavigate();
   const toast = useToast();
   const [store, setStore] = useState<PrivateStore>({ leagues: [], memberships: [] });
 
@@ -355,6 +357,12 @@ export function PrivateLeagueCreate() {
 
   const isOwner = activeLeague && activeLeague.ownerId === authUserId;
 
+  function goToPick(leagueId: string) {
+    setActiveLeagueId(leagueId);
+    localStorage.setItem("active_league_id", leagueId);
+    navigate("/make-pick");
+  }
+
   // --------- render ---------
 
   return (
@@ -508,6 +516,13 @@ export function PrivateLeagueCreate() {
                       </div>
 
                       <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          className="btn btn-primary text-xs"
+                          onClick={() => goToPick(activeLeague.id)}
+                        >
+                          Make Pick
+                        </button>
                         <button
                           type="button"
                           className="btn btn-ghost text-xs"

@@ -157,6 +157,11 @@ export function MyGames() {
     toast("Active game set.", { variant: "success" });
   }
 
+  function goToPick(id: string) {
+    setActive(id);
+    navigate("/make-pick");
+  }
+
   const activePublic = useMemo(
     () => publicJoined.find((l) => l.id === activeLeagueId) || null,
     [publicJoined, activeLeagueId]
@@ -257,10 +262,10 @@ export function MyGames() {
 
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                 <button
-                  className="btn btn-ghost text-xs"
-                  onClick={() => navigate("/make-pick")}
+                  className="btn btn-primary text-xs"
+                  onClick={() => goToPick(activePublic.id)}
                 >
-                  Make / change pick
+                  Make Pick
                 </button>
                 <button
                   className="btn btn-ghost text-xs"
@@ -384,6 +389,13 @@ export function MyGames() {
                     </div>
 
                     <div className="flex flex-wrap gap-2 text-xs">
+                      <button
+                        type="button"
+                        className="btn btn-primary text-xs"
+                        onClick={() => goToPick(lg.id)}
+                      >
+                        Make Pick
+                      </button>
                       {!isActive && (
                         <button
                           type="button"
