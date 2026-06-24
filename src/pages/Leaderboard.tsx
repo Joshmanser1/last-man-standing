@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import * as htmlToImage from "html-to-image";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
 import { supa } from "../lib/supabaseClient";
+import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 
 type ID = string;
 
@@ -67,11 +68,9 @@ export function Leaderboard() {
   const [playersById, setPlayersById] = useState<Map<ID, Player>>(new Map());
   const [loading, setLoading] = useState<boolean>(true);
 
-  // node to export as PNG
   const exportRef = useRef<HTMLDivElement>(null);
-
-  // active league
   const activeLeagueId = localStorage.getItem("active_league_id") || "";
+  const guidance = useFirstPickGuidance(activeLeagueId);
 
   useEffect(() => {
     if (!activeLeagueId) {
@@ -171,7 +170,6 @@ export function Leaderboard() {
   }, [teams]);
 
   const picksByPlayerByRound = useMemo(() => {
-    // map: player -> (round_number -> pick)
     const map = new Map<ID, Map<number, Pick>>();
     if (!league) return map;
     const leaguePicks = picks.filter((p) => p.league_id === league.id);
@@ -215,13 +213,10 @@ export function Leaderboard() {
       const state = alive ? "Alive" : "Eliminated";
       const lastElimRound = (() => {
         if (alive) return undefined;
-        // find earliest pick marked eliminated/no-pick
         let elim: number | undefined = undefined;
         const perRound = picksByPlayerByRound.get(playerId);
         if (perRound) {
-          for (const [rd, p] of Array.from(perRound.entries()).sort(
-            (a, b) => a[0] - b[0]
-          )) {
+          for (const [rd, p] of Array.from(perRound.entries()).sort((a, b) => a[0] - b[0])) {
             if (p.status === "eliminated" || p.status === "no-pick") {
               elim = rd;
               break;
@@ -231,7 +226,6 @@ export function Leaderboard() {
         return elim;
       })();
 
-      // points = survivors first; if eliminated, rank by elim round descending
       const sortKey = alive ? 1e9 : lastElimRound ?? 0;
 
       return {
@@ -244,10 +238,8 @@ export function Leaderboard() {
       };
     });
 
-    // Hide eliminated?
     const filtered = showElims ? items : items.filter((r) => r.alive);
 
-    // Sort: alive first (sortKey high), then alphabetically
     filtered.sort((a, b) => {
       if (b.sortKey !== a.sortKey) return b.sortKey - a.sortKey;
       return a.name.localeCompare(b.name);
@@ -261,7 +253,7 @@ export function Leaderboard() {
     });
 
     return filtered;
-  }, [memberships, playersById, picksByPlayerByRound, showElims, picks]);
+  }, [memberships, playersById, picksByPlayerByRound, showElims, picks, league, activeLeagueId]);
 
   const maxRound =
     rounds.length > 0 ? Math.max(...rounds.map((r) => r.round_number)) : 0;
@@ -270,9 +262,8 @@ export function Leaderboard() {
     if (!p) return "";
     const team = teamsById.get(p.team_id);
     const code = team ? teamShort(team.name) : "";
-    if (p.status === "through") return `${code} ✓`;
-    if (p.status === "eliminated" || p.status === "no-pick") return `${code} ✗`;
-    // pending/locked/upcoming
+    if (p.status === "through") return `${code} âœ“`;
+    if (p.status === "eliminated" || p.status === "no-pick") return `${code} âœ—`;
     return `${code}`;
   }
 
@@ -337,7 +328,7 @@ export function Leaderboard() {
     return (
       <div className="container-page py-10 grid place-items-center text-slate-600">
         <div className="text-center">
-          <div className="font-semibold mb-2">Loading active league…</div>
+          <div className="font-semibold mb-2">Loading active leagueâ€¦</div>
         </div>
       </div>
     );
@@ -361,140 +352,154 @@ export function Leaderboard() {
   return (
     <div className="container-page py-6 space-y-4">
       <LeagueStatusBanner leagueId={activeLeagueId} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-lg font-semibold">{league.name} — Leaderboard</div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={showElims}
-              onChange={(e) => setShowElims(e.target.checked)}
-            />
-            Show eliminated
-          </label>
-
-          <div className="inline-flex rounded-xl bg-white border px-1 py-1 shadow-sm">
-            <button
-              className={
-                "px-3 py-1.5 text-xs rounded-lg " +
-                (view === "leaderboard"
-                  ? "bg-teal-600 text-white"
-                  : "text-slate-700 hover:bg-slate-100")
-              }
-              onClick={() => setView("leaderboard")}
-            >
-              Leaderboard
-            </button>
-            <button
-              className={
-                "px-3 py-1.5 text-xs rounded-lg " +
-                (view === "matrix"
-                  ? "bg-teal-600 text-white"
-                  : "text-slate-700 hover:bg-slate-100")
-              }
-              onClick={() => setView("matrix")}
-            >
-              Picks Matrix
-            </button>
-          </div>
-
-          <button className="btn btn-ghost text-xs" onClick={exportPNG}>
-            Export PNG
+      {guidance.shouldGuide ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-700">
+          <div className="font-semibold">Leaderboard unlocks after your first pick.</div>
+          <button
+            type="button"
+            className="btn btn-primary mt-4"
+            onClick={() => navigate("/make-pick")}
+          >
+            Make Pick
           </button>
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-lg font-semibold">{league.name} â€” Leaderboard</div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showElims}
+                  onChange={(e) => setShowElims(e.target.checked)}
+                />
+                Show eliminated
+              </label>
 
-      {/* The PNG will capture this whole panel (full scroll size handled in exportPNG) */}
-      <div ref={exportRef} className="rounded-2xl border bg-white overflow-x-auto p-0">
-        {view === "leaderboard" ? (
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-slate-700">
-              <tr>
-                <th className="px-3 py-2 text-left w-[48px]">#</th>
-                <th className="px-3 py-2 text-left">Name</th>
-                <th className="px-3 py-2 text-left">State</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={r.membership.id} className="border-t">
-                  <td className="px-3 py-2">{i + 1}</td>
-                  <td className="px-3 py-2">{r.name}</td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={
-                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold " +
-                        (r.alive
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-slate-200 text-slate-700")
-                      }
-                    >
-                      {r.state}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td className="px-3 py-6 text-center text-slate-500" colSpan={3}>
-                    No entrants yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        ) : (
-          <table className="min-w-[720px] text-sm">
-            <thead className="bg-slate-50 text-slate-700">
-              <tr>
-                <th className="px-3 py-2 text-left">Name</th>
-                <th className="px-3 py-2 text-left">State</th>
-                {Array.from({ length: maxRound }, (_, i) => (
-                  <th key={i} className="px-3 py-2 text-left">{`RD${i + 1}`}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const perRound = picksByPlayerByRound.get(r.playerId);
-                return (
-                  <tr key={r.membership.id} className="border-t">
-                    <td className="px-3 py-2 whitespace-nowrap">{r.name}</td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={
-                          "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold " +
-                          (r.alive
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-slate-200 text-slate-700")
-                        }
-                      >
-                        {r.state}
-                      </span>
-                    </td>
-                    {Array.from({ length: maxRound }, (_, i) => {
-                      const rd = i + 1;
-                      const p = perRound?.get(rd);
-                      return (
-                        <td key={rd} className="px-3 py-2">
-                          {symbolForPick(p)}
-                        </td>
-                      );
-                    })}
+              <div className="inline-flex rounded-xl bg-white border px-1 py-1 shadow-sm">
+                <button
+                  className={
+                    "px-3 py-1.5 text-xs rounded-lg " +
+                    (view === "leaderboard"
+                      ? "bg-teal-600 text-white"
+                      : "text-slate-700 hover:bg-slate-100")
+                  }
+                  onClick={() => setView("leaderboard")}
+                >
+                  Leaderboard
+                </button>
+                <button
+                  className={
+                    "px-3 py-1.5 text-xs rounded-lg " +
+                    (view === "matrix"
+                      ? "bg-teal-600 text-white"
+                      : "text-slate-700 hover:bg-slate-100")
+                  }
+                  onClick={() => setView("matrix")}
+                >
+                  Picks Matrix
+                </button>
+              </div>
+
+              <button className="btn btn-ghost text-xs" onClick={exportPNG}>
+                Export PNG
+              </button>
+            </div>
+          </div>
+
+          <div ref={exportRef} className="rounded-2xl border bg-white overflow-x-auto p-0">
+            {view === "leaderboard" ? (
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-slate-700">
+                  <tr>
+                    <th className="px-3 py-2 text-left w-[48px]">#</th>
+                    <th className="px-3 py-2 text-left">Name</th>
+                    <th className="px-3 py-2 text-left">State</th>
                   </tr>
-                );
-              })}
-              {rows.length === 0 && (
-                <tr>
-                  <td className="px-3 py-6 text-center text-slate-500" colSpan={2 + maxRound}>
-                    No entrants yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        )}
-      </div>
+                </thead>
+                <tbody>
+                  {rows.map((r, i) => (
+                    <tr key={r.membership.id} className="border-t">
+                      <td className="px-3 py-2">{i + 1}</td>
+                      <td className="px-3 py-2">{r.name}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold " +
+                            (r.alive
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-slate-200 text-slate-700")
+                          }
+                        >
+                          {r.state}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {rows.length === 0 && (
+                    <tr>
+                      <td className="px-3 py-6 text-center text-slate-500" colSpan={3}>
+                        No entrants yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            ) : (
+              <table className="min-w-[720px] text-sm">
+                <thead className="bg-slate-50 text-slate-700">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Name</th>
+                    <th className="px-3 py-2 text-left">State</th>
+                    {Array.from({ length: maxRound }, (_, i) => (
+                      <th key={i} className="px-3 py-2 text-left">{`RD${i + 1}`}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const perRound = picksByPlayerByRound.get(r.playerId);
+                    return (
+                      <tr key={r.membership.id} className="border-t">
+                        <td className="px-3 py-2 whitespace-nowrap">{r.name}</td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold " +
+                              (r.alive
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-slate-200 text-slate-700")
+                            }
+                          >
+                            {r.state}
+                          </span>
+                        </td>
+                        {Array.from({ length: maxRound }, (_, i) => {
+                          const rd = i + 1;
+                          const p = perRound?.get(rd);
+                          return (
+                            <td key={rd} className="px-3 py-2">
+                              {symbolForPick(p)}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                  {rows.length === 0 && (
+                    <tr>
+                      <td className="px-3 py-6 text-center text-slate-500" colSpan={2 + maxRound}>
+                        No entrants yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

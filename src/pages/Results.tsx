@@ -1,5 +1,6 @@
 // src/pages/Results.tsx
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
@@ -7,6 +8,7 @@ import { useNotifications } from "../components/Notifications";
 import { computeOutcome } from "../lib/outcome";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
+import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -20,6 +22,7 @@ type Row = {
 type FilterKey = "all" | "pending" | "through" | "eliminated" | "no-pick";
 
 export function Results() {
+  const navigate = useNavigate();
   const { showOutcome } = useNotifications();
   const [leagueId, setLeagueId] = useState<string>(
     () => localStorage.getItem("active_league_id") || ""
@@ -35,6 +38,7 @@ export function Results() {
   const [playersById, setPlayersById] = useState<Record<string, any>>({});
   const [filter, setFilter] = useState<FilterKey>("all");
   const [reloadTick, setReloadTick] = useState(0);
+  const guidance = useFirstPickGuidance(leagueId);
 
   useEffect(() => {
     if (!leagueId) {
@@ -178,6 +182,11 @@ export function Results() {
     return <span className={`px-2 py-0.5 rounded-full text-xs ${cls}`}>{s}</span>;
   }
 
+  const showGuidance =
+    guidance.shouldGuide &&
+    selectedRoundId === guidance.currentRoundId &&
+    rows.length === 0;
+
   if (!leagueId) {
     return (
       <div className="max-w-4xl mx-auto p-4">
@@ -270,7 +279,21 @@ export function Results() {
         ))}
       </div>
 
-      {filtered.length ? (
+      {showGuidance ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-700">
+          <div className="font-semibold">Make your pick first.</div>
+          <div className="mt-1 text-slate-600">
+            Results will appear after picks are processed.
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary mt-4"
+            onClick={() => navigate("/make-pick")}
+          >
+            Make Pick
+          </button>
+        </div>
+      ) : filtered.length ? (
         <table className="min-w-full text-sm border">
           <thead className="bg-slate-100">
             <tr>

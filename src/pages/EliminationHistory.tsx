@@ -1,9 +1,11 @@
 // src/pages/EliminationHistory.tsx
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
 import { supa } from "../lib/supabaseClient";
+import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 
 type Row = {
   roundNumber: number;
@@ -14,6 +16,7 @@ type Row = {
 };
 
 export function EliminationHistory() {
+  const navigate = useNavigate();
   const [leagueId, setLeagueId] = useState<string>(
     () => localStorage.getItem("active_league_id") || ""
   );
@@ -25,6 +28,7 @@ export function EliminationHistory() {
   const [roundFilter, setRoundFilter] = useState<number | "all">("all");
   const [q, setQ] = useState("");
   const [reloadTick, setReloadTick] = useState(0);
+  const guidance = useFirstPickGuidance(leagueId);
 
   useEffect(() => {
     if (!leagueId) {
@@ -180,7 +184,21 @@ export function EliminationHistory() {
         />
       </div>
 
-      {filtered.length ? (
+      {guidance.shouldGuide && filtered.length === 0 ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-700">
+          <div className="font-semibold">Make your pick first.</div>
+          <div className="mt-1 text-slate-600">
+            Eliminations appear after picks are processed.
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary mt-4"
+            onClick={() => navigate("/make-pick")}
+          >
+            Make Pick
+          </button>
+        </div>
+      ) : filtered.length ? (
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm border border-slate-200">
             <thead className="bg-slate-100">

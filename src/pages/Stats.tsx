@@ -1,6 +1,8 @@
 // src/pages/Stats.tsx
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { fetchFplTeams, fetchFplFixtures } from "../lib/fpl";
+import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 
 type FplTeam = {
   id: number;
@@ -42,10 +44,12 @@ type TableRow = {
 };
 
 export function Stats() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<TableRow[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const guidance = useFirstPickGuidance(localStorage.getItem("active_league_id") || "");
 
   async function load() {
     setLoading(true);
@@ -119,6 +123,18 @@ export function Stats() {
 
   return (
     <div className="mx-auto max-w-6xl p-4 md:p-6">
+      {guidance.shouldGuide ? (
+        <div className="card p-6 mb-6">
+          <div className="font-semibold">Stats appear once picks are submitted.</div>
+          <button
+            type="button"
+            className="btn btn-primary mt-4"
+            onClick={() => navigate("/make-pick")}
+          >
+            Make Pick
+          </button>
+        </div>
+      ) : null}
       {/* Hero header */}
       <div className="relative overflow-hidden rounded-3xl border shadow-sm mb-6">
         <div className="absolute inset-0 bg-gradient-to-r from-teal-600 via-emerald-600 to-cyan-500 opacity-95" />
