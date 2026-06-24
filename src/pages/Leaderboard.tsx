@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as htmlToImage from "html-to-image";
+import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
 import { supa } from "../lib/supabaseClient";
 
 type ID = string;
@@ -359,6 +360,7 @@ export function Leaderboard() {
 
   return (
     <div className="container-page py-6 space-y-4">
+      <LeagueStatusBanner leagueId={activeLeagueId} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-lg font-semibold">{league.name} — Leaderboard</div>
         <div className="flex items-center gap-2">

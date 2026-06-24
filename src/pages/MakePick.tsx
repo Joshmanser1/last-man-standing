@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { useCountdown } from "../hooks/useCountdown";
 import { GameSelector } from "../components/GameSelector";
+import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
 import { useToast } from "../components/Toast";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
@@ -275,6 +276,9 @@ export function MakePick() {
             setReloadTick((x) => x + 1);
           }}
         />
+      </div>
+      <div className="mb-4">
+        <LeagueStatusBanner leagueId={leagueId} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">

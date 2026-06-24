@@ -1,6 +1,7 @@
 // src/pages/LeagueSummary.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
 import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
 import { supa } from "../lib/supabaseClient";
@@ -417,6 +418,9 @@ export function LeagueSummary() {
             setReloadTick((x) => x + 1);
           }}
         />
+      </div>
+      <div className="mb-4">
+        <LeagueStatusBanner leagueId={activeLeagueId} />
       </div>
 
       {/* Minimal fallback summary */}

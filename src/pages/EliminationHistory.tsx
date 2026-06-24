@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
+import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
 import { supa } from "../lib/supabaseClient";
 
 type Row = {
@@ -137,6 +138,9 @@ export function EliminationHistory() {
 
   return (
     <div className="max-w-5xl mx-auto p-4">
+      <div className="mb-4">
+        <LeagueStatusBanner leagueId={leagueId} />
+      </div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-bold">Elimination History</h2>
         <GameSelector

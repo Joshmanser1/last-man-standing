@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
+import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
 import { useNotifications } from "../components/Notifications";
 import { computeOutcome } from "../lib/outcome";
 import { supa } from "../lib/supabaseClient";
@@ -199,6 +200,9 @@ export function Results() {
 
   return (
     <div className="max-w-4xl mx-auto p-4">
+      <div className="mb-4">
+        <LeagueStatusBanner leagueId={leagueId} />
+      </div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-bold">
           Results — Round {round?.round_number ?? "—"}
