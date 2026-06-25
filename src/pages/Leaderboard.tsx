@@ -261,9 +261,9 @@ export function Leaderboard() {
   function symbolForPick(p?: Pick) {
     if (!p) return "";
     const team = teamsById.get(p.team_id);
-    const code = team ? teamShort(team.name) : "";
-    if (p.status === "through") return `${code} âœ“`;
-    if (p.status === "eliminated" || p.status === "no-pick") return `${code} âœ—`;
+    const code = team?.code?.trim().toUpperCase() || (team ? teamShort(team.name) : "");
+    if (p.status === "through") return `${code} \u2713`;
+    if (p.status === "eliminated" || p.status === "no-pick") return `${code} \u2715`;
     return `${code}`;
   }
 
@@ -509,3 +509,4 @@ export default Leaderboard;
 function slug(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
+
