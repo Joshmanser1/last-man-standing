@@ -1,5 +1,5 @@
 // src/App.tsx
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { useEffect, useMemo } from "react";
 import { Header } from "./components/Header";
 import { ToastProvider } from "./components/Toast";
@@ -74,7 +74,8 @@ function AppInner() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/home" element={<Home />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/live" element={<LiveGames />} />
+          <Route path="/public" element={<LiveGames />} />
+          <Route path="/live" element={<Navigate to="/public" replace />} />
           <Route path="/results" element={<Results />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/eliminations" element={<EliminationHistory />} />

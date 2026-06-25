@@ -1,4 +1,3 @@
-// src/pages/Leaderboard.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as htmlToImage from "html-to-image";
@@ -42,7 +41,14 @@ type Pick = {
   reason?: "loss" | "draw" | "no-pick";
 };
 type Team = { id: ID; league_id: ID; name: string; code: string };
-type ViewMode = "leaderboard" | "matrix";
+type ViewMode = "leaderboard" | "matrix" | "eliminations";
+type EliminationRow = {
+  roundNumber: number;
+  playerName: string;
+  teamName: string;
+  reason: string;
+  when: string;
+};
 
 function teamShort(name: string) {
   const cleaned = name.replace(/\s+/g, " ").trim();
@@ -148,15 +154,6 @@ export function Leaderboard() {
           }
         });
         setPlayersById(map);
-
-        console.log("[Leaderboard] load diagnostics", {
-          leagueId: activeLeagueId,
-          membershipsCount: memberRows?.length ?? 0,
-          picksCount: pickRows?.length ?? 0,
-          uniquePickPlayerIds: Array.from(
-            new Set((pickRows ?? []).map((p: any) => p.player_id).filter(Boolean))
-          ),
-        });
       } finally {
         setLoading(false);
       }
@@ -191,10 +188,7 @@ export function Leaderboard() {
       membershipByPlayerId.set(membership.player_id, membership);
     }
     const playerIds = Array.from(
-      new Set([
-        ...memberships.map((m) => m.player_id),
-        ...picks.map((p) => p.player_id),
-      ])
+      new Set([...memberships.map((m) => m.player_id), ...picks.map((p) => p.player_id)])
     );
 
     const items = playerIds.map((playerId) => {
@@ -213,7 +207,7 @@ export function Leaderboard() {
       const state = alive ? "Alive" : "Eliminated";
       const lastElimRound = (() => {
         if (alive) return undefined;
-        let elim: number | undefined = undefined;
+        let elim: number | undefined;
         const perRound = picksByPlayerByRound.get(playerId);
         if (perRound) {
           for (const [rd, p] of Array.from(perRound.entries()).sort((a, b) => a[0] - b[0])) {
@@ -226,37 +220,43 @@ export function Leaderboard() {
         return elim;
       })();
 
-      const sortKey = alive ? 1e9 : lastElimRound ?? 0;
-
       return {
         membership,
         playerId,
         name: display,
         alive,
         state,
-        sortKey,
+        sortKey: alive ? 1e9 : lastElimRound ?? 0,
       };
     });
 
     const filtered = showElims ? items : items.filter((r) => r.alive);
-
     filtered.sort((a, b) => {
       if (b.sortKey !== a.sortKey) return b.sortKey - a.sortKey;
       return a.name.localeCompare(b.name);
     });
-
-    console.log("[Leaderboard] matrix diagnostics", {
-      membershipsCount: memberships.length,
-      picksCount: picks.length,
-      uniquePickPlayerIds: Array.from(new Set(picks.map((p) => p.player_id))),
-      matrixRowCount: filtered.length,
-    });
-
     return filtered;
   }, [memberships, playersById, picksByPlayerByRound, showElims, picks, league, activeLeagueId]);
 
-  const maxRound =
-    rounds.length > 0 ? Math.max(...rounds.map((r) => r.round_number)) : 0;
+  const eliminationRows = useMemo(() => {
+    const byRound = new Map<string, Round>(rounds.map((r) => [r.id, r]));
+    return picks
+      .filter((p) => p.status === "eliminated" || p.status === "no-pick")
+      .map((p) => {
+        const round = byRound.get(p.round_id);
+        const team = teamsById.get(p.team_id);
+        return {
+          roundNumber: round?.round_number ?? 0,
+          playerName: playersById.get(p.player_id)?.display_name ?? "Unknown",
+          teamName: team?.name ?? "—",
+          reason: p.reason ?? (p.status === "no-pick" ? "no-pick" : "loss"),
+          when: round?.pick_deadline_utc ?? "",
+        } as EliminationRow;
+      })
+      .sort((a, b) => b.roundNumber - a.roundNumber || a.playerName.localeCompare(b.playerName));
+  }, [picks, rounds, teamsById, playersById]);
+
+  const maxRound = rounds.length > 0 ? Math.max(...rounds.map((r) => r.round_number)) : 0;
 
   function symbolForPick(p?: Pick) {
     if (!p) return "";
@@ -293,13 +293,6 @@ export function Leaderboard() {
       const height = Math.max(clone.scrollHeight, clone.clientHeight);
       const pixelRatio = width * height > 6_000_000 ? 1 : 2;
 
-      console.log("[Leaderboard] export diagnostics", {
-        width,
-        height,
-        pixelRatio,
-        view,
-      });
-
       const dataUrl = await htmlToImage.toPng(clone, {
         backgroundColor: "#ffffff",
         pixelRatio,
@@ -328,7 +321,7 @@ export function Leaderboard() {
     return (
       <div className="container-page py-10 grid place-items-center text-slate-600">
         <div className="text-center">
-          <div className="font-semibold mb-2">Loading active leagueâ€¦</div>
+          <div className="font-semibold mb-2">Loading active league...</div>
         </div>
       </div>
     );
@@ -341,8 +334,8 @@ export function Leaderboard() {
           <div className="font-semibold mb-2">No active game selected</div>
         </div>
         {!activeLeagueId && (
-          <button className="btn btn-primary" onClick={() => navigate("/live")}>
-            Pick a game from Live
+          <button className="btn btn-primary" onClick={() => navigate("/my-games")}>
+            Open My Games
           </button>
         )}
       </div>
@@ -366,7 +359,7 @@ export function Leaderboard() {
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-lg font-semibold">{league.name} â€” Leaderboard</div>
+            <div className="text-lg font-semibold">{league.name} - Leaderboard</div>
             <div className="flex items-center gap-2">
               <label className="text-sm flex items-center gap-2">
                 <input
@@ -387,7 +380,7 @@ export function Leaderboard() {
                   }
                   onClick={() => setView("leaderboard")}
                 >
-                  Leaderboard
+                  Standings
                 </button>
                 <button
                   className={
@@ -398,7 +391,18 @@ export function Leaderboard() {
                   }
                   onClick={() => setView("matrix")}
                 >
-                  Picks Matrix
+                  Pick Matrix
+                </button>
+                <button
+                  className={
+                    "px-3 py-1.5 text-xs rounded-lg " +
+                    (view === "eliminations"
+                      ? "bg-teal-600 text-white"
+                      : "text-slate-700 hover:bg-slate-100")
+                  }
+                  onClick={() => setView("eliminations")}
+                >
+                  Eliminations
                 </button>
               </div>
 
@@ -446,7 +450,7 @@ export function Leaderboard() {
                   )}
                 </tbody>
               </table>
-            ) : (
+            ) : view === "matrix" ? (
               <table className="min-w-[720px] text-sm">
                 <thead className="bg-slate-50 text-slate-700">
                   <tr>
@@ -496,6 +500,40 @@ export function Leaderboard() {
                   )}
                 </tbody>
               </table>
+            ) : (
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-slate-700">
+                  <tr>
+                    <th className="px-3 py-2 text-left w-24">Round</th>
+                    <th className="px-3 py-2 text-left">Player</th>
+                    <th className="px-3 py-2 text-left">Pick</th>
+                    <th className="px-3 py-2 text-left">Reason</th>
+                    <th className="px-3 py-2 text-left">Locked</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {eliminationRows.map((row, i) => (
+                    <tr key={`${row.playerName}:${row.roundNumber}:${i}`} className="border-t">
+                      <td className="px-3 py-2">R{row.roundNumber}</td>
+                      <td className="px-3 py-2">{row.playerName}</td>
+                      <td className="px-3 py-2">{row.teamName}</td>
+                      <td className="px-3 py-2 capitalize">
+                        {row.reason === "no-pick" ? "No Pick" : row.reason}
+                      </td>
+                      <td className="px-3 py-2">
+                        {row.when ? new Date(row.when).toLocaleString() : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  {eliminationRows.length === 0 && (
+                    <tr>
+                      <td className="px-3 py-6 text-center text-slate-500" colSpan={5}>
+                        No eliminations yet. Eliminated players will appear here after a round is processed.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             )}
           </div>
         </>
@@ -509,4 +547,3 @@ export default Leaderboard;
 function slug(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
-

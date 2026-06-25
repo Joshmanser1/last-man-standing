@@ -120,20 +120,14 @@ export function Header() {
             <>
               {hasLeague && (
                 <>
-                  <NavLink to="/live" className={linkCls}>
-                    Live
-                  </NavLink>
                   <NavLink to="/make-pick" className={linkCls}>
-                    Make Pick
+                    Picks
                   </NavLink>
                   <NavLink to="/results" className={linkCls}>
                     Results
                   </NavLink>
                   <NavLink to="/leaderboard" className={linkCls}>
                     Leaderboard
-                  </NavLink>
-                  <NavLink to="/eliminations" className={linkCls}>
-                    Eliminations
                   </NavLink>
                   <NavLink to="/stats" className={linkCls}>
                     Stats
@@ -145,6 +139,9 @@ export function Header() {
               )}
               <NavLink to="/my-games" className={linkCls}>
                 My Games
+              </NavLink>
+              <NavLink to="/public" className={linkCls}>
+                Public
               </NavLink>
               <NavLink to="/private" className={linkCls}>
                 Private
@@ -211,20 +208,14 @@ export function Header() {
         <div className="md:hidden border-t border-white/10 px-3 py-2 flex gap-1 overflow-x-auto">
           {hasLeague && (
             <>
-              <NavLink to="/live" className={linkCls}>
-                Live
-              </NavLink>
               <NavLink to="/make-pick" className={linkCls}>
-                Pick
+                Picks
               </NavLink>
               <NavLink to="/results" className={linkCls}>
                 Results
               </NavLink>
               <NavLink to="/leaderboard" className={linkCls}>
                 Leaderboard
-              </NavLink>
-              <NavLink to="/eliminations" className={linkCls}>
-                Elims
               </NavLink>
               <NavLink to="/stats" className={linkCls}>
                 Stats
@@ -236,6 +227,9 @@ export function Header() {
           )}
           <NavLink to="/my-games" className={linkCls}>
             My Games
+          </NavLink>
+          <NavLink to="/public" className={linkCls}>
+            Public
           </NavLink>
           <NavLink to="/private" className={linkCls}>
             Private

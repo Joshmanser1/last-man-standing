@@ -239,9 +239,9 @@ export function MyGames() {
             <button
               type="button"
               className="btn btn-ghost text-xs"
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/public")}
             >
-              Join another game
+              Browse public games
             </button>
           </div>
 
@@ -269,9 +269,9 @@ export function MyGames() {
                 </button>
                 <button
                   className="btn btn-ghost text-xs"
-                  onClick={() => navigate("/live")}
+                  onClick={() => navigate("/public")}
                 >
-                  Live
+                  Public
                 </button>
                 <button
                   className="btn btn-ghost text-xs"
@@ -303,8 +303,8 @@ export function MyGames() {
               ) : (
                 <p>
                   You haven’t joined any public LMS games yet.{" "}
-                  <button className="underline" onClick={() => navigate("/")}>
-                    Join a game from the home page
+                  <button className="underline" onClick={() => navigate("/public")}>
+                    Join a public game
                   </button>
                   .
                 </p>
@@ -360,8 +360,8 @@ export function MyGames() {
               <p>You haven’t joined any public LMS games on this account yet.</p>
               <p>
                 Head back to the{" "}
-                <Link to="/" className="underline">
-                  home page
+                <Link to="/public" className="underline">
+                  public games page
                 </Link>{" "}
                 to join a game.
               </p>
@@ -430,8 +430,8 @@ export function MyGames() {
               </div>
               <p className="text-xs text-slate-600">
                 You can join more games from the{" "}
-                <Link to="/" className="underline">
-                  home page
+                <Link to="/public" className="underline">
+                  public games page
                 </Link>
                 .
               </p>
