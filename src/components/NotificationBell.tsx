@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   clearNotifications,
+  getLastViewedAt,
   getNotifications,
   getUnreadCount,
   markAllRead,
+  setLastViewedAt,
 } from "../lib/notifyFeed";
+import { syncLeagueNotifications } from "../lib/generateNotifications";
 
 function timeAgo(ts: number) {
   const diff = Date.now() - ts;
@@ -19,12 +23,15 @@ function timeAgo(ts: number) {
 }
 
 export function NotificationBell() {
+  const navigate = useNavigate();
   const playerId = localStorage.getItem("player_id") || "";
+  const activeLeagueId = localStorage.getItem("active_league_id") || "";
   const [open, setOpen] = useState(false);
   const [tick, setTick] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const items = useMemo(() => (playerId ? getNotifications(playerId) : []), [playerId, tick]);
+  const lastViewedAt = useMemo(() => (playerId ? getLastViewedAt(playerId) : 0), [playerId, tick]);
   const unread = useMemo(() => (playerId ? getUnreadCount(playerId) : 0), [playerId, tick]);
 
   useEffect(() => {
@@ -41,22 +48,48 @@ export function NotificationBell() {
     return () => window.clearInterval(t);
   }, []);
 
+  useEffect(() => {
+    if (!playerId || !activeLeagueId) return;
+    let disposed = false;
+
+    const run = async () => {
+      await syncLeagueNotifications(playerId, activeLeagueId);
+      if (!disposed) setTick((x) => x + 1);
+    };
+
+    void run();
+    const t = window.setInterval(run, 30000);
+    return () => {
+      disposed = true;
+      window.clearInterval(t);
+    };
+  }, [playerId, activeLeagueId]);
+
   if (!playerId) return null;
 
   return (
     <div ref={wrapRef} className="relative" data-testid="notification-bell">
       <button
         type="button"
-        onClick={() => setOpen((x) => !x)}
-        className="relative grid place-items-center h-9 w-9 rounded-xl bg-white/5 hover:bg-white/10 ring-1 ring-white/10 transition"
+        onClick={() =>
+          setOpen((x) => {
+            const next = !x;
+            if (next) {
+              setLastViewedAt(playerId);
+              setTick((v) => v + 1);
+            }
+            return next;
+          })
+        }
+        className="relative grid h-9 w-9 place-items-center rounded-xl bg-white/5 ring-1 ring-white/10 transition hover:bg-white/10"
         aria-label="Notifications"
       >
-        <span className="text-lg">🔔</span>
+        <span className="text-lg">{"\uD83D\uDD14"}</span>
 
         {unread > 0 && (
           <span
             data-testid="notification-bell-badge"
-            className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-[11px] font-bold text-black grid place-items-center ring-2 ring-slate-950"
+            className="absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-emerald-500 px-1 text-[11px] font-bold text-black ring-2 ring-slate-950"
           >
             {unread > 9 ? "9+" : unread}
           </span>
@@ -66,9 +99,9 @@ export function NotificationBell() {
       {open && (
         <div
           data-testid="notification-dropdown"
-          className="absolute right-0 mt-2 w-[340px] max-w-[80vw] rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/85 to-slate-950/85 backdrop-blur-xl ring-1 ring-white/10 shadow-[0_18px_60px_rgba(0,0,0,0.65)] overflow-hidden z-[70]"
+          className="absolute right-0 z-[70] mt-2 w-[340px] max-w-[80vw] overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/85 to-slate-950/85 shadow-[0_18px_60px_rgba(0,0,0,0.65)] ring-1 ring-white/10 backdrop-blur-xl"
         >
-          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+          <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
             <div className="text-sm font-semibold text-white">Notifications</div>
             <div className="flex gap-2">
               <button
@@ -94,32 +127,43 @@ export function NotificationBell() {
 
           <div className="max-h-[360px] overflow-auto">
             {items.length ? (
-              <div className="p-2 space-y-2">
-                {items.slice(0, 12).map((n: any) => (
-                  <div
-                    key={n.id}
-                    className={[
-                      "rounded-xl px-3 py-2 ring-1 transition",
-                      n.read ? "bg-white/5 ring-white/10" : "bg-white/10 ring-emerald-400/20",
-                    ].join(" ")}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div
-                          className={
-                            n.read ? "text-xs text-slate-300" : "text-xs text-white font-semibold"
-                          }
-                        >
-                          {n.title}
+              <div className="space-y-2 p-2">
+                {items.slice(0, 12).map((n: any) => {
+                  const seen = n.read || n.ts <= lastViewedAt;
+
+                  return (
+                    <div
+                      key={n.id}
+                      className={[
+                        "rounded-xl px-3 py-2 ring-1 transition",
+                        seen ? "bg-white/5 ring-white/10" : "bg-white/10 ring-emerald-400/20",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className={seen ? "text-xs text-slate-300" : "text-xs font-semibold text-white"}>
+                            {n.title}
+                          </div>
+                          {n.body && <div className="mt-0.5 text-[11px] text-slate-400">{n.body}</div>}
+                          {n.cta?.to && (
+                            <button
+                              type="button"
+                              className="mt-2 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300"
+                              onClick={() => {
+                                setLastViewedAt(playerId);
+                                navigate(n.cta.to);
+                                setOpen(false);
+                              }}
+                            >
+                              {n.cta.label ?? "Open"}
+                            </button>
+                          )}
                         </div>
-                        {n.body && <div className="text-[11px] text-slate-400 mt-0.5">{n.body}</div>}
-                      </div>
-                      <div className="text-[10px] text-slate-500 whitespace-nowrap">
-                        {timeAgo(n.ts)}
+                        <div className="whitespace-nowrap text-[10px] text-slate-500">{timeAgo(n.ts)}</div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="p-4 text-xs text-slate-400">No notifications yet.</div>

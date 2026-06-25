@@ -1,4 +1,5 @@
 const KEY = "lms_notifications_v1";
+const VIEWED_KEY = "lms_notifications_viewed_v1";
 
 function getPlayerKey(playerId: string) {
   return `${KEY}:${playerId}`;
@@ -8,6 +9,7 @@ export function appendNotification(playerId: string, item: any) {
   const k = getPlayerKey(playerId);
   const raw = localStorage.getItem(k) || "[]";
   const arr = JSON.parse(raw);
+  if (item?.key && arr.some((x: any) => x.key === item.key)) return;
 
   arr.unshift({
     id: crypto.randomUUID(),
@@ -29,15 +31,18 @@ export function markAllRead(playerId: string) {
   const arr = JSON.parse(localStorage.getItem(k) || "[]");
   arr.forEach((x: any) => (x.read = true));
   localStorage.setItem(k, JSON.stringify(arr));
+  setLastViewedAt(playerId);
 }
 
 export function clearNotifications(playerId: string) {
   localStorage.removeItem(getPlayerKey(playerId));
+  localStorage.removeItem(`${VIEWED_KEY}:${playerId}`);
 }
 
 export function getUnreadCount(playerId: string) {
   const arr = getNotifications(playerId);
-  return arr.filter((x: any) => !x.read).length;
+  const lastViewedAt = getLastViewedAt(playerId);
+  return arr.filter((x: any) => x.ts > lastViewedAt).length;
 }
 
 export function markRead(playerId: string, id: string) {
@@ -48,4 +53,12 @@ export function markRead(playerId: string, id: string) {
     arr[idx].read = true;
     localStorage.setItem(k, JSON.stringify(arr));
   }
+}
+
+export function getLastViewedAt(playerId: string) {
+  return Number(localStorage.getItem(`${VIEWED_KEY}:${playerId}`) || "0");
+}
+
+export function setLastViewedAt(playerId: string, ts = Date.now()) {
+  localStorage.setItem(`${VIEWED_KEY}:${playerId}`, String(ts));
 }
