@@ -16,6 +16,7 @@ export async function syncLeagueNotifications(playerId: string, leagueId: string
     supa.from("rounds").select("*").eq("league_id", leagueId).order("round_number", { ascending: true }),
   ]);
   if (!league) return;
+  const safeRounds = rounds ?? [];
 
   const [picksResp, membersResp] = await Promise.all([
     fetch("/api/league-picks", {
@@ -34,8 +35,8 @@ export async function syncLeagueNotifications(playerId: string, leagueId: string
   const picks = (await picksResp.json()) as Array<any>;
   const members = (await membersResp.json()) as Array<any>;
   const currentRound =
-    (rounds || []).find((round: any) => round.round_number === league.current_round) ||
-    (rounds || [])[rounds.length - 1];
+    safeRounds.find((round: any) => round.round_number === league.current_round) ||
+    safeRounds[safeRounds.length - 1];
 
   const currentRoundOpen =
     currentRound &&
@@ -72,7 +73,7 @@ export async function syncLeagueNotifications(playerId: string, leagueId: string
 
   const previousRound =
     currentRound && currentRound.round_number > 1
-      ? (rounds || []).find((round: any) => round.round_number === currentRound.round_number - 1)
+      ? safeRounds.find((round: any) => round.round_number === currentRound.round_number - 1)
       : null;
   if (previousRound) {
     const myPrevPick = picks.find(
