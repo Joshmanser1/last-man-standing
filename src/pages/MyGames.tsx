@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { supa } from "../lib/supabaseClient";
@@ -213,7 +214,7 @@ export function MyGames() {
     title: string,
     rows: DashboardLeague[],
     empty: string,
-    actions: (league: DashboardLeague) => JSX.Element
+    actions: (league: DashboardLeague) => ReactNode
   ) {
     return (
       <section className="space-y-3">
