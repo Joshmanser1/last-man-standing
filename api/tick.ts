@@ -200,7 +200,7 @@ export default async function handler(req: Req, res: Res) {
     let processedLeagues = 0;
     const leaguesResult = await supabase
       .from("leagues")
-      .select("id, status, current_round, fpl_start_event")
+      .select("id, status, current_round, fpl_start_event, is_test")
       .is("deleted_at", null);
 
     if (leaguesResult.error) {
@@ -523,6 +523,37 @@ export default async function handler(req: Req, res: Res) {
             if (nextRoundCheck.error) {
               actions.push({ league_id: leagueId, step: "next_round_lookup_error", error: nextRoundCheck.error.message });
             } else if (!nextRoundCheck.data) {
+              let nextDeadlineUtc = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+              if ((league as any).is_test === true && typeof (league as any).fpl_start_event === "number") {
+                try {
+                  const nextEventNumber =
+                    ((league as any).fpl_start_event as number) + nextRoundNumber - 1;
+                  const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/");
+                  if (bootstrapRes.ok) {
+                    const bootstrap = (await bootstrapRes.json()) as any;
+                    const nextEvent = (bootstrap?.events ?? []).find(
+                      (event: any) => event?.id === nextEventNumber
+                    );
+                    if (nextEvent?.deadline_time) {
+                      nextDeadlineUtc = String(nextEvent.deadline_time);
+                    } else {
+                      actions.push({
+                        league_id: leagueId,
+                        step: "test_round_deadline_missing",
+                        next_round: nextRoundNumber,
+                        event: nextEventNumber,
+                      });
+                    }
+                  }
+                } catch (deadlineError: any) {
+                  actions.push({
+                    league_id: leagueId,
+                    step: "test_round_deadline_lookup_error",
+                    next_round: nextRoundNumber,
+                    error: deadlineError?.message ?? "Deadline lookup failed",
+                  });
+                }
+              }
               const { error: insertRoundError } = await supabase
                 .from("rounds")
                 .insert({
@@ -531,7 +562,7 @@ export default async function handler(req: Req, res: Res) {
                   round_number: nextRoundNumber,
                   name: `Round ${nextRoundNumber}`,
                   status: "upcoming",
-                  pick_deadline_utc: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                  pick_deadline_utc: nextDeadlineUtc,
                 });
               if (insertRoundError) {
                 actions.push({ league_id: leagueId, step: "next_round_create_failed", error: insertRoundError.message, next_round: nextRoundNumber });
