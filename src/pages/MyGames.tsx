@@ -1,52 +1,34 @@
-// src/pages/MyGames.tsx
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { supa } from "../lib/supabaseClient";
 import { useToast } from "../components/Toast";
 import { getEffectiveUserId } from "../lib/auth";
 
 const STORE_KEY = "lms_store_v1";
-const PRIVATE_STORE_KEY = "lms_private_leagues_v1";
 
-type LeagueLite = {
+type DashboardLeague = {
   id: string;
   name: string;
-  current_round: number;
+  isPublic: boolean;
   status: string;
-};
-
-type PrivateLeague = {
-  id: string;
-  name: string;
-  ownerId: string;
-  createdAt: string;
-  inviteCode: string;
-  fplStartEvent?: number;
-  startDateUtc?: string;
-};
-
-type PrivateStore = {
-  leagues: PrivateLeague[];
-  memberships: { leagueId: string; playerId: string; joinedAt: string }[];
+  roundNumber: number;
+  roundStatus: string;
+  deadlineUtc?: string;
+  pickedTeamName?: string;
 };
 
 export function MyGames() {
   const navigate = useNavigate();
   const toast = useToast();
 
-  const [hydrated, setHydrated] = useState(false); // ensures local player exists (if Supabase session is present)
+  const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(true);
-
-  const [publicJoined, setPublicJoined] = useState<LeagueLite[]>([]);
-  const [allPublic, setAllPublic] = useState<LeagueLite[]>([]);
-  const [privateJoined, setPrivateJoined] = useState<PrivateLeague[]>([]);
-
+  const [leagues, setLeagues] = useState<DashboardLeague[]>([]);
   const [activeLeagueId, setActiveLeagueId] = useState<string>(
     localStorage.getItem("active_league_id") || ""
   );
 
-  // 1) Hydrate local "player" from Supabase session if missing
   useEffect(() => {
     (async () => {
       try {
@@ -58,18 +40,16 @@ export function MyGames() {
         const { data } = await supa.auth.getSession();
         const user = data.session?.user;
         if (!user) {
-          setHydrated(true); // not logged in with Supabase either
+          setHydrated(true);
           return;
         }
 
-        // Guess a display name
         const guessedName =
           localStorage.getItem("player_name") ||
           (user.user_metadata?.full_name as string | undefined) ||
           (user.email ? user.email.split("@")[0] : undefined) ||
           "Manager";
 
-        // Create/ensure LMS player + store locally
         const p = await dataService.upsertPlayer(guessedName);
         localStorage.setItem("player_id", p.id);
         localStorage.setItem("player_name", p.display_name ?? guessedName);
@@ -84,7 +64,6 @@ export function MyGames() {
     })();
   }, []);
 
-  // 2) Load games once hydrated
   useEffect(() => {
     if (!hydrated) return;
 
@@ -93,13 +72,10 @@ export function MyGames() {
       try {
         const pid = (await getEffectiveUserId()) ?? "";
         if (!pid) {
-          setPublicJoined([]);
-          setAllPublic([]);
-          setPrivateJoined([]);
+          setLeagues([]);
           return;
         }
 
-        const leagues = ((await (dataService as any).listLeagues?.()) || []) as any[];
         const visibleResp = await fetch("/api/user-leagues", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -108,43 +84,31 @@ export function MyGames() {
         if (!visibleResp.ok) throw new Error("Failed to load visible leagues");
         const visibleLeagues = (await visibleResp.json()) as Array<any>;
 
-        const allPublicLeagues = (leagues ?? [])
-          .filter((l: any) => l.is_public !== false)
-          .map((l: any) => ({
-            id: l.id as string,
-            name: l.name as string,
-            current_round: (l.current_round as number) ?? 1,
-            status: (l.status as string) ?? "upcoming",
-          })) as LeagueLite[];
-        setAllPublic(allPublicLeagues);
+        const rows = await Promise.all(
+          (visibleLeagues ?? []).map(async (league: any) => {
+            const round = await dataService.getCurrentRound(league.id).catch(() => null);
+            const teams = round ? await dataService.listTeams(league.id).catch(() => []) : [];
+            const picks = round ? await dataService.listPicks(round.id).catch(() => []) : [];
+            const mine = (picks || []).find((pick: any) => pick.player_id === pid) ?? null;
+            const pickedTeamName =
+              mine?.team_id && Array.isArray(teams)
+                ? (teams.find((team: any) => team.id === mine.team_id)?.name as string | undefined)
+                : undefined;
 
-        if ((visibleLeagues ?? []).length === 0) {
-          setPublicJoined([]);
-          setPrivateJoined([]);
-        } else {
-          const joinedPublic = (visibleLeagues ?? [])
-            .filter((l: any) => l.is_public === true)
-            .map((l: any) => ({
-              id: l.id as string,
-              name: l.name as string,
-              current_round: (l.current_round as number) ?? 1,
-              status: (l.status as string) ?? "upcoming",
-            })) as LeagueLite[];
-          setPublicJoined(joinedPublic);
+            return {
+              id: league.id as string,
+              name: league.name as string,
+              isPublic: league.is_public === true,
+              status: (league.status as string) ?? "upcoming",
+              roundNumber: (round?.round_number as number) ?? (league.current_round as number) ?? 1,
+              roundStatus: (round?.status as string) ?? "upcoming",
+              deadlineUtc: (round?.pick_deadline_utc as string) ?? undefined,
+              pickedTeamName,
+            } as DashboardLeague;
+          })
+        );
 
-          const privateLeagues = (visibleLeagues ?? [])
-            .filter((l: any) => l.is_public !== true)
-            .map((l: any) => ({
-              id: l.id as string,
-              name: l.name as string,
-              ownerId: (l.created_by as string) ?? "",
-              createdAt: (l.created_at as string) ?? new Date().toISOString(),
-              inviteCode: (l.join_code as string) ?? "",
-              fplStartEvent: (l.fpl_start_event as number) ?? undefined,
-              startDateUtc: (l.start_date_utc as string) ?? undefined,
-            })) as PrivateLeague[];
-          setPrivateJoined(privateLeagues);
-        }
+        setLeagues(rows);
       } finally {
         setLoading(false);
       }
@@ -162,15 +126,59 @@ export function MyGames() {
     navigate("/make-pick");
   }
 
-  const activePublic = useMemo(
-    () => publicJoined.find((l) => l.id === activeLeagueId) || null,
-    [publicJoined, activeLeagueId]
-  );
+  function goToResults(id: string) {
+    setActive(id);
+    navigate("/results");
+  }
+
+  function goToLeaderboard(id: string) {
+    setActive(id);
+    navigate("/leaderboard");
+  }
+
+  const sections = useMemo(() => {
+    const now = Date.now();
+    const open = leagues.filter((league) => {
+      const deadlineOpen =
+        !league.deadlineUtc || Date.parse(league.deadlineUtc) > now;
+      return (
+        league.status !== "completed" &&
+        league.roundStatus !== "locked" &&
+        league.roundStatus !== "completed" &&
+        deadlineOpen &&
+        !league.pickedTeamName
+      );
+    });
+
+    const picked = leagues.filter((league) => {
+      const deadlineOpen =
+        !league.deadlineUtc || Date.parse(league.deadlineUtc) > now;
+      return (
+        league.status !== "completed" &&
+        league.roundStatus !== "locked" &&
+        league.roundStatus !== "completed" &&
+        deadlineOpen &&
+        !!league.pickedTeamName
+      );
+    });
+
+    const waiting = leagues.filter((league) => {
+      if (league.status === "completed") return false;
+      if (open.some((x) => x.id === league.id) || picked.some((x) => x.id === league.id)) {
+        return false;
+      }
+      return league.roundStatus === "locked" || league.roundStatus === "completed";
+    });
+
+    const completed = leagues.filter((league) => league.status === "completed");
+
+    return { open, picked, waiting, completed };
+  }, [leagues]);
 
   if (!hydrated) {
     return (
       <div className="min-h-[calc(100vh-5rem)] grid place-items-center">
-        <div className="text-sm text-slate-500">Loading your games…</div>
+        <div className="text-sm text-slate-500">Loading your games...</div>
       </div>
     );
   }
@@ -178,11 +186,9 @@ export function MyGames() {
   if (!localStorage.getItem("player_id")) {
     return (
       <div className="min-h-[calc(100vh-5rem)] grid place-items-center p-4">
-        <div className="max-w-md text-center space-y-3">
-          <h2 className="text-xl font-semibold">You’re not signed in</h2>
-          <p className="text-sm text-slate-600">
-            Log in first so we can load your games.
-          </p>
+        <div className="max-w-md space-y-3 text-center">
+          <h2 className="text-xl font-semibold">You're not signed in</h2>
+          <p className="text-sm text-slate-600">Log in first so we can load your games.</p>
           <button className="btn btn-primary" onClick={() => navigate("/login")}>
             Go to login
           </button>
@@ -194,251 +200,152 @@ export function MyGames() {
   if (loading) {
     return (
       <div className="min-h-[calc(100vh-5rem)] grid place-items-center">
-        <div className="text-sm text-slate-500 animate-pulse">
-          Loading your games…
-        </div>
+        <div className="animate-pulse text-sm text-slate-500">Loading your games...</div>
       </div>
     );
   }
 
-  const totalGames = publicJoined.length + privateJoined.length;
+  const totalGames = leagues.length;
+  const publicCount = leagues.filter((league) => league.isPublic).length;
+  const privateCount = totalGames - publicCount;
+
+  function renderSection(
+    title: string,
+    rows: DashboardLeague[],
+    empty: string,
+    actions: (league: DashboardLeague) => JSX.Element
+  ) {
+    return (
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <span className="text-xs text-slate-500">{rows.length} total</span>
+        </div>
+
+        {rows.length === 0 ? (
+          <div className="rounded-2xl border bg-white p-4 text-sm text-slate-600">{empty}</div>
+        ) : (
+          <div className="space-y-3">
+            {rows.map((league) => (
+              <div
+                key={league.id}
+                className={[
+                  "rounded-2xl border bg-white p-4 shadow-sm",
+                  activeLeagueId === league.id ? "border-emerald-400/70" : "border-slate-200",
+                ].join(" ")}
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <div className="truncate text-sm font-semibold">{league.name}</div>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700">
+                        {league.isPublic ? "Public" : "Private"}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-slate-600">
+                      Round {league.roundNumber} • {league.roundStatus.toUpperCase()}
+                    </div>
+                    {league.deadlineUtc && (
+                      <div className="mt-1 text-xs text-slate-500">
+                        Deadline: {new Date(league.deadlineUtc).toLocaleString()}
+                      </div>
+                    )}
+                    {league.pickedTeamName && (
+                      <div className="mt-1 text-xs text-slate-500">
+                        Selected team: {league.pickedTeamName}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 text-xs">{actions(league)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  }
 
   return (
-    <div className="max-w-5xl mx-auto p-4 md:p-6 space-y-6">
-      {/* Header */}
-      <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+    <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
+      <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold">My Games</h1>
           <p className="text-sm text-slate-600">
-            Snapshot of your Last Man Standing action across <b>{totalGames}</b>{" "}
-            game{totalGames === 1 ? "" : "s"}.
+            What you're currently playing and what you need to do next across{" "}
+            <b>{totalGames}</b> game{totalGames === 1 ? "" : "s"}.
           </p>
         </div>
-        <div className="text-xs text-slate-500 space-x-2">
+        <div className="space-x-2 text-xs text-slate-500">
           <span>
-            Public: <b>{publicJoined.length}</b>
+            Public: <b>{publicCount}</b>
           </span>
           <span>•</span>
           <span>
-            Private: <b>{privateJoined.length}</b>
+            Private: <b>{privateCount}</b>
           </span>
         </div>
       </header>
 
-      {/* Grid layout */}
-      <div className="grid gap-6 md:grid-cols-[1.4fr,1.6fr]">
-        {/* Active game snapshot */}
-        <section className="card p-6 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">Active public game</h2>
-              <p className="text-xs text-slate-600">
-                This is the game your header & links currently point at.
-              </p>
-            </div>
-            <button
-              type="button"
-              className="btn btn-ghost text-xs"
-              onClick={() => navigate("/public")}
-            >
-              Browse public games
+      {renderSection(
+        "Action Required",
+        sections.open,
+        "No leagues need a pick from you right now.",
+        (league) => (
+          <button className="btn btn-primary text-xs" onClick={() => goToPick(league.id)}>
+            Make Pick
+          </button>
+        )
+      )}
+
+      {renderSection(
+        "Pick Submitted",
+        sections.picked,
+        "No current-round picks submitted yet.",
+        (league) => (
+          <>
+            <button className="btn btn-primary text-xs" onClick={() => goToResults(league.id)}>
+              View Pick / Results
             </button>
-          </div>
+            <button className="btn btn-ghost text-xs" onClick={() => goToLeaderboard(league.id)}>
+              Leaderboard
+            </button>
+          </>
+        )
+      )}
 
-          {activePublic ? (
-            <div className="rounded-2xl border bg-slate-50 px-4 py-3 space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold">{activePublic.name}</div>
-                  <div className="text-xs text-slate-600">
-                    Round {activePublic.current_round} •{" "}
-                    <span className="uppercase">{activePublic.status}</span>
-                  </div>
-                </div>
-                <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-800">
-                  Active
-                </span>
-              </div>
+      {renderSection(
+        "Waiting / Locked",
+        sections.waiting,
+        "No leagues are waiting on results right now.",
+        (league) => (
+          <>
+            <button className="btn btn-primary text-xs" onClick={() => goToResults(league.id)}>
+              Results
+            </button>
+            <button className="btn btn-ghost text-xs" onClick={() => goToLeaderboard(league.id)}>
+              Leaderboard
+            </button>
+          </>
+        )
+      )}
 
-              <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                <button
-                  className="btn btn-primary text-xs"
-                  onClick={() => goToPick(activePublic.id)}
-                >
-                  Make Pick
-                </button>
-                <button
-                  className="btn btn-ghost text-xs"
-                  onClick={() => navigate("/public")}
-                >
-                  Public
-                </button>
-                <button
-                  className="btn btn-ghost text-xs"
-                  onClick={() => navigate("/results")}
-                >
-                  Results
-                </button>
-                <button
-                  className="btn btn-ghost text-xs"
-                  onClick={() => navigate("/leaderboard")}
-                >
-                  Leaderboard
-                </button>
-                <button
-                  className="btn btn-ghost text-xs"
-                  onClick={() => navigate("/league")}
-                >
-                  League summary
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed px-4 py-4 text-sm text-slate-600 space-y-2">
-              <p>No active game selected yet.</p>
-              {publicJoined.length ? (
-                <p>
-                  Pick one from the list on the right and hit <b>Set active</b>.
-                </p>
-              ) : (
-                <p>
-                  You haven’t joined any public LMS games yet.{" "}
-                  <button className="underline" onClick={() => navigate("/public")}>
-                    Join a public game
-                  </button>
-                  .
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Private leagues quick link */}
-          <div className="border-t pt-4 mt-3">
-            <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">
-              Private leagues
-            </div>
-            {privateJoined.length ? (
-              <div className="space-y-1 text-xs text-slate-600">
-                <p>
-                  You’re in <b>{privateJoined.length}</b> private league
-                  {privateJoined.length === 1 ? "" : "s"}.
-                </p>
-                <button
-                  type="button"
-                  className="btn btn-ghost text-xs"
-                  onClick={() => navigate("/private/create")}
-                >
-                  Manage private leagues
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-1 text-xs text-slate-600">
-                <p>You’re not in any private leagues yet.</p>
-                <button
-                  type="button"
-                  className="btn btn-ghost text-xs"
-                  onClick={() => navigate("/private/create")}
-                >
-                  Create or join a private league
-                </button>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* List of all public games this user is in */}
-        <section className="card p-6 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Public games I’m in</h2>
-            {publicJoined.length > 0 && (
-              <span className="text-xs text-slate-500">{publicJoined.length} total</span>
-            )}
-          </div>
-
-          {publicJoined.length === 0 ? (
-            <div className="text-sm text-slate-600 space-y-2">
-              <p>You haven’t joined any public LMS games on this account yet.</p>
-              <p>
-                Head back to the{" "}
-                <Link to="/public" className="underline">
-                  public games page
-                </Link>{" "}
-                to join a game.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {publicJoined.map((lg) => {
-                const isActive = lg.id === activeLeagueId;
-                return (
-                  <div
-                    key={lg.id}
-                    className={[
-                      "flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm",
-                      isActive
-                        ? "border-emerald-500/70 bg-emerald-50"
-                        : "border-slate-200 bg-white hover:bg-slate-50",
-                    ].join(" ")}
-                  >
-                    <div>
-                      <div className="font-medium truncate">{lg.name}</div>
-                      <div className="text-xs text-slate-600">
-                        Round {lg.current_round} •{" "}
-                        <span className="uppercase">{lg.status}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      <button
-                        type="button"
-                        className="btn btn-primary text-xs"
-                        onClick={() => goToPick(lg.id)}
-                      >
-                        Make Pick
-                      </button>
-                      {!isActive && (
-                        <button
-                          type="button"
-                          className="btn btn-ghost text-xs"
-                          onClick={() => setActive(lg.id)}
-                        >
-                          Set active
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="btn btn-ghost text-xs"
-                        onClick={() => {
-                          setActive(lg.id);
-                          navigate("/league");
-                        }}
-                      >
-                        Open league
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Optional: show public leagues available but not joined yet */}
-          {allPublic.length > publicJoined.length && (
-            <div className="border-t pt-4 mt-3 space-y-2">
-              <div className="text-xs font-semibold text-slate-700">
-                Other public games available
-              </div>
-              <p className="text-xs text-slate-600">
-                You can join more games from the{" "}
-                <Link to="/public" className="underline">
-                  public games page
-                </Link>
-                .
-              </p>
-            </div>
-          )}
-        </section>
-      </div>
+      {renderSection(
+        "Completed Games",
+        sections.completed,
+        "No completed leagues yet.",
+        (league) => (
+          <>
+            <button className="btn btn-primary text-xs" onClick={() => goToLeaderboard(league.id)}>
+              Leaderboard
+            </button>
+            <button className="btn btn-ghost text-xs" onClick={() => goToResults(league.id)}>
+              Results
+            </button>
+          </>
+        )
+      )}
     </div>
   );
 }
