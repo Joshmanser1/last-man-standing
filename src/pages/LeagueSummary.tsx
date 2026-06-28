@@ -691,42 +691,6 @@ export function LeagueSummary() {
             )}
           </div>
 
-          {/* Quick actions */}
-          <div className="rounded-2xl border bg-white p-4 shadow-sm">
-            <h3 className="mb-2 text-base font-semibold">Quick Actions</h3>
-            <div className="flex flex-wrap gap-2">
-              <button
-                className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
-                onClick={() => navigate("/make-pick")}
-              >
-                Make/Change Pick
-              </button>
-              <button
-                className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
-                onClick={() => navigate("/leaderboard")}
-              >
-                League Leaderboard
-              </button>
-              <button
-                className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
-                onClick={() => navigate("/eliminations")}
-              >
-                Elimination History
-              </button>
-              <button
-                className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
-                onClick={() => navigate("/results")}
-              >
-                Results
-              </button>
-              <button
-                className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
-                onClick={() => navigate("/admin")}
-              >
-                Admin
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
