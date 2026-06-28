@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import * as htmlToImage from "html-to-image";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
 import { supa } from "../lib/supabaseClient";
@@ -64,6 +64,7 @@ function teamShort(name: string) {
 
 export function Leaderboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [view, setView] = useState<ViewMode>("leaderboard");
   const [showElims, setShowElims] = useState(true);
   const [league, setLeague] = useState<League | null>(null);
@@ -77,6 +78,18 @@ export function Leaderboard() {
   const exportRef = useRef<HTMLDivElement>(null);
   const activeLeagueId = localStorage.getItem("active_league_id") || "";
   const guidance = useFirstPickGuidance(activeLeagueId);
+
+  function changeView(next: ViewMode) {
+    setView(next);
+    navigate(`/leaderboard?view=${next}`, { replace: true });
+  }
+
+  useEffect(() => {
+    const q = new URLSearchParams(location.search).get("view");
+    if (q === "eliminations" || q === "matrix" || q === "leaderboard") {
+      setView(q);
+    }
+  }, [location.search]);
 
   useEffect(() => {
     if (!activeLeagueId) {
@@ -378,7 +391,7 @@ export function Leaderboard() {
                       ? "bg-teal-600 text-white"
                       : "text-slate-700 hover:bg-slate-100")
                   }
-                  onClick={() => setView("leaderboard")}
+                  onClick={() => changeView("leaderboard")}
                 >
                   Standings
                 </button>
@@ -389,7 +402,7 @@ export function Leaderboard() {
                       ? "bg-teal-600 text-white"
                       : "text-slate-700 hover:bg-slate-100")
                   }
-                  onClick={() => setView("matrix")}
+                  onClick={() => changeView("matrix")}
                 >
                   Pick Matrix
                 </button>
@@ -400,7 +413,7 @@ export function Leaderboard() {
                       ? "bg-teal-600 text-white"
                       : "text-slate-700 hover:bg-slate-100")
                   }
-                  onClick={() => setView("eliminations")}
+                  onClick={() => changeView("eliminations")}
                 >
                   Eliminations
                 </button>

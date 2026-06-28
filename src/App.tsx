@@ -17,7 +17,6 @@ import { Stats } from "./pages/Stats";
 import { Admin } from "./pages/Admin";
 import { MyGames } from "./pages/MyGames";
 import { Leaderboard } from "./pages/Leaderboard";
-import { EliminationHistory } from "./pages/EliminationHistory";
 import { LeagueSummary } from "./pages/LeagueSummary";
 import { PrivateLeagueCreate } from "./pages/PrivateLeagueCreate";
 
@@ -78,7 +77,7 @@ function AppInner() {
           <Route path="/live" element={<Navigate to="/public" replace />} />
           <Route path="/results" element={<Results />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
-          <Route path="/eliminations" element={<EliminationHistory />} />
+          <Route path="/eliminations" element={<Navigate to="/leaderboard?view=eliminations" replace />} />
           <Route path="/stats" element={<Stats />} />
 
           {/* Protected (Supabase OR dev auth) */}
