@@ -249,34 +249,33 @@ export default async function handler(req: Req, res: Res) {
       }>
     >(`/fixtures/?event=${fplStartEvent}`);
 
-    const fixtureRows = fixtures
-      .map((fixture) => {
-        const home = teamByFplId.get(fixture.team_h);
-        const away = teamByFplId.get(fixture.team_a);
-        if (!home || !away) return null;
+    const fixtureRows: FixtureInsertRow[] = [];
+    for (const fixture of fixtures) {
+      const home = teamByFplId.get(fixture.team_h);
+      const away = teamByFplId.get(fixture.team_a);
+      if (!home || !away) continue;
 
-        const result =
-          fixture.finished &&
-          fixture.team_h_score != null &&
-          fixture.team_a_score != null
-            ? fixture.team_h_score > fixture.team_a_score
-              ? "home_win"
-              : fixture.team_a_score > fixture.team_h_score
-              ? "away_win"
-              : "draw"
-            : "not_set";
+      const result =
+        fixture.finished &&
+        fixture.team_h_score != null &&
+        fixture.team_a_score != null
+          ? fixture.team_h_score > fixture.team_a_score
+            ? "home_win"
+            : fixture.team_a_score > fixture.team_h_score
+            ? "away_win"
+            : "draw"
+          : "not_set";
 
-        return {
-          round_id: round1Id,
-          home_team_id: home.id,
-          away_team_id: away.id,
-          kickoff_utc: fixture.kickoff_time ?? undefined,
-          result,
-          winning_team_id:
-            result === "home_win" ? home.id : result === "away_win" ? away.id : null,
-        };
-      })
-      .filter((row): row is FixtureInsertRow => row !== null);
+      fixtureRows.push({
+        round_id: round1Id,
+        home_team_id: home.id,
+        away_team_id: away.id,
+        kickoff_utc: fixture.kickoff_time ?? undefined,
+        result,
+        winning_team_id:
+          result === "home_win" ? home.id : result === "away_win" ? away.id : null,
+      });
+    }
 
     if (fixtureRows.length) {
       const { error: fixtureError } = await supabase.from("fixtures").upsert(fixtureRows, {
