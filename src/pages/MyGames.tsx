@@ -17,6 +17,7 @@ type DashboardLeague = {
   roundNumber: number;
   roundStatus: string;
   deadlineUtc?: string;
+  hasViewerPick: boolean;
   pickedTeamName?: string;
 };
 
@@ -89,9 +90,10 @@ export function MyGames() {
         const rows = await Promise.all(
           (visibleLeagues ?? []).map(async (league: any) => {
             const state = await loadLeagueRoundState(league.id);
+            const hasViewerPick = !!state.viewerPick;
             const pickedTeamName =
               state.viewerPick?.team_id && Array.isArray(state.teams)
-                ? (state.teams.find((team: any) => team.id === state.viewerPick.team_id)?.name as string | undefined)
+                ? (state.teams.find((team: any) => String(team.id) === String(state.viewerPick.team_id))?.name as string | undefined)
                 : undefined;
 
             return {
@@ -102,11 +104,13 @@ export function MyGames() {
               roundNumber: (state.round?.round_number as number) ?? (league.current_round as number) ?? 1,
               roundStatus: (state.round?.status as string) ?? "upcoming",
               deadlineUtc: (state.round?.pick_deadline_utc as string) ?? undefined,
+              hasViewerPick,
               pickedTeamName,
             } as DashboardLeague;
           })
         );
 
+        console.log("[MyGames] dashboard leagues", rows);
         setLeagues(rows);
       } finally {
         setLoading(false);
@@ -145,19 +149,16 @@ export function MyGames() {
         league.roundStatus !== "locked" &&
         league.roundStatus !== "completed" &&
         deadlineOpen &&
-        !league.pickedTeamName
+        !league.hasViewerPick
       );
     });
 
     const picked = leagues.filter((league) => {
-      const deadlineOpen =
-        !league.deadlineUtc || Date.parse(league.deadlineUtc) > now;
       return (
         league.status !== "completed" &&
         league.roundStatus !== "locked" &&
         league.roundStatus !== "completed" &&
-        deadlineOpen &&
-        !!league.pickedTeamName
+        league.hasViewerPick
       );
     });
 
@@ -170,6 +171,13 @@ export function MyGames() {
     });
 
     const completed = leagues.filter((league) => league.status === "completed");
+
+    console.log("[MyGames] sections", {
+      open,
+      picked,
+      waiting,
+      completed,
+    });
 
     return { open, picked, waiting, completed };
   }, [leagues]);
@@ -214,6 +222,7 @@ export function MyGames() {
     empty: string,
     actions: (league: DashboardLeague) => ReactNode
   ) {
+    console.log("[MyGames] renderSection", { title, rows });
     return (
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
