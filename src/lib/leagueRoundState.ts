@@ -58,14 +58,21 @@ export async function loadLeagueRoundState(
   const allLeaguePicks = (await picksResp.json()) as any[];
   const memberships = (await memberResp.json()) as any[];
   const rounds = roundRows ?? [];
+  const leagueCurrentRound =
+    typeof (league as any)?.current_round === "number"
+      ? ((league as any).current_round as number)
+      : null;
   const currentRound = await dataService.getCurrentRound(leagueId).catch(() => null);
   const round =
     (selectedRoundId ? rounds.find((r: any) => r.id === selectedRoundId) : null) ??
+    (leagueCurrentRound != null
+      ? rounds.find((r: any) => r.round_number === leagueCurrentRound)
+      : null) ??
     currentRound ??
     rounds[rounds.length - 1] ??
     null;
   const selectedRoundPicks = round
-    ? allLeaguePicks.filter((pick: any) => pick.round_id === round.id)
+    ? allLeaguePicks.filter((pick: any) => String(pick.round_id) === String(round.id))
     : [];
 
   const playersById: Record<string, any> = {};
@@ -102,7 +109,7 @@ export async function loadLeagueRoundState(
 
   const viewerPick =
     round && viewerId
-      ? selectedRoundPicks.find((pick: any) => pick.player_id === viewerId) ?? null
+      ? selectedRoundPicks.find((pick: any) => String(pick.player_id) === String(viewerId)) ?? null
       : null;
 
   return {
