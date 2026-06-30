@@ -9,6 +9,7 @@ import { computeOutcome } from "../lib/outcome";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
+import { loadLeagueRoundState } from "../lib/leagueRoundState";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -55,67 +56,28 @@ export function Results() {
     }
 
     (async () => {
-      const [authUid, { data: leagueRow }] = await Promise.all([
-        getEffectiveUserId(),
-        supa
-          .from("leagues")
-          .select("id, created_by")
-          .eq("id", leagueId)
-          .is("deleted_at", null)
-          .maybeSingle(),
-      ]);
-      setViewerId(authUid ?? "");
-      setLeagueOwnerId((leagueRow as any)?.created_by ?? "");
-
-      const { data: roundRows } = await supa
-        .from("rounds")
-        .select("*")
-        .eq("league_id", leagueId)
-        .order("round_number", { ascending: true });
-      const allRounds = roundRows ?? [];
+      const initial = await loadLeagueRoundState(leagueId, selectedRoundId);
+      const allRounds = initial.rounds ?? [];
       setRounds(allRounds);
-
-      const currentRound = await dataService.getCurrentRound(leagueId);
       const nextSelectedRoundId =
         selectedRoundId && allRounds.some((rr: any) => rr.id === selectedRoundId)
           ? selectedRoundId
-          : currentRound?.id ?? allRounds[allRounds.length - 1]?.id ?? "";
+          : initial.round?.id ?? "";
       if (nextSelectedRoundId !== selectedRoundId) {
         setSelectedRoundId(nextSelectedRoundId);
+        return;
       }
-      const selectedRound =
-        allRounds.find((rr: any) => rr.id === nextSelectedRoundId) ?? currentRound ?? null;
-      setRound(selectedRound);
-
-      const ts = await dataService.listTeams(leagueId);
-      setTeams(ts || []);
-
-      let pickRows: any[] = [];
-      if (selectedRound?.id) {
-        const { data } = await supa
-          .from("picks")
-          .select("*")
-          .eq("league_id", leagueId)
-          .eq("round_id", selectedRound.id);
-        pickRows = data ?? [];
-      }
-      setPicks(pickRows);
-
-      const memberResp = await fetch("/api/league-members", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ league_id: leagueId }),
-      });
-      if (!memberResp.ok) throw new Error("Failed to load league members");
-      const memberRows = (await memberResp.json()) as Array<any>;
-      setMemberships(memberRows || []);
-      const pb: Record<string, any> = {};
-      (memberRows || []).forEach((m: any) => {
-        if (typeof m.player_id === "string") {
-          pb[m.player_id] = { id: m.player_id, display_name: m.display_name ?? null };
-        }
-      });
-      setPlayersById(pb);
+      const state =
+        nextSelectedRoundId === initial.round?.id
+          ? initial
+          : await loadLeagueRoundState(leagueId, nextSelectedRoundId);
+      setViewerId(state.viewerId);
+      setLeagueOwnerId(state.league?.created_by ?? "");
+      setRound(state.round);
+      setTeams(state.teams);
+      setPicks(state.selectedRoundPicks);
+      setMemberships(state.memberships);
+      setPlayersById(state.playersById);
     })();
   }, [leagueId, reloadTick, selectedRoundId]);
 

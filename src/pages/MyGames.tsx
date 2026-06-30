@@ -5,6 +5,7 @@ import { dataService } from "../data/service";
 import { supa } from "../lib/supabaseClient";
 import { useToast } from "../components/Toast";
 import { getEffectiveUserId } from "../lib/auth";
+import { loadLeagueRoundState } from "../lib/leagueRoundState";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -87,13 +88,10 @@ export function MyGames() {
 
         const rows = await Promise.all(
           (visibleLeagues ?? []).map(async (league: any) => {
-            const round = await dataService.getCurrentRound(league.id).catch(() => null);
-            const teams = round ? await dataService.listTeams(league.id).catch(() => []) : [];
-            const picks = round ? await dataService.listPicks(round.id).catch(() => []) : [];
-            const mine = (picks || []).find((pick: any) => pick.player_id === pid) ?? null;
+            const state = await loadLeagueRoundState(league.id);
             const pickedTeamName =
-              mine?.team_id && Array.isArray(teams)
-                ? (teams.find((team: any) => team.id === mine.team_id)?.name as string | undefined)
+              state.viewerPick?.team_id && Array.isArray(state.teams)
+                ? (state.teams.find((team: any) => team.id === state.viewerPick.team_id)?.name as string | undefined)
                 : undefined;
 
             return {
@@ -101,9 +99,9 @@ export function MyGames() {
               name: league.name as string,
               isPublic: league.is_public === true,
               status: (league.status as string) ?? "upcoming",
-              roundNumber: (round?.round_number as number) ?? (league.current_round as number) ?? 1,
-              roundStatus: (round?.status as string) ?? "upcoming",
-              deadlineUtc: (round?.pick_deadline_utc as string) ?? undefined,
+              roundNumber: (state.round?.round_number as number) ?? (league.current_round as number) ?? 1,
+              roundStatus: (state.round?.status as string) ?? "upcoming",
+              deadlineUtc: (state.round?.pick_deadline_utc as string) ?? undefined,
               pickedTeamName,
             } as DashboardLeague;
           })

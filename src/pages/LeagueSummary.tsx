@@ -6,6 +6,7 @@ import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
+import { loadLeagueRoundState } from "../lib/leagueRoundState";
 
 type CardProps = {
   title: string;
@@ -165,62 +166,31 @@ export function LeagueSummary() {
           return;
         }
 
-        setLeague(lg);
+        const state = await loadLeagueRoundState(lg.id);
+        setLeague(state.league);
+        setRound(state.round);
+        setTeams([...(state.teams || [])].sort((a: any, b: any) => a.name.localeCompare(b.name)));
+        setMembershipsRaw(
+          (state.memberships ?? []).map((m: any) => ({
+            league_id: m.league_id,
+            player_id: m.player_id,
+            joined_at: m.joined_at,
+            role: m.role,
+            is_active: m.is_active,
+          }))
+        );
+        setPicks(state.selectedRoundPicks);
+        setPlayersById(state.playersById);
 
-        let r: any = null;
-        try {
-          r = await dataService.getCurrentRound(lg.id);
-        } catch {
-          r = null;
-        }
-        setRound(r);
-
-        const ts = await dataService.listTeams(lg.id);
-        setTeams([...(ts || [])].sort((a, b) => a.name.localeCompare(b.name)));
-
-        const memberResp = await fetch("/api/league-members", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ league_id: lg.id }),
-        });
-        if (!memberResp.ok) throw new Error("Failed to load league members");
-        const memberRows = (await memberResp.json()) as Array<any>;
-        const mems = (memberRows ?? []).map((m: any) => ({
-          league_id: m.league_id,
-          player_id: m.player_id,
-          joined_at: m.joined_at,
-          role: m.role,
-          is_active: m.is_active,
-        }));
-        setMembershipsRaw(mems || []);
-
-        let pickRows: any[] = [];
-        if (r?.id) {
-          const { data } = await supa
-            .from("picks")
-            .select("*")
-            .eq("league_id", lg.id)
-            .eq("round_id", r.id);
-          pickRows = data || [];
-          setPicks(pickRows);
-
+        if (state.round?.id) {
           const { data: fixtureRows } = await supa
             .from("fixtures")
             .select("*")
-            .eq("round_id", r.id);
+            .eq("round_id", state.round.id);
           setFixturesRaw(fixtureRows || []);
         } else {
-          setPicks([]);
           setFixturesRaw([]);
         }
-
-        const pb: Record<string, any> = {};
-        (memberRows ?? []).forEach((m: any) => {
-          if (typeof m.player_id === "string") {
-            pb[m.player_id] = { id: m.player_id, display_name: m.display_name ?? null };
-          }
-        });
-        setPlayersById(pb);
       } catch (err: any) {
         setLoadError(err?.message ?? "Failed to load league data");
       } finally {
@@ -278,12 +248,16 @@ export function LeagueSummary() {
       if (!p.team_id) continue;
       pickCounts.set(p.team_id, (pickCounts.get(p.team_id) || 0) + 1);
     }
-    let mostPicked: { teamName: string; count: number } | null = null;
-    for (const [tid, count] of pickCounts) {
-      const name = byTeamId.get(tid)?.name ?? "—";
-      if (!mostPicked || count > mostPicked.count)
-        mostPicked = { teamName: name, count };
-    }
+    const maxPickCount = Math.max(0, ...Array.from(pickCounts.values()));
+    const mostPicked =
+      maxPickCount > 0
+        ? Array.from(pickCounts.entries())
+            .filter(([, count]) => count === maxPickCount)
+            .map(([tid, count]) => ({
+              teamName: byTeamId.get(tid)?.name ?? "—",
+              count,
+            }))
+        : [];
 
     return {
       entrants,
@@ -524,9 +498,13 @@ export function LeagueSummary() {
         <StatCard title="Unique Teams" value={kpis.uniqueTeamCount} glow />
         <StatCard
           title="Most Picked"
-          value={kpis.mostPicked ? kpis.mostPicked.teamName : "—"}
+          value={
+            kpis.mostPicked.length
+              ? kpis.mostPicked.map((x: any) => x.teamName).join(", ")
+              : "—"
+          }
           subtitle={
-            kpis.mostPicked ? `${kpis.mostPicked.count} picks` : ""
+            kpis.mostPicked.length ? `${kpis.mostPicked[0].count} picks` : ""
           }
           glow
         />
@@ -698,3 +676,4 @@ export function LeagueSummary() {
 }
 
 export default LeagueSummary;
+
