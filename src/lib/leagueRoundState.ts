@@ -112,6 +112,24 @@ export async function loadLeagueRoundState(
       ? selectedRoundPicks.find((pick: any) => String(pick.player_id) === String(viewerId)) ?? null
       : null;
 
+  console.log("[leagueRoundState] diagnostics", {
+    leagueId,
+    viewerId,
+    roundId: round?.id ?? null,
+    roundNumber: round?.round_number ?? null,
+    totalLeaguePicks: allLeaguePicks.length,
+    pickPlayerIds: allLeaguePicks.map((pick: any) => pick.player_id),
+    pickRoundIds: allLeaguePicks.map((pick: any) => pick.round_id),
+    viewerPick,
+    viewerIdMatchesAnyPlayerId:
+      !!viewerId &&
+      allLeaguePicks.some((pick: any) => String(pick.player_id) === String(viewerId)),
+    roundIdMatchesAnyPickRoundId:
+      !!round?.id &&
+      allLeaguePicks.some((pick: any) => String(pick.round_id) === String(round.id)),
+    selectedRoundPicks,
+  });
+
   return {
     league: league ?? null,
     rounds,
