@@ -154,10 +154,10 @@ export function MakePick() {
   const isTestMode = !!league?.is_test;
 
   const hardLocked =
-    !!round && (round.status === "locked" || round.status === "completed");
+    !!round && (round?.status === "locked" || round?.status === "completed");
   const locked = hardLocked || (!isTestMode && timeLeft === "Locked");
   const countdownLabel =
-    round.status === "completed"
+    round?.status === "completed"
       ? "Round Complete"
       : hardLocked
       ? "Locked"
@@ -296,7 +296,7 @@ export function MakePick() {
             )}
             {hardLocked && (
               <p className="mt-1 text-xs font-medium text-rose-600">
-                {round.status === "completed"
+                {round?.status === "completed"
                   ? "This round is complete."
                   : "This round is locked. Picks are closed."}
               </p>
@@ -373,7 +373,7 @@ export function MakePick() {
             <div className="mt-1 font-semibold">{league.name}</div>
             <div className="mt-1 text-xs text-slate-500">
               Round {round.round_number} •{" "}
-              <span className="uppercase">{round.status}</span>
+              <span className="uppercase">{round?.status}</span>
             </div>
           </div>
 
