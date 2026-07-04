@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { useCountdown } from "../hooks/useCountdown";
 import { GameSelector } from "../components/GameSelector";
-import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
 import { useToast } from "../components/Toast";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
@@ -270,9 +269,6 @@ export function MakePick() {
           }}
         />
       </div>
-      <div className="mb-4">
-        <LeagueStatusBanner leagueId={leagueId} />
-      </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
         <div className="card p-6 sm:p-7">
@@ -359,22 +355,6 @@ export function MakePick() {
             })}
           </div>
 
-          <div className="mt-6 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => navigate("/live")}
-              className="btn btn-ghost"
-            >
-              Live Games
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/results")}
-              className="btn btn-ghost"
-            >
-              Results
-            </button>
-          </div>
         </div>
 
         <aside className="card p-5 space-y-4">
