@@ -122,7 +122,6 @@ export function LeagueSummary() {
   const [teams, setTeams] = useState<any[]>([]);
   const [membershipsRaw, setMembershipsRaw] = useState<any[]>([]);
   const [picks, setPicks] = useState<any[]>([]);
-  const [fixturesRaw, setFixturesRaw] = useState<any[]>([]);
   const [playersById, setPlayersById] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [activeLeagueId, setActiveLeagueId] = useState<string>(
@@ -160,7 +159,6 @@ export function LeagueSummary() {
           setTeams([]);
           setMembershipsRaw([]);
           setPicks([]);
-          setFixturesRaw([]);
           setPlayersById({});
           setLoading(false);
           return;
@@ -181,16 +179,6 @@ export function LeagueSummary() {
         );
         setPicks(state.selectedRoundPicks);
         setPlayersById(state.playersById);
-
-        if (state.round?.id) {
-          const { data: fixtureRows } = await supa
-            .from("fixtures")
-            .select("*")
-            .eq("round_id", state.round.id);
-          setFixturesRaw(fixtureRows || []);
-        } else {
-          setFixturesRaw([]);
-        }
       } catch (err: any) {
         setLoadError(err?.message ?? "Failed to load league data");
       } finally {
@@ -270,23 +258,6 @@ export function LeagueSummary() {
       mostPicked,
     };
   }, [memberships, roundPicks, byTeamId]);
-
-  // Fixture list for this round
-  const fixtures = useMemo(() => {
-    if (!round) return [];
-    return (fixturesRaw || [])
-      .filter((f: any) => f.round_id === round.id)
-      .map((f: any) => ({
-        ...f,
-        homeName: byTeamId.get(f.home_team_id)?.name ?? "—",
-        awayName: byTeamId.get(f.away_team_id)?.name ?? "—",
-      }))
-      .sort((a: any, b: any) => {
-        const at = a.kickoff_utc ? Date.parse(a.kickoff_utc) : 0;
-        const bt = b.kickoff_utc ? Date.parse(b.kickoff_utc) : 0;
-        return at - bt;
-      });
-  }, [fixturesRaw, round, byTeamId]);
 
   // Per-team pick popularity (top 5)
   const popularity = useMemo(() => {
@@ -519,82 +490,7 @@ export function LeagueSummary() {
 
       {/* Two-column layout */}
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Fixtures */}
-        <div className="lg:col-span-2 rounded-2xl border bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">
-              Fixtures — Round {roundNumber}
-            </h2>
-            <button
-              onClick={() => navigate("/admin")}
-              className="text-xs rounded-md border px-2 py-1 hover:bg-slate-50"
-              title="Fetch fixtures / auto-evaluate in Admin"
-            >
-              Manage in Admin
-            </button>
-          </div>
-
-          {fixtures.length ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="bg-slate-50 text-slate-600">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Home</th>
-                    <th className="px-3 py-2 text-left">Away</th>
-                    <th className="px-3 py-2 text-left">Kickoff</th>
-                    <th className="px-3 py-2 text-left">Result</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {fixtures.map((f: any, i: number) => {
-                    let resultEl: React.ReactNode = pill(
-                      "bg-slate-100 text-slate-700",
-                      "Pending"
-                    );
-                    if (f.result === "home_win")
-                      resultEl = pill(
-                        "bg-emerald-100 text-emerald-700",
-                        `${f.homeName} win`
-                      );
-                    else if (f.result === "away_win")
-                      resultEl = pill(
-                        "bg-blue-100 text-blue-700",
-                        `${f.awayName} win`
-                      );
-                    else if (f.result === "draw")
-                      resultEl = pill(
-                        "bg-amber-100 text-amber-800",
-                        "Draw"
-                      );
-
-                    return (
-                      <tr key={i} className="hover:bg-slate-50">
-                        <td className="px-3 py-2 font-medium text-slate-900">
-                          {f.homeName}
-                        </td>
-                        <td className="px-3 py-2">{f.awayName}</td>
-                        <td className="px-3 py-2">
-                          {f.kickoff_utc
-                            ? new Date(f.kickoff_utc).toLocaleString()
-                            : "—"}
-                        </td>
-                        <td className="px-3 py-2">{resultEl}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-sm text-slate-500">
-              No fixtures stored for this round yet. Use{" "}
-              <b>Admin → Fetch Fixtures (EPL)</b>.
-            </div>
-          )}
-        </div>
-
-        {/* Right column */}
-        <div className="space-y-6">
+        <div className="space-y-6 lg:col-span-3">
           {/* Popularity */}
           <div className="rounded-2xl border bg-white p-4 shadow-sm">
             <h3 className="mb-2 text-base font-semibold">
