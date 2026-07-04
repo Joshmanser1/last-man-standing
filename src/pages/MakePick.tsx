@@ -155,7 +155,13 @@ export function MakePick() {
 
   const hardLocked =
     !!round && (round.status === "locked" || round.status === "completed");
-  const locked = hardLocked || (!isTestMode && timeLeft === "00:00:00");
+  const locked = hardLocked || (!isTestMode && timeLeft === "Locked");
+  const countdownLabel =
+    round.status === "completed"
+      ? "Round Complete"
+      : hardLocked
+      ? "Locked"
+      : timeLeft;
 
   const teamsAZ = useMemo(() => {
     const uniq = new Map<string, any>();
@@ -281,7 +287,7 @@ export function MakePick() {
               {round.pick_deadline_utc
                 ? new Date(round.pick_deadline_utc).toLocaleString()
                 : "—"}{" "}
-              • <span className="font-mono">{timeLeft}</span>
+              • <span className="font-mono">{countdownLabel}</span>
             </p>
             {isTestMode && (
               <p className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
@@ -290,7 +296,9 @@ export function MakePick() {
             )}
             {hardLocked && (
               <p className="mt-1 text-xs font-medium text-rose-600">
-                This round is locked. Picks are closed.
+                {round.status === "completed"
+                  ? "This round is complete."
+                  : "This round is locked. Picks are closed."}
               </p>
             )}
           </div>
@@ -379,7 +387,7 @@ export function MakePick() {
                 : "—"}
             </div>
             <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-              Time left: <span className="font-mono">{timeLeft}</span>
+              Time left: <span className="font-mono">{countdownLabel}</span>
             </div>
           </div>
 
