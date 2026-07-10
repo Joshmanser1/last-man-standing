@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
 import {
   clearNotifications,
   getLastViewedAt,
@@ -124,6 +125,17 @@ export function NotificationBell() {
     };
   }, [playerId, activeLeagueId]);
 
+  useEffect(() => {
+    if (!open) return;
+    if (window.innerWidth >= 768) return;
+
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   if (!playerId) return null;
 
   return (
@@ -196,57 +208,65 @@ export function NotificationBell() {
             </div>
           </div>
 
-          <div className="fixed inset-x-0 bottom-0 top-[72px] z-[70] md:hidden">
-            <button
-              type="button"
-              aria-label="Close notifications"
-              className="absolute inset-0 bg-black/50"
-              onClick={() => setOpen(false)}
-            />
-            <div className="absolute inset-x-0 bottom-0 max-h-[70vh] overflow-hidden rounded-t-3xl border border-white/10 bg-gradient-to-b from-slate-900 to-slate-950 shadow-[0_-18px_60px_rgba(0,0,0,0.65)] ring-1 ring-white/10">
-              <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-white/20" />
-              <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-                <div className="text-sm font-semibold text-white">Notifications</div>
-                <div className="flex items-center gap-3">
-                  <button
-                    className="text-xs text-emerald-400 hover:text-emerald-300"
-                    onClick={() => {
-                      markAllRead(playerId);
-                      setTick((x) => x + 1);
-                    }}
-                  >
-                    Mark read
-                  </button>
-                  <button
-                    className="text-xs text-slate-400 hover:text-slate-200"
-                    onClick={() => {
-                      clearNotifications(playerId);
-                      setTick((x) => x + 1);
-                    }}
-                  >
-                    Clear
-                  </button>
+          {typeof document !== "undefined"
+            ? createPortal(
+                <div className="fixed inset-0 z-[100] md:hidden">
                   <button
                     type="button"
-                    className="text-xs text-slate-300 hover:text-white"
+                    aria-label="Close notifications"
+                    className="absolute inset-0 bg-black/50"
                     onClick={() => setOpen(false)}
+                  />
+                  <div
+                    className="absolute inset-x-0 bottom-0 overflow-hidden rounded-t-3xl border border-white/10 bg-gradient-to-b from-slate-900 to-slate-950 shadow-[0_-18px_60px_rgba(0,0,0,0.65)] ring-1 ring-white/10"
+                    style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
                   >
-                    Close
-                  </button>
-                </div>
-              </div>
+                    <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-white/20" />
+                    <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                      <div className="text-sm font-semibold text-white">Notifications</div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          className="text-xs text-emerald-400 hover:text-emerald-300"
+                          onClick={() => {
+                            markAllRead(playerId);
+                            setTick((x) => x + 1);
+                          }}
+                        >
+                          Mark read
+                        </button>
+                        <button
+                          className="text-xs text-slate-400 hover:text-slate-200"
+                          onClick={() => {
+                            clearNotifications(playerId);
+                            setTick((x) => x + 1);
+                          }}
+                        >
+                          Clear
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs text-slate-300 hover:text-white"
+                          onClick={() => setOpen(false)}
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
 
-              <div className="max-h-[calc(70vh-4rem)] overflow-auto">
-                <NotificationList
-                  items={items}
-                  lastViewedAt={lastViewedAt}
-                  playerId={playerId}
-                  navigate={navigate}
-                  close={() => setOpen(false)}
-                />
-              </div>
-            </div>
-          </div>
+                    <div className="max-h-[75dvh] overflow-auto">
+                      <NotificationList
+                        items={items}
+                        lastViewedAt={lastViewedAt}
+                        playerId={playerId}
+                        navigate={navigate}
+                        close={() => setOpen(false)}
+                      />
+                    </div>
+                  </div>
+                </div>,
+                document.body
+              )
+            : null}
         </>
       )}
     </div>
