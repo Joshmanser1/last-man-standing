@@ -22,6 +22,65 @@ function timeAgo(ts: number) {
   return `${d}d ago`;
 }
 
+function NotificationList({
+  items,
+  lastViewedAt,
+  playerId,
+  navigate,
+  close,
+}: {
+  items: any[];
+  lastViewedAt: number;
+  playerId: string;
+  navigate: ReturnType<typeof useNavigate>;
+  close: () => void;
+}) {
+  if (!items.length) {
+    return <div className="p-4 text-xs text-slate-400">No notifications yet.</div>;
+  }
+
+  return (
+    <div className="space-y-2 p-2 md:p-3">
+      {items.slice(0, 12).map((n: any) => {
+        const seen = n.read || n.ts <= lastViewedAt;
+
+        return (
+          <div
+            key={n.id}
+            className={[
+              "rounded-xl px-3 py-2 ring-1 transition",
+              seen ? "bg-white/5 ring-white/10" : "bg-white/10 ring-emerald-400/20",
+            ].join(" ")}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className={seen ? "text-xs text-slate-300" : "text-xs font-semibold text-white"}>
+                  {n.title}
+                </div>
+                {n.body && <div className="mt-0.5 text-[11px] text-slate-400">{n.body}</div>}
+                {n.cta?.to && (
+                  <button
+                    type="button"
+                    className="mt-2 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300"
+                    onClick={() => {
+                      setLastViewedAt(playerId);
+                      navigate(n.cta.to);
+                      close();
+                    }}
+                  >
+                    {n.cta.label ?? "Open"}
+                  </button>
+                )}
+              </div>
+              <div className="whitespace-nowrap text-[10px] text-slate-500">{timeAgo(n.ts)}</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function NotificationBell() {
   const navigate = useNavigate();
   const playerId = localStorage.getItem("player_id") || "";
@@ -93,83 +152,102 @@ export function NotificationBell() {
           >
             {unread > 9 ? "9+" : unread}
           </span>
-        )}
+      )}
       </button>
 
       {open && (
-        <div
-          data-testid="notification-dropdown"
-          className="absolute right-0 z-[70] mt-2 w-[340px] max-w-[80vw] overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/85 to-slate-950/85 shadow-[0_18px_60px_rgba(0,0,0,0.65)] ring-1 ring-white/10 backdrop-blur-xl"
-        >
-          <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-            <div className="text-sm font-semibold text-white">Notifications</div>
-            <div className="flex gap-2">
-              <button
-                className="text-xs text-emerald-400 hover:text-emerald-300"
-                onClick={() => {
-                  markAllRead(playerId);
-                  setTick((x) => x + 1);
-                }}
-              >
-                Mark read
-              </button>
-              <button
-                className="text-xs text-slate-400 hover:text-slate-200"
-                onClick={() => {
-                  clearNotifications(playerId);
-                  setTick((x) => x + 1);
-                }}
-              >
-                Clear
-              </button>
+        <>
+          <div
+            data-testid="notification-dropdown"
+            className="absolute right-0 z-[70] mt-2 hidden w-[340px] max-w-[80vw] overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/85 to-slate-950/85 shadow-[0_18px_60px_rgba(0,0,0,0.65)] ring-1 ring-white/10 backdrop-blur-xl md:block"
+          >
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <div className="text-sm font-semibold text-white">Notifications</div>
+              <div className="flex gap-2">
+                <button
+                  className="text-xs text-emerald-400 hover:text-emerald-300"
+                  onClick={() => {
+                    markAllRead(playerId);
+                    setTick((x) => x + 1);
+                  }}
+                >
+                  Mark read
+                </button>
+                <button
+                  className="text-xs text-slate-400 hover:text-slate-200"
+                  onClick={() => {
+                    clearNotifications(playerId);
+                    setTick((x) => x + 1);
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-[360px] overflow-auto">
+              <NotificationList
+                items={items}
+                lastViewedAt={lastViewedAt}
+                playerId={playerId}
+                navigate={navigate}
+                close={() => setOpen(false)}
+              />
             </div>
           </div>
 
-          <div className="max-h-[360px] overflow-auto">
-            {items.length ? (
-              <div className="space-y-2 p-2">
-                {items.slice(0, 12).map((n: any) => {
-                  const seen = n.read || n.ts <= lastViewedAt;
-
-                  return (
-                    <div
-                      key={n.id}
-                      className={[
-                        "rounded-xl px-3 py-2 ring-1 transition",
-                        seen ? "bg-white/5 ring-white/10" : "bg-white/10 ring-emerald-400/20",
-                      ].join(" ")}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className={seen ? "text-xs text-slate-300" : "text-xs font-semibold text-white"}>
-                            {n.title}
-                          </div>
-                          {n.body && <div className="mt-0.5 text-[11px] text-slate-400">{n.body}</div>}
-                          {n.cta?.to && (
-                            <button
-                              type="button"
-                              className="mt-2 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300"
-                              onClick={() => {
-                                setLastViewedAt(playerId);
-                                navigate(n.cta.to);
-                                setOpen(false);
-                              }}
-                            >
-                              {n.cta.label ?? "Open"}
-                            </button>
-                          )}
-                        </div>
-                        <div className="whitespace-nowrap text-[10px] text-slate-500">{timeAgo(n.ts)}</div>
-                      </div>
-                    </div>
-                  );
-                })}
+          <div className="fixed inset-x-0 bottom-0 top-[72px] z-[70] md:hidden">
+            <button
+              type="button"
+              aria-label="Close notifications"
+              className="absolute inset-0 bg-black/50"
+              onClick={() => setOpen(false)}
+            />
+            <div className="absolute inset-x-0 bottom-0 max-h-[70vh] overflow-hidden rounded-t-3xl border border-white/10 bg-gradient-to-b from-slate-900 to-slate-950 shadow-[0_-18px_60px_rgba(0,0,0,0.65)] ring-1 ring-white/10">
+              <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-white/20" />
+              <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                <div className="text-sm font-semibold text-white">Notifications</div>
+                <div className="flex items-center gap-3">
+                  <button
+                    className="text-xs text-emerald-400 hover:text-emerald-300"
+                    onClick={() => {
+                      markAllRead(playerId);
+                      setTick((x) => x + 1);
+                    }}
+                  >
+                    Mark read
+                  </button>
+                  <button
+                    className="text-xs text-slate-400 hover:text-slate-200"
+                    onClick={() => {
+                      clearNotifications(playerId);
+                      setTick((x) => x + 1);
+                    }}
+                  >
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    className="text-xs text-slate-300 hover:text-white"
+                    onClick={() => setOpen(false)}
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
-            ) : (
-              <div className="p-4 text-xs text-slate-400">No notifications yet.</div>
-            )}
+
+              <div className="max-h-[calc(70vh-4rem)] overflow-auto">
+                <NotificationList
+                  items={items}
+                  lastViewedAt={lastViewedAt}
+                  playerId={playerId}
+                  navigate={navigate}
+                  close={() => setOpen(false)}
+                />
+              </div>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
