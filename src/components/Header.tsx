@@ -4,7 +4,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
 import { GameSelector } from "./GameSelector";
 import { subscribeStore } from "../data/service";
-import { isAdminNow } from "../lib/auth";
+import { isAdminNow, localAuthed } from "../lib/auth";
 import { NotificationBell } from "./NotificationBell";
 
 const linkCls = ({ isActive }: { isActive: boolean }) =>
@@ -33,12 +33,22 @@ export function Header() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    const recomputeAdmin = async () => {
+      if (devOn && localAuthed()) {
+        setAdmin(true);
+        return;
+      }
+      const { data } = await supa.auth.getUser();
+      const role = (data.user?.user_metadata?.role as string) || "";
+      setAdmin(role === "admin" || isAdminNow());
+    };
+
     const recomputeAuth = async () => {
       const { data } = await supa.auth.getSession();
       const supaAuthed = !!data.session?.user?.id;
       const localAuthed = devOn && !!localStorage.getItem("player_id");
       setAuthed(supaAuthed || localAuthed);
-      setAdmin(isAdminNow());
+      await recomputeAdmin();
     };
 
     // initial
@@ -49,7 +59,12 @@ export function Header() {
       const supaAuthed = !!session?.user?.id;
       const localAuthed = devOn && !!localStorage.getItem("player_id");
       setAuthed(supaAuthed || localAuthed);
-      setAdmin(isAdminNow());
+      const role = (session?.user?.user_metadata?.role as string) || "";
+      setAdmin(
+        devOn && localAuthed()
+          ? true
+          : role === "admin" || isAdminNow()
+      );
     });
 
     // react to our store changes (DevUserSwitcher fires this)
@@ -57,10 +72,10 @@ export function Header() {
       const id = localStorage.getItem("active_league_id");
       setActiveLeagueId(id);
       setHasLeague(!!id);
-      setAdmin(isAdminNow());
 
       const localAuthed = devOn && !!localStorage.getItem("player_id");
       setAuthed((prev) => prev || localAuthed);
+      void recomputeAdmin();
     };
 
     // also catch cross-tab changes and focus
@@ -118,6 +133,9 @@ export function Header() {
         <nav className="hidden md:flex items-center gap-1">
           {authed && (
             <>
+              <NavLink to="/my-games" className={linkCls}>
+                My Games
+              </NavLink>
               {hasLeague && (
                 <>
                   <NavLink to="/make-pick" className={linkCls}>
@@ -129,17 +147,14 @@ export function Header() {
                   <NavLink to="/leaderboard" className={linkCls}>
                     Leaderboard
                   </NavLink>
-                  <NavLink to="/stats" className={linkCls}>
-                    Stats
-                  </NavLink>
                   <NavLink to="/league" className={linkCls}>
                     League
                   </NavLink>
+                  <NavLink to="/stats" className={linkCls}>
+                    Stats
+                  </NavLink>
                 </>
               )}
-              <NavLink to="/my-games" className={linkCls}>
-                My Games
-              </NavLink>
               <NavLink to="/public" className={linkCls}>
                 Public
               </NavLink>
@@ -206,6 +221,9 @@ export function Header() {
       {/* Mobile nav */}
       {authed && (
         <div className="md:hidden border-t border-white/10 px-3 py-2 flex gap-1 overflow-x-auto">
+          <NavLink to="/my-games" className={linkCls}>
+            My Games
+          </NavLink>
           {hasLeague && (
             <>
               <NavLink to="/make-pick" className={linkCls}>
@@ -217,17 +235,14 @@ export function Header() {
               <NavLink to="/leaderboard" className={linkCls}>
                 Leaderboard
               </NavLink>
-              <NavLink to="/stats" className={linkCls}>
-                Stats
-              </NavLink>
               <NavLink to="/league" className={linkCls}>
                 League
               </NavLink>
+              <NavLink to="/stats" className={linkCls}>
+                Stats
+              </NavLink>
             </>
           )}
-          <NavLink to="/my-games" className={linkCls}>
-            My Games
-          </NavLink>
           <NavLink to="/public" className={linkCls}>
             Public
           </NavLink>
