@@ -4,7 +4,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
 import { GameSelector } from "./GameSelector";
 import { subscribeStore } from "../data/service";
-import { isAdminNow, localAuthed } from "../lib/auth";
+import { isAdminNow } from "../lib/auth";
 import { NotificationBell } from "./NotificationBell";
 
 const linkCls = ({ isActive }: { isActive: boolean }) =>
@@ -33,22 +33,12 @@ export function Header() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const recomputeAdmin = async () => {
-      if (devOn && localAuthed()) {
-        setAdmin(true);
-        return;
-      }
-      const { data } = await supa.auth.getUser();
-      const role = (data.user?.user_metadata?.role as string) || "";
-      setAdmin(role === "admin" || isAdminNow());
-    };
-
     const recomputeAuth = async () => {
       const { data } = await supa.auth.getSession();
       const supaAuthed = !!data.session?.user?.id;
       const localAuthed = devOn && !!localStorage.getItem("player_id");
       setAuthed(supaAuthed || localAuthed);
-      await recomputeAdmin();
+      setAdmin(isAdminNow());
     };
 
     // initial
@@ -59,12 +49,7 @@ export function Header() {
       const supaAuthed = !!session?.user?.id;
       const localAuthed = devOn && !!localStorage.getItem("player_id");
       setAuthed(supaAuthed || localAuthed);
-      const role = (session?.user?.user_metadata?.role as string) || "";
-      setAdmin(
-        devOn && localAuthed()
-          ? true
-          : role === "admin" || isAdminNow()
-      );
+      setAdmin(isAdminNow());
     });
 
     // react to our store changes (DevUserSwitcher fires this)
@@ -72,10 +57,10 @@ export function Header() {
       const id = localStorage.getItem("active_league_id");
       setActiveLeagueId(id);
       setHasLeague(!!id);
+      setAdmin(isAdminNow());
 
       const localAuthed = devOn && !!localStorage.getItem("player_id");
       setAuthed((prev) => prev || localAuthed);
-      void recomputeAdmin();
     };
 
     // also catch cross-tab changes and focus
