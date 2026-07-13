@@ -386,6 +386,179 @@ export function PrivateLeagueCreate() {
     navigate("/make-pick");
   }
 
+  function renderMyPrivateLeaguesSection() {
+    return (
+      <section className="card p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">My private leagues</h2>
+          {myLeagues.length > 0 && (
+            <span className="text-xs text-slate-500">{myLeagues.length} total</span>
+          )}
+        </div>
+
+        {myLeagues.length === 0 ? (
+          <p className="text-sm text-slate-600">
+            You’re not in any private leagues yet. Create one on the left,
+            or join using an invite code.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2 mb-4">
+              {myLeagues.map((lg) => {
+                const selected = lg.id === activeLeagueId;
+                return (
+                  <button
+                    key={lg.id}
+                    type="button"
+                    onClick={() => setActiveLeagueId(lg.id)}
+                    className={[
+                      "px-3 py-1.5 rounded-full text-xs border",
+                      selected
+                        ? "bg-teal-600 text-white border-teal-600"
+                        : "bg-slate-50 text-slate-700 hover:bg-slate-100",
+                    ].join(" ")}
+                  >
+                    {lg.name}
+                  </button>
+                );
+              })}
+            </div>
+
+            {activeLeague ? (
+              <div className="space-y-4 border-t pt-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold">{activeLeague.name}</div>
+                    <div className="text-xs text-slate-600 mt-1 space-y-0.5">
+                      <div>
+                        Owner: {activeLeague.ownerId === playerId ? "You" : "Another manager"}
+                      </div>
+                      <div>Created: {new Date(activeLeague.createdAt).toLocaleString()}</div>
+                      {activeLeague.fplStartEvent && activeLeague.startDateUtc && (
+                        <div>
+                          Start FPL GW: <b>GW {activeLeague.fplStartEvent}</b>{" "}
+                          <span className="text-[11px] text-slate-500">
+                            ({new Date(activeLeague.startDateUtc).toLocaleString()})
+                          </span>
+                        </div>
+                      )}
+                      {!activeLeague.fplStartEvent && activeLeague.startDateUtc && (
+                        <div>Start date: {new Date(activeLeague.startDateUtc).toLocaleString()}</div>
+                      )}
+                      <div>Invite code: {activeLeague.inviteCode}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-primary text-xs"
+                      onClick={() => goToPick(activeLeague.id)}
+                    >
+                      Make Pick
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost text-xs"
+                      onClick={() => handleCopy(activeLeague.inviteCode, "Invite code")}
+                    >
+                      Copy code
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost text-xs"
+                      onClick={() => handleCopy(getShareUrl(activeLeague.inviteCode), "Share link")}
+                    >
+                      Copy share link
+                    </button>
+                  </div>
+                </div>
+
+                {isOwner && (
+                  <div className="space-y-3 border-t pt-3">
+                    <div className="text-xs font-semibold text-slate-700">Owner tools</div>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="label text-xs">Rename league</label>
+                        <input
+                          className="input mt-1 text-xs"
+                          value={activeLeague.name}
+                          onChange={(e) => updateActiveLeague({ name: e.target.value })}
+                        />
+                      </div>
+
+                      <div>
+                        <FplGwSelect
+                          label="Start FPL Gameweek (optional)"
+                          onlyUpcoming={false}
+                          value={activeLeague.fplStartEvent ?? undefined}
+                          onChange={(id, ev) =>
+                            updateActiveLeague({
+                              fplStartEvent: id || undefined,
+                              startDateUtc: ev?.deadline_time ?? undefined,
+                            })
+                          }
+                          className="mt-1 text-xs"
+                        />
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          Reference only for now – doesn’t auto-drive rounds yet.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleDeleteActive}
+                        className="text-xs rounded-lg border border-rose-300 px-3 py-1.5 text-rose-700 hover:bg-rose-50"
+                      >
+                        Delete league
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2 border-t pt-4">
+                  <div className="text-xs font-semibold text-slate-700">
+                    Members ({membersForActive.length})
+                  </div>
+                  {membersForActive.length === 0 ? (
+                    <div className="text-xs text-slate-500">No one has joined yet.</div>
+                  ) : (
+                    <ul className="space-y-1 text-xs">
+                      {membersForActive.map((m, i) => (
+                        <li key={m.playerId + "-" + i} className="flex items-center gap-2">
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-700">
+                            {(m.displayName || "User").slice(0, 2).toUpperCase()}
+                          </span>
+                          <span className="truncate">
+                            {m.displayName || m.playerId.slice(0, 8)}
+                          </span>
+                          {m.playerId === activeLeague.ownerId && (
+                            <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                              Owner
+                            </span>
+                          )}
+                          {m.playerId === getPlayerId() && m.playerId !== activeLeague.ownerId && (
+                            <span className="ml-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
+                              You
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-600">
+                Select a private league above to view details and members.
+              </p>
+            )}
+          </div>
+        )}
+      </section>
+    );
+  }
+
   // --------- render ---------
 
   return (
@@ -432,9 +605,13 @@ export function PrivateLeagueCreate() {
       )}
 
       <div className="grid md:grid-cols-2 gap-6">
-        {/* Create / Join column */}
+        {myLeagues.length > 0 && (
+          <div className="space-y-4">
+            {renderMyPrivateLeaguesSection()}
+          </div>
+        )}
+
         <div className="space-y-5">
-          {/* Create */}
           <section className="card p-5 space-y-4">
             <div>
               <h2 className="text-lg font-semibold">Create a private league</h2>
@@ -473,7 +650,6 @@ export function PrivateLeagueCreate() {
             </form>
           </section>
 
-          {/* Join by code */}
           <section className="card p-5 space-y-3">
             <div>
               <h2 className="text-lg font-semibold">Join by invite code</h2>
@@ -501,177 +677,7 @@ export function PrivateLeagueCreate() {
           </section>
         </div>
 
-        {/* Manage / My leagues column */}
-        <div className="space-y-4">
-          <section className="card p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">My private leagues</h2>
-              {myLeagues.length > 0 && (
-                <span className="text-xs text-slate-500">{myLeagues.length} total</span>
-              )}
-            </div>
-
-            {myLeagues.length === 0 ? (
-              <p className="text-sm text-slate-600">
-                You’re not in any private leagues yet. Create one on the left,
-                or join using an invite code.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {myLeagues.map((lg) => {
-                    const selected = lg.id === activeLeagueId;
-                    return (
-                      <button
-                        key={lg.id}
-                        type="button"
-                        onClick={() => setActiveLeagueId(lg.id)}
-                        className={[
-                          "px-3 py-1.5 rounded-full text-xs border",
-                          selected
-                            ? "bg-teal-600 text-white border-teal-600"
-                            : "bg-slate-50 text-slate-700 hover:bg-slate-100",
-                        ].join(" ")}
-                      >
-                        {lg.name}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {activeLeague ? (
-                  <div className="space-y-4 border-t pt-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold">{activeLeague.name}</div>
-                        <div className="text-xs text-slate-600 mt-1 space-y-0.5">
-                          <div>
-                            Owner: {activeLeague.ownerId === playerId ? "You" : "Another manager"}
-                          </div>
-                          <div>Created: {new Date(activeLeague.createdAt).toLocaleString()}</div>
-                          {activeLeague.fplStartEvent && activeLeague.startDateUtc && (
-                            <div>
-                              Start FPL GW: <b>GW {activeLeague.fplStartEvent}</b>{" "}
-                              <span className="text-[11px] text-slate-500">
-                                ({new Date(activeLeague.startDateUtc).toLocaleString()})
-                              </span>
-                            </div>
-                          )}
-                          {!activeLeague.fplStartEvent && activeLeague.startDateUtc && (
-                            <div>Start date: {new Date(activeLeague.startDateUtc).toLocaleString()}</div>
-                          )}
-                          <div>Invite code: {activeLeague.inviteCode}</div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <button
-                          type="button"
-                          className="btn btn-primary text-xs"
-                          onClick={() => goToPick(activeLeague.id)}
-                        >
-                          Make Pick
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost text-xs"
-                          onClick={() => handleCopy(activeLeague.inviteCode, "Invite code")}
-                        >
-                          Copy code
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost text-xs"
-                          onClick={() => handleCopy(getShareUrl(activeLeague.inviteCode), "Share link")}
-                        >
-                          Copy share link
-                        </button>
-                      </div>
-                    </div>
-
-                    {isOwner && (
-                      <div className="space-y-3 border-t pt-3">
-                        <div className="text-xs font-semibold text-slate-700">Owner tools</div>
-                        <div className="space-y-3">
-                          <div>
-                            <label className="label text-xs">Rename league</label>
-                            <input
-                              className="input mt-1 text-xs"
-                              value={activeLeague.name}
-                              onChange={(e) => updateActiveLeague({ name: e.target.value })}
-                            />
-                          </div>
-
-                          <div>
-                            <FplGwSelect
-                              label="Start FPL Gameweek (optional)"
-                              onlyUpcoming={false}
-                              value={activeLeague.fplStartEvent ?? undefined}
-                              onChange={(id, ev) =>
-                                updateActiveLeague({
-                                  fplStartEvent: id || undefined,
-                                  startDateUtc: ev?.deadline_time ?? undefined,
-                                })
-                              }
-                              className="mt-1 text-xs"
-                            />
-                            <p className="mt-1 text-[11px] text-slate-500">
-                              Reference only for now – doesn’t auto-drive rounds yet.
-                            </p>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={handleDeleteActive}
-                            className="text-xs rounded-lg border border-rose-300 px-3 py-1.5 text-rose-700 hover:bg-rose-50"
-                          >
-                            Delete league
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="space-y-2 border-t pt-4">
-                      <div className="text-xs font-semibold text-slate-700">
-                        Members ({membersForActive.length})
-                      </div>
-                      {membersForActive.length === 0 ? (
-                        <div className="text-xs text-slate-500">No one has joined yet.</div>
-                      ) : (
-                        <ul className="space-y-1 text-xs">
-                          {membersForActive.map((m, i) => (
-                            <li key={m.playerId + "-" + i} className="flex items-center gap-2">
-                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-700">
-                                {(m.displayName || "User").slice(0, 2).toUpperCase()}
-                              </span>
-                              <span className="truncate">
-                                {m.displayName || m.playerId.slice(0, 8)}
-                              </span>
-                              {m.playerId === activeLeague.ownerId && (
-                                <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-                                  Owner
-                                </span>
-                              )}
-                              {m.playerId === getPlayerId() && m.playerId !== activeLeague.ownerId && (
-                                <span className="ml-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
-                                  You
-                                </span>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-600">
-                    Select a private league above to view details and members.
-                  </p>
-                )}
-              </div>
-            )}
-          </section>
-        </div>
+        {myLeagues.length === 0 && renderMyPrivateLeaguesSection()}
       </div>
     </div>
   );
