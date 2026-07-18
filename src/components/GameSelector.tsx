@@ -85,7 +85,7 @@ export function GameSelector({
   // fixed width + truncate to avoid pushing into the Logout button.
   const cls =
     variant === "header"
-      ? "h-9 w-[220px] max-w-[260px] truncate border border-white/20 rounded-md bg-white text-slate-900 px-3 py-1 shadow-sm focus:outline-none"
+      ? "h-9 w-[160px] min-w-[140px] max-w-[180px] truncate rounded-md border border-white/20 bg-white px-3 py-1 text-slate-900 shadow-sm focus:outline-none"
       : "input !w-full";
 
   return (

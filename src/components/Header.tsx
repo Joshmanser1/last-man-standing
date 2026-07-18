@@ -99,9 +99,9 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-emerald-500/10 bg-[radial-gradient(120%_120%_at_50%_-10%,#0e1b1a,#0b1413_35%,#0a0e12_85%)] text-white/90 backdrop-blur">
-      <div className="container-page py-3 flex items-center gap-3 flex-wrap md:flex-nowrap">
+      <div className="container-page py-3 flex min-w-0 items-center gap-3 flex-nowrap">
         {/* Brand */}
-        <NavLink to="/" className="mr-2 flex items-center gap-2 shrink-0 min-w-[220px]">
+        <NavLink to="/" className="mr-2 flex shrink-0 items-center gap-2">
           <img
             src="/fcc-shield.png?v=1"
             alt="Fantasy Command Centre"
@@ -115,7 +115,7 @@ export function Header() {
         </NavLink>
 
         {/* Desktop nav */}
-        <nav className="hidden md:flex items-center gap-1">
+        <nav className="hidden min-w-0 flex-1 items-center gap-0.5 md:flex">
           {authed && (
             <>
               <NavLink to="/my-games" className={linkCls}>
@@ -156,14 +156,14 @@ export function Header() {
         </nav>
 
         {/* Spacer */}
-        <div className="flex-1 basis-full md:basis-auto" />
+        <div className="min-w-0 flex-1" />
 
         {/* Right side */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex shrink-0 items-center gap-1.5">
           {authed && <NotificationBell />}
           {/* Game selector — ONLY when authed */}
           {authed && (
-            <div className="hidden sm:flex items-center gap-2">
+            <div className="hidden items-center gap-1.5 sm:flex">
               <span className="hidden lg:inline text-sm text-white/70">Game</span>
               <GameSelector
                 variant="header"
@@ -180,7 +180,7 @@ export function Header() {
           {authed ? (
             <>
               {playerName ? (
-                <span className="hidden sm:inline text-xs text-white/70 truncate max-w-[120px]">
+                <span className="hidden max-w-[120px] truncate text-xs text-white/70 xl:inline">
                   Hi, {playerName}
                 </span>
               ) : null}
