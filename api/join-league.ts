@@ -59,7 +59,7 @@ export default async function handler(req: Req, res: Res) {
     if (!leagueId) {
       const { data: league, error: leagueErr } = await supabase
         .from("leagues")
-        .select("id, is_public, is_test")
+        .select("id, is_public, is_test, status, deleted_at")
         .eq("join_code", joinCode)
         .maybeSingle();
       if (leagueErr) {
@@ -78,7 +78,7 @@ export default async function handler(req: Req, res: Res) {
     } else {
       const { data: league, error: leagueErr } = await supabase
         .from("leagues")
-        .select("id, is_public, is_test")
+        .select("id, is_public, is_test, status, deleted_at")
         .eq("id", leagueId)
         .maybeSingle();
       if (leagueErr) {
@@ -93,6 +93,39 @@ export default async function handler(req: Req, res: Res) {
         return sendJson(res, 404, { error: "League not found" });
       }
       targetLeague = league;
+    }
+
+    if (!targetLeague?.is_test) {
+      if (targetLeague?.deleted_at || targetLeague?.status === "completed") {
+        return sendJson(res, 409, {
+          error: "Joining is closed because Round 1 has already started.",
+        });
+      }
+
+      const { data: round1, error: roundErr } = await supabase
+        .from("rounds")
+        .select("id, status, pick_deadline_utc")
+        .eq("league_id", leagueId)
+        .eq("round_number", 1)
+        .maybeSingle();
+      if (roundErr) {
+        return sendJson(res, 502, {
+          error: roundErr.message,
+          code: roundErr.code,
+          details: roundErr.details,
+          hint: roundErr.hint,
+        });
+      }
+
+      const round1Closed =
+        round1?.status === "locked" ||
+        round1?.status === "completed" ||
+        (!!round1?.pick_deadline_utc && Date.parse(round1.pick_deadline_utc) <= Date.now());
+      if (round1Closed) {
+        return sendJson(res, 409, {
+          error: "Joining is closed because Round 1 has already started.",
+        });
+      }
     }
 
     const { data: existing, error: existingErr } = await supabase
