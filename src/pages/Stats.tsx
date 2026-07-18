@@ -284,7 +284,7 @@ export function Stats() {
                       </div>
                     ) : (
                       <span className="text-[11px] text-slate-500">
-                        No data
+                        —
                       </span>
                     )}
                   </td>

@@ -299,7 +299,7 @@ export function MyGames() {
       {renderSection(
         "Action Required",
         sections.open,
-        "No leagues need a pick from you right now.",
+        "No leagues need action right now. We'll show games here when a new pick is required.",
         (league) => (
           <button className="btn btn-primary text-xs" onClick={() => goToPick(league.id)}>
             Make Pick
@@ -310,7 +310,7 @@ export function MyGames() {
       {renderSection(
         "Pick Submitted",
         sections.picked,
-        "No current-round picks submitted yet.",
+        "No picks submitted for this round yet.",
         (league) => (
           <>
             <button className="btn btn-primary text-xs" onClick={() => goToResults(league.id)}>
@@ -326,7 +326,7 @@ export function MyGames() {
       {renderSection(
         "Waiting / Locked",
         sections.waiting,
-        "No leagues are waiting on results right now.",
+        "No leagues are waiting right now. We'll show them here once picks are locked or results are pending.",
         (league) => (
           <>
             <button className="btn btn-primary text-xs" onClick={() => goToResults(league.id)}>
@@ -342,7 +342,7 @@ export function MyGames() {
       {renderSection(
         "Completed Games",
         sections.completed,
-        "No completed leagues yet.",
+        "No completed games yet. Finished leagues will appear here.",
         (league) => (
           <>
             <button className="btn btn-primary text-xs" onClick={() => goToLeaderboard(league.id)}>

@@ -457,7 +457,7 @@ export function Leaderboard() {
                   {rows.length === 0 && (
                     <tr>
                       <td className="px-3 py-6 text-center text-slate-500" colSpan={3}>
-                        No entrants yet. Share your invite code to get players into the league.
+                        No entrants yet. Invite players to join the league.
                       </td>
                     </tr>
                   )}
@@ -504,10 +504,10 @@ export function Leaderboard() {
                       </tr>
                     );
                   })}
-                  {rows.length === 0 && (
+                  {(rows.length === 0 || picks.length === 0) && (
                     <tr>
                       <td className="px-3 py-6 text-center text-slate-500" colSpan={2 + maxRound}>
-                        No entrants yet. Share your invite code to get players into the league.
+                        No picks have been submitted yet.
                       </td>
                     </tr>
                   )}
@@ -541,7 +541,7 @@ export function Leaderboard() {
                   {eliminationRows.length === 0 && (
                     <tr>
                       <td className="px-3 py-6 text-center text-slate-500" colSpan={5}>
-                        No eliminations yet. Eliminated players will appear here after a round is processed.
+                        No eliminations yet. Everyone is still alive.
                       </td>
                     </tr>
                   )}
