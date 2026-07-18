@@ -3,9 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
+import { useToast } from "./Toast";
 
 export function LeagueStatusBanner({ leagueId: leagueIdProp }: { leagueId?: string }) {
   const navigate = useNavigate();
+  const toast = useToast();
   const [league, setLeague] = useState<any>(null);
   const [round, setRound] = useState<any>(null);
   const [pick, setPick] = useState<any>(null);
@@ -109,6 +111,7 @@ export function LeagueStatusBanner({ leagueId: leagueIdProp }: { leagueId?: stri
             eliminated,
             newRoundNumber: currentRound.round_number,
           });
+          toast(`Round ${currentRound.round_number} opened`, { variant: "success" });
         }
         localStorage.setItem(seenKey, String(currentRound.round_number));
       } else {

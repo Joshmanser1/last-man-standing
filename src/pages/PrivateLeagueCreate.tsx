@@ -196,9 +196,11 @@ export function PrivateLeagueCreate() {
     msg: string,
     variant: "info" | "success" | "error" = "info"
   ) {
-    setFeedback(msg);
+    setFeedback(variant === "success" ? "" : msg);
     toast(msg, { variant });
-    setTimeout(() => setFeedback(""), 4000);
+    if (variant !== "success") {
+      setTimeout(() => setFeedback(""), 4000);
+    }
   }
 
   // Create: allow if player does NOT already own a league (they may still have joined one).
@@ -235,12 +237,7 @@ export function PrivateLeagueCreate() {
       setActiveLeagueId(created.id);
       localStorage.setItem("active_league_id", created.id);
       setPostJoin(null);
-      showFeedback(
-        `Private league created. Invite code: ${code}${
-          startEventId ? ` (starts FPL GW ${startEventId})` : ""
-        }`,
-        "success"
-      );
+      showFeedback("League created", "success");
 
       await reloadStore();
     } catch (err: any) {
@@ -340,7 +337,7 @@ export function PrivateLeagueCreate() {
           deadlineUtc: joinedRound?.pick_deadline_utc,
         });
       }
-      showFeedback(`Joined private league.`, "success");
+      showFeedback(`Joined ${targetLeague?.name ?? "League"}`, "success");
     } catch (err: any) {
       showFeedback(err?.message ?? "Failed to join league.", "error");
     } finally {
@@ -351,7 +348,9 @@ export function PrivateLeagueCreate() {
   function handleCopy(text: string, label: string) {
     navigator.clipboard
       .writeText(text)
-      .then(() => showFeedback(`${label} copied to clipboard.`, "success"))
+      .then(() =>
+        showFeedback(label === "Invite code" ? "Invite code copied" : "Share link copied", "success")
+      )
       .catch(() => showFeedback(`Could not copy ${label}.`, "error"));
   }
 

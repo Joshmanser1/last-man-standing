@@ -139,8 +139,8 @@ export function PrivateLeagueJoin() {
       memberships: [...store.memberships, membership],
     };
     setStore(next);
-    toast(`Joined “${league.name}”.`, { variant: "success" });
-    navigate("/private/create");
+      toast(`Joined ${league.name}`, { variant: "success" });
+      navigate("/private/create");
   }
 
   return (

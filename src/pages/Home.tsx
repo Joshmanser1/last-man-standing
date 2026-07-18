@@ -134,7 +134,7 @@ export function Home() {
         leagues.find((l) => l.id === selectedLeagueId) || null;
       setActiveLeague(joinedLeague);
 
-      toast("Joined game. Let’s make your pick!", { variant: "success" });
+      toast(`Joined ${joinedLeague?.name ?? "League"}`, { variant: "success" });
       navigate("/make-pick");
     } catch (e: any) {
       toast(e?.message ?? "Could not join the game.", { variant: "error" });

@@ -175,6 +175,7 @@ export function MakePick() {
     try {
       if (!league || !round || !playerId) return;
       if (locked) return;
+      const isUpdatingPick = !!currentPick && currentPick.team_id !== teamId;
 
       if (currentPick && currentPick.team_id !== teamId) {
         const ok = confirm("Replace your existing pick with this team?");
@@ -198,7 +199,7 @@ export function MakePick() {
         } catch {}
         throw new Error(msg);
       }
-      toast("Pick saved", { variant: "success" });
+      toast(isUpdatingPick ? "Pick updated" : "Pick submitted", { variant: "success" });
       navigate("/results");
     } catch (e: any) {
       toast(e?.message ?? "Could not save pick.", { variant: "error" });
