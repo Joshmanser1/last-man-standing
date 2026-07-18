@@ -56,13 +56,17 @@ export function FplGwSelect({
       setError(null);
       try {
         const data = await loadBootstrap();
-        let evs = (data.events || []) as FplEvent[];
+        const allEvents = (data.events || []) as FplEvent[];
+        let evs = allEvents;
 
         if (onlyUpcoming) {
           const now = Date.now();
           evs = evs.filter(
             (e) => !e.finished && Date.parse(e.deadline_time) >= now
           );
+          if (!evs.length) {
+            evs = allEvents;
+          }
         }
 
         if (!isMounted) return;
