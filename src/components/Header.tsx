@@ -115,7 +115,7 @@ export function Header() {
         </NavLink>
 
         {/* Desktop nav */}
-        <nav className="hidden min-w-0 flex-1 items-center gap-0.5 md:flex">
+        <nav className="hidden items-center gap-0.5 md:flex">
           {authed && (
             <>
               <NavLink to="/my-games" className={linkCls}>
@@ -157,6 +157,8 @@ export function Header() {
 
 
 
+
+        <div className="min-w-0 flex-1" />
 
         {/* Right side */}
         <div className="flex shrink-0 items-center gap-2">
