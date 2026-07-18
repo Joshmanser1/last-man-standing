@@ -155,16 +155,15 @@ export function Header() {
           )}
         </nav>
 
-        {/* Spacer */}
-        <div className="min-w-0 flex-1" />
+
+
 
         {/* Right side */}
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-2">
           {authed && <NotificationBell />}
-          {/* Game selector — ONLY when authed */}
+          {/* Game selector */}
           {authed && (
-            <div className="hidden items-center gap-1.5 sm:flex">
-              <span className="hidden lg:inline text-sm text-white/70">Game</span>
+            <div className="hidden items-center gap-2 sm:flex">
               <GameSelector
                 variant="header"
                 value={activeLeagueId ?? undefined}
