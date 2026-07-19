@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
+import { PreFirstPickHero } from "../components/PreFirstPickHero";
 import { useNotifications } from "../components/Notifications";
 import { computeOutcome } from "../lib/outcome";
 import { supa } from "../lib/supabaseClient";
@@ -242,19 +243,12 @@ export function Results() {
       </div>
 
       {showGuidance ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-700">
-          <div className="font-semibold">Make your pick first.</div>
-          <div className="mt-1 text-slate-600">
-            Results will appear after picks are processed.
-          </div>
-          <button
-            type="button"
-            className="btn btn-primary mt-4"
-            onClick={() => navigate("/make-pick")}
-          >
-            Make Pick
-          </button>
-        </div>
+        <PreFirstPickHero
+          roundNumber={guidance.currentRoundNumber}
+          deadlineUtc={guidance.deadlineUtc}
+        >
+          Results will appear once picks have been submitted.
+        </PreFirstPickHero>
       ) : filtered.length ? (
         <table className="min-w-full text-sm border">
           <thead className="bg-slate-100">

@@ -13,7 +13,7 @@ type PrivateLeague = {
   ownerId: string;
   createdAt: string;
   startDateUtc?: string;      // FPL GW deadline_time
-  fplStartEvent?: number;     // FPL event id (1–38)
+  fplStartEvent?: number;     // FPL event id (1â€“38)
   inviteCode: string;         // unique, human-friendly
 };
 
@@ -213,7 +213,7 @@ export function PrivateLeagueCreate() {
 
     const alreadyOwner = store.leagues.some(l => l.ownerId === playerId);
     if (alreadyOwner) {
-      showFeedback("You’ve already created a private league. Limit is one owned league per player.", "error");
+      showFeedback("Youâ€™ve already created a private league. Limit is one owned league per player.", "error");
       return;
     }
 
@@ -262,7 +262,7 @@ export function PrivateLeagueCreate() {
       return league ? league.ownerId !== authUid : false;
     });
     if (joinedNonOwned) {
-      showFeedback("You’ve already joined a private league. Limit is one joined league per player (plus one you own).", "error");
+      showFeedback("Youâ€™ve already joined a private league. Limit is one joined league per player (plus one you own).", "error");
       return;
     }
 
@@ -397,7 +397,7 @@ export function PrivateLeagueCreate() {
 
         {myLeagues.length === 0 ? (
           <p className="text-sm text-slate-600">
-            You’re not in any private leagues yet. Create one on the left,
+            You're not in any private leagues yet. Create one on the left,
             or join using an invite code.
           </p>
         ) : (
@@ -451,13 +451,6 @@ export function PrivateLeagueCreate() {
                   <div className="flex flex-col gap-2">
                     <button
                       type="button"
-                      className="btn btn-primary text-xs"
-                      onClick={() => goToPick(activeLeague.id)}
-                    >
-                      Make Pick
-                    </button>
-                    <button
-                      type="button"
                       className="btn btn-ghost text-xs"
                       onClick={() => handleCopy(activeLeague.inviteCode, "Invite code")}
                     >
@@ -500,7 +493,7 @@ export function PrivateLeagueCreate() {
                           className="mt-1 text-xs"
                         />
                         <p className="mt-1 text-[11px] text-slate-500">
-                          Reference only for now – doesn’t auto-drive rounds yet.
+                          Reference only for now â€“ doesnâ€™t auto-drive rounds yet.
                         </p>
                       </div>
 

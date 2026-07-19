@@ -2,11 +2,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
+import { PreFirstPickHero } from "../components/PreFirstPickHero";
 import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
 import { loadLeagueRoundState } from "../lib/leagueRoundState";
+import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 
 type CardProps = {
   title: string;
@@ -91,10 +93,10 @@ function formatCountdown(targetIso?: string): {
   label: string;
   overdue?: boolean;
 } {
-  if (!targetIso) return { label: "—" };
+  if (!targetIso) return { label: "â€”" };
   const now = Date.now();
   const t = Date.parse(targetIso);
-  if (isNaN(t)) return { label: "—" };
+  if (isNaN(t)) return { label: "â€”" };
   const diff = t - now;
   const abs = Math.abs(diff);
   const mins = Math.floor(abs / 60000);
@@ -128,6 +130,7 @@ export function LeagueSummary() {
     () => localStorage.getItem("active_league_id") || ""
   );
   const [reloadTick, setReloadTick] = useState(0);
+  const guidance = useFirstPickGuidance(activeLeagueId);
 
   // bootstrap from Supabase + dataService fallbacks
   useEffect(() => {
@@ -242,7 +245,7 @@ export function LeagueSummary() {
         ? Array.from(pickCounts.entries())
             .filter(([, count]) => count === maxPickCount)
             .map(([tid, count]) => ({
-              teamName: byTeamId.get(tid)?.name ?? "—",
+              teamName: byTeamId.get(tid)?.name ?? "â€”",
               count,
             }))
         : [];
@@ -268,7 +271,7 @@ export function LeagueSummary() {
     }
     const rows = [...counts.entries()]
       .map(([tid, count]) => ({
-        team: byTeamId.get(tid)?.name ?? "—",
+        team: byTeamId.get(tid)?.name ?? "â€”",
         count,
       }))
       .sort((a, b) => b.count - a.count)
@@ -292,7 +295,7 @@ export function LeagueSummary() {
       .map((p: any) => ({
         player:
           playersById[p.player_id]?.display_name ?? p.player_id.slice(0, 6),
-        team: byTeamId.get(p.team_id)?.name ?? "—",
+        team: byTeamId.get(p.team_id)?.name ?? "â€”",
         status: p.status as "pending" | "through" | "eliminated" | "no-pick",
         reason: p.reason ?? "",
       }))
@@ -307,7 +310,7 @@ export function LeagueSummary() {
     return (
       <div className="min-h-screen grid place-items-center">
         <div className="animate-pulse text-slate-500">
-          Loading league summary…
+          Loading league summaryâ€¦
         </div>
       </div>
     );
@@ -349,8 +352,58 @@ export function LeagueSummary() {
     );
   }
 
-  const roundNumber = round?.round_number ?? league.current_round ?? "—";
+  const roundNumber = round?.round_number ?? league.current_round ?? "â€”";
   const pickRatio = kpis.entrants ? kpis.picksSubmitted / kpis.entrants : 0;
+  const showPreFirstPick = guidance.shouldGuide && activeLeagueId === league.id;
+
+  if (showPreFirstPick) {
+    return (
+      <div className="mx-auto max-w-6xl p-4 md:p-6">
+        <div className="mb-3 flex justify-end">
+          <GameSelector
+            label="Viewing game"
+            onChange={(id) => {
+              setActiveLeagueId(id);
+              setReloadTick((x) => x + 1);
+            }}
+          />
+        </div>
+        <div className="mb-4">
+          <LeagueStatusBanner leagueId={activeLeagueId} />
+        </div>
+        <div className="mb-4">
+          <PreFirstPickHero
+            roundNumber={guidance.currentRoundNumber}
+            deadlineUtc={guidance.deadlineUtc}
+          />
+        </div>
+        <div className="rounded-2xl border bg-white p-4 text-sm text-slate-700">
+          <div className="font-semibold">{league.name}</div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-slate-500">Member Count</div>
+              <div className="mt-1 font-medium text-slate-900">{memberships.length}</div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-slate-500">Current Round</div>
+              <div className="mt-1 font-medium text-slate-900">Round {roundNumber}</div>
+            </div>
+            <div className="sm:col-span-2">
+              <div className="text-xs uppercase tracking-wide text-slate-500">Deadline</div>
+              <div className="mt-1 font-medium text-slate-900">
+                {round?.pick_deadline_utc
+                  ? new Date(round.pick_deadline_utc).toLocaleString()
+                  : "—"}
+              </div>
+            </div>
+          </div>
+          {loadError && (
+            <div className="mt-2 text-xs text-rose-600">{loadError}</div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-6xl p-4 md:p-6">
@@ -372,7 +425,7 @@ export function LeagueSummary() {
       <div className="mb-4 rounded-2xl border bg-white p-4 text-sm text-slate-700">
         <div className="font-semibold">{league.name}</div>
         <div className="mt-1 text-slate-600">
-          Round {roundNumber} • Members: {memberships.length} • Picks: {roundPicks.length}
+          Round {roundNumber} â€¢ Members: {memberships.length} â€¢ Picks: {roundPicks.length}
         </div>
         {loadError && (
           <div className="mt-2 text-xs text-rose-600">{loadError}</div>
@@ -388,12 +441,12 @@ export function LeagueSummary() {
               <div className="flex items-center gap-2">
                 {leagueStatusPill(league.status)}
                 <span className="text-xs/5 opacity-90">
-                  GW {roundNumber} •{" "}
+                  GW {roundNumber} â€¢{" "}
                   {round?.pick_deadline_utc
                     ? new Date(
                         round.pick_deadline_utc
                       ).toLocaleString()
-                    : "—"}
+                    : "â€”"}
                 </span>
               </div>
               <h1 className="mt-1 text-2xl md:text-3xl font-bold leading-tight drop-shadow-sm">
@@ -472,7 +525,7 @@ export function LeagueSummary() {
           value={
             kpis.mostPicked.length
               ? kpis.mostPicked.map((x: any) => x.teamName).join(", ")
-              : "—"
+              : "â€”"
           }
           subtitle={
             kpis.mostPicked.length ? `${kpis.mostPicked[0].count} picks` : ""

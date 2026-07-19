@@ -1,7 +1,7 @@
 // src/pages/Stats.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { fetchFplTeams, fetchFplFixtures } from "../lib/fpl";
+import { PreFirstPickHero } from "../components/PreFirstPickHero";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 
 type FplTeam = {
@@ -44,7 +44,6 @@ type TableRow = {
 };
 
 export function Stats() {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<TableRow[]>([]);
@@ -125,16 +124,12 @@ export function Stats() {
     return (
       <div className="mx-auto max-w-6xl p-4 md:p-6">
         {guidance.shouldGuide ? (
-          <div className="card p-6 mb-6">
-            <div className="font-semibold">Stats appear once picks are submitted.</div>
-            <button
-              type="button"
-              className="btn btn-primary mt-4"
-              onClick={() => navigate("/make-pick")}
-            >
-              Make Pick
-            </button>
-          </div>
+          <PreFirstPickHero
+            roundNumber={guidance.currentRoundNumber}
+            deadlineUtc={guidance.deadlineUtc}
+          >
+            Your LMS statistics will appear after you've made your first pick.
+          </PreFirstPickHero>
         ) : (
           <div className="card p-6">
             <div className="font-semibold">Stats will appear once league activity begins.</div>
@@ -147,15 +142,13 @@ export function Stats() {
   return (
     <div className="mx-auto max-w-6xl p-4 md:p-6">
       {guidance.shouldGuide ? (
-        <div className="card p-6 mb-6">
-          <div className="font-semibold">Stats appear once picks are submitted.</div>
-          <button
-            type="button"
-            className="btn btn-primary mt-4"
-            onClick={() => navigate("/make-pick")}
+        <div className="mb-6">
+          <PreFirstPickHero
+            roundNumber={guidance.currentRoundNumber}
+            deadlineUtc={guidance.deadlineUtc}
           >
-            Make Pick
-          </button>
+            Your LMS statistics will appear after you've made your first pick.
+          </PreFirstPickHero>
         </div>
       ) : null}
       {/* Hero header */}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import * as htmlToImage from "html-to-image";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
+import { PreFirstPickHero } from "../components/PreFirstPickHero";
 import { supa } from "../lib/supabaseClient";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 
@@ -359,16 +360,12 @@ export function Leaderboard() {
     <div className="container-page py-6 space-y-4">
       <LeagueStatusBanner leagueId={activeLeagueId} />
       {guidance.shouldGuide ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-700">
-          <div className="font-semibold">Leaderboard unlocks after your first pick.</div>
-          <button
-            type="button"
-            className="btn btn-primary mt-4"
-            onClick={() => navigate("/make-pick")}
-          >
-            Make Pick
-          </button>
-        </div>
+        <PreFirstPickHero
+          roundNumber={guidance.currentRoundNumber}
+          deadlineUtc={guidance.deadlineUtc}
+        >
+          The leaderboard will appear once players have submitted their picks.
+        </PreFirstPickHero>
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -475,41 +472,48 @@ export function Leaderboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => {
-                    const perRound = picksByPlayerByRound.get(r.playerId);
-                    return (
-                      <tr key={r.membership.id} className="border-t">
-                        <td className="px-3 py-2 whitespace-nowrap">{r.name}</td>
-                        <td className="px-3 py-2">
-                          <span
-                            className={
-                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold " +
-                              (r.alive
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-slate-200 text-slate-700")
-                            }
-                          >
-                            {r.state}
-                          </span>
-                        </td>
-                        {Array.from({ length: maxRound }, (_, i) => {
-                          const rd = i + 1;
-                          const p = perRound?.get(rd);
-                          return (
-                            <td key={rd} className="px-3 py-2">
-                              {symbolForPick(p)}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
-                  {(rows.length === 0 || picks.length === 0) && (
+                  {rows.length === 0 ? (
+                    <tr>
+                      <td className="px-3 py-6 text-center text-slate-500" colSpan={2 + maxRound}>
+                        No entrants yet. Invite players to join the league.
+                      </td>
+                    </tr>
+                  ) : picks.length === 0 ? (
                     <tr>
                       <td className="px-3 py-6 text-center text-slate-500" colSpan={2 + maxRound}>
                         No picks have been submitted yet.
                       </td>
                     </tr>
+                  ) : (
+                    rows.map((r) => {
+                      const perRound = picksByPlayerByRound.get(r.playerId);
+                      return (
+                        <tr key={r.membership.id} className="border-t">
+                          <td className="px-3 py-2 whitespace-nowrap">{r.name}</td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={
+                                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold " +
+                                (r.alive
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-slate-200 text-slate-700")
+                              }
+                            >
+                              {r.state}
+                            </span>
+                          </td>
+                          {Array.from({ length: maxRound }, (_, i) => {
+                            const rd = i + 1;
+                            const p = perRound?.get(rd);
+                            return (
+                              <td key={rd} className="px-3 py-2">
+                                {symbolForPick(p)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
