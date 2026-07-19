@@ -190,7 +190,7 @@ export function LeagueStatusBanner({ leagueId: leagueIdProp }: { leagueId?: stri
         <>
           <div className="text-sm font-semibold text-emerald-700">Pick Submitted</div>
           <div className="mt-1 text-sm text-slate-700">
-            {pickTeamName || "Team selected"}
+            {`Selected team: ${pickTeamName || "Team selected"}`}
           </div>
         </>
       ) : (

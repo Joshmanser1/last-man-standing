@@ -93,10 +93,10 @@ function formatCountdown(targetIso?: string): {
   label: string;
   overdue?: boolean;
 } {
-  if (!targetIso) return { label: "â€”" };
+  if (!targetIso) return { label: "\u2014" };
   const now = Date.now();
   const t = Date.parse(targetIso);
-  if (isNaN(t)) return { label: "â€”" };
+  if (isNaN(t)) return { label: "\u2014" };
   const diff = t - now;
   const abs = Math.abs(diff);
   const mins = Math.floor(abs / 60000);
@@ -245,7 +245,7 @@ export function LeagueSummary() {
         ? Array.from(pickCounts.entries())
             .filter(([, count]) => count === maxPickCount)
             .map(([tid, count]) => ({
-              teamName: byTeamId.get(tid)?.name ?? "â€”",
+              teamName: byTeamId.get(tid)?.name ?? "\u2014",
               count,
             }))
         : [];
@@ -271,7 +271,7 @@ export function LeagueSummary() {
     }
     const rows = [...counts.entries()]
       .map(([tid, count]) => ({
-        team: byTeamId.get(tid)?.name ?? "â€”",
+        team: byTeamId.get(tid)?.name ?? "\u2014",
         count,
       }))
       .sort((a, b) => b.count - a.count)
@@ -295,7 +295,7 @@ export function LeagueSummary() {
       .map((p: any) => ({
         player:
           playersById[p.player_id]?.display_name ?? p.player_id.slice(0, 6),
-        team: byTeamId.get(p.team_id)?.name ?? "â€”",
+        team: byTeamId.get(p.team_id)?.name ?? "\u2014",
         status: p.status as "pending" | "through" | "eliminated" | "no-pick",
         reason: p.reason ?? "",
       }))
@@ -310,7 +310,7 @@ export function LeagueSummary() {
     return (
       <div className="min-h-screen grid place-items-center">
         <div className="animate-pulse text-slate-500">
-          Loading league summaryâ€¦
+          Loading league summary...
         </div>
       </div>
     );
@@ -352,7 +352,7 @@ export function LeagueSummary() {
     );
   }
 
-  const roundNumber = round?.round_number ?? league.current_round ?? "â€”";
+  const roundNumber = round?.round_number ?? league.current_round ?? "\u2014";
   const pickRatio = kpis.entrants ? kpis.picksSubmitted / kpis.entrants : 0;
   const showPreFirstPick = guidance.shouldGuide && activeLeagueId === league.id;
 
@@ -393,7 +393,7 @@ export function LeagueSummary() {
               <div className="mt-1 font-medium text-slate-900">
                 {round?.pick_deadline_utc
                   ? new Date(round.pick_deadline_utc).toLocaleString()
-                  : "—"}
+                  : "\u2014"}
               </div>
             </div>
           </div>
@@ -425,7 +425,7 @@ export function LeagueSummary() {
       <div className="mb-4 rounded-2xl border bg-white p-4 text-sm text-slate-700">
         <div className="font-semibold">{league.name}</div>
         <div className="mt-1 text-slate-600">
-          Round {roundNumber} â€¢ Members: {memberships.length} â€¢ Picks: {roundPicks.length}
+          {`Round ${roundNumber} \u2022 Members: ${memberships.length} \u2022 Picks: ${roundPicks.length}`}
         </div>
         {loadError && (
           <div className="mt-2 text-xs text-rose-600">{loadError}</div>
@@ -441,12 +441,12 @@ export function LeagueSummary() {
               <div className="flex items-center gap-2">
                 {leagueStatusPill(league.status)}
                 <span className="text-xs/5 opacity-90">
-                  GW {roundNumber} â€¢{" "}
+                  {`GW ${roundNumber} \u2022 `}
                   {round?.pick_deadline_utc
                     ? new Date(
                         round.pick_deadline_utc
                       ).toLocaleString()
-                    : "â€”"}
+                    : "\u2014"}
                 </span>
               </div>
               <h1 className="mt-1 text-2xl md:text-3xl font-bold leading-tight drop-shadow-sm">
@@ -525,7 +525,7 @@ export function LeagueSummary() {
           value={
             kpis.mostPicked.length
               ? kpis.mostPicked.map((x: any) => x.teamName).join(", ")
-              : "â€”"
+              : "\u2014"
           }
           subtitle={
             kpis.mostPicked.length ? `${kpis.mostPicked[0].count} picks` : ""
