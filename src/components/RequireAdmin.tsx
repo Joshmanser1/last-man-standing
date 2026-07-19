@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
 import { devOn, localAuthed, isAdminNow } from "../lib/auth";
+import { rememberPendingAuthRedirect } from "../lib/authRedirect";
 
 type RequireAdminProps = { children: React.ReactElement };
 
@@ -38,7 +39,9 @@ export function RequireAdmin({ children }: RequireAdminProps) {
   }, []);
 
   if (loading) return null;
-  return allowed ? children : (
-    <Navigate to={`/login?next=${encodeURIComponent(loc.pathname)}`} replace />
-  );
+  if (allowed) return children;
+
+  const next = `${loc.pathname}${loc.search}${loc.hash}`;
+  rememberPendingAuthRedirect(next);
+  return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
 }

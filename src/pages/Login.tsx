@@ -1,10 +1,16 @@
 // src/pages/Login.tsx
 import { useEffect, useState, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
+import {
+  consumePendingAuthRedirect,
+  getNextParamRedirect,
+  rememberPendingAuthRedirect,
+} from "../lib/authRedirect";
 
 export function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // form
   const [formName, setFormName] = useState("");
@@ -14,6 +20,7 @@ export function Login() {
   const [sending, setSending] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [checking, setChecking] = useState(false);
+  const nextRedirect = getNextParamRedirect(location.search) || "/my-games";
 
   // countdown
   useEffect(() => {
@@ -21,6 +28,39 @@ export function Login() {
     const t = setInterval(() => setCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
     return () => clearInterval(t);
   }, [cooldown]);
+
+  useEffect(() => {
+    const next = getNextParamRedirect(location.search);
+    if (next) {
+      rememberPendingAuthRedirect(next);
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const redirectIfAuthed = async () => {
+      const { data } = await supa.auth.getSession();
+      if (!mounted) return;
+      if (data.session?.user?.id) {
+        navigate(consumePendingAuthRedirect() || nextRedirect, { replace: true });
+      }
+    };
+
+    void redirectIfAuthed();
+
+    const { data: sub } = supa.auth.onAuthStateChange((_e, session) => {
+      if (!mounted) return;
+      if (session?.user?.id) {
+        navigate(consumePendingAuthRedirect() || nextRedirect, { replace: true });
+      }
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, [navigate, nextRedirect]);
 
   async function sendMagicLink(e: React.FormEvent) {
     e.preventDefault();
@@ -40,7 +80,8 @@ export function Login() {
         (import.meta.env.VITE_PUBLIC_SITE_URL as string) ||
         (import.meta.env.VITE_SITE_URL as string) ||
         window.location.origin;
-      const redirectTo = base.replace(/\/$/, "");
+      rememberPendingAuthRedirect(nextRedirect);
+      const redirectTo = `${base.replace(/\/$/, "")}/login?next=${encodeURIComponent(nextRedirect)}`;
 
       const { error } = await supa.auth.signInWithOtp({
         email,
@@ -72,7 +113,7 @@ export function Login() {
       const hasSupa = !!data.session?.user?.id;
       const hasLocal = !!localStorage.getItem("player_id");
       if (hasSupa || hasLocal) {
-        navigate("/my-games", { replace: true });
+        navigate(consumePendingAuthRedirect() || nextRedirect, { replace: true });
       } else {
         alert("No active session found. Please use Magic Link.");
       }

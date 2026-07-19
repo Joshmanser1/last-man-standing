@@ -19,6 +19,7 @@ import { MyGames } from "./pages/MyGames";
 import { Leaderboard } from "./pages/Leaderboard";
 import { LeagueSummary } from "./pages/LeagueSummary";
 import { PrivateLeagueCreate } from "./pages/PrivateLeagueCreate";
+import PrivateLeagueJoin from "./pages/PrivateLeagueJoin";
 
 // Dev-only switcher
 import { DevUserSwitcher } from "./components/DevUserSwitcher";
@@ -126,6 +127,14 @@ function AppInner() {
             element={
               <RequireAuth>
                 <PrivateLeagueCreate />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/private/join"
+            element={
+              <RequireAuth>
+                <PrivateLeagueJoin />
               </RequireAuth>
             }
           />

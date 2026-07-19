@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
 import { devOn, localAuthed } from "../lib/auth";
+import { rememberPendingAuthRedirect } from "../lib/authRedirect";
 
 type RequireAuthProps = { children: React.ReactElement };
 
@@ -43,7 +44,9 @@ export function RequireAuth({ children }: RequireAuthProps) {
   }, []);
 
   if (loading) return null; // or a tiny spinner
-  return authed ? children : (
-    <Navigate to={`/login?next=${encodeURIComponent(loc.pathname)}`} replace />
-  );
+  if (authed) return children;
+
+  const next = `${loc.pathname}${loc.search}${loc.hash}`;
+  rememberPendingAuthRedirect(next);
+  return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
 }

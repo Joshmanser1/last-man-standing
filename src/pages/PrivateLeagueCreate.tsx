@@ -56,8 +56,8 @@ function getPlayerName() {
 }
 
 function getShareUrl(code: string) {
-  const url = new URL(window.location.href);
-  url.pathname = "/private/create";
+  const url = new URL(window.location.origin);
+  url.pathname = "/private/join";
   url.searchParams.set("code", code);
   return url.toString();
 }
