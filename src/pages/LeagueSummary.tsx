@@ -2,7 +2,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
-import { PreFirstPickHero } from "../components/PreFirstPickHero";
 import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
 import { supa } from "../lib/supabaseClient";
@@ -371,12 +370,6 @@ export function LeagueSummary() {
         <div className="mb-4">
           <LeagueStatusBanner leagueId={activeLeagueId} />
         </div>
-        <div className="mb-4">
-          <PreFirstPickHero
-            roundNumber={guidance.currentRoundNumber}
-            deadlineUtc={guidance.deadlineUtc}
-          />
-        </div>
         <div className="rounded-2xl border bg-white p-4 text-sm text-slate-700">
           <div className="font-semibold">{league.name}</div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -419,17 +412,6 @@ export function LeagueSummary() {
       </div>
       <div className="mb-4">
         <LeagueStatusBanner leagueId={activeLeagueId} />
-      </div>
-
-      {/* Minimal fallback summary */}
-      <div className="mb-4 rounded-2xl border bg-white p-4 text-sm text-slate-700">
-        <div className="font-semibold">{league.name}</div>
-        <div className="mt-1 text-slate-600">
-          {`Round ${roundNumber} \u2022 Members: ${memberships.length} \u2022 Picks: ${roundPicks.length}`}
-        </div>
-        {loadError && (
-          <div className="mt-2 text-xs text-rose-600">{loadError}</div>
-        )}
       </div>
 
       {/* Premium Hero */}

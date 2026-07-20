@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import * as htmlToImage from "html-to-image";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
-import { PreFirstPickHero } from "../components/PreFirstPickHero";
 import { supa } from "../lib/supabaseClient";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 
@@ -360,12 +359,9 @@ export function Leaderboard() {
     <div className="container-page py-6 space-y-4">
       <LeagueStatusBanner leagueId={activeLeagueId} />
       {guidance.shouldGuide ? (
-        <PreFirstPickHero
-          roundNumber={guidance.currentRoundNumber}
-          deadlineUtc={guidance.deadlineUtc}
-        >
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
           The leaderboard will appear once players have submitted their picks.
-        </PreFirstPickHero>
+        </div>
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">

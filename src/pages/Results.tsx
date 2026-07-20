@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
-import { PreFirstPickHero } from "../components/PreFirstPickHero";
 import { useNotifications } from "../components/Notifications";
 import { computeOutcome } from "../lib/outcome";
 import { supa } from "../lib/supabaseClient";
@@ -242,14 +241,7 @@ export function Results() {
         ))}
       </div>
 
-      {showGuidance ? (
-        <PreFirstPickHero
-          roundNumber={guidance.currentRoundNumber}
-          deadlineUtc={guidance.deadlineUtc}
-        >
-          Results will appear once picks have been submitted.
-        </PreFirstPickHero>
-      ) : filtered.length ? (
+      {filtered.length ? (
         <table className="min-w-full text-sm border">
           <thead className="bg-slate-100">
             <tr>
@@ -272,10 +264,16 @@ export function Results() {
         </table>
       ) : (
         <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-700">
-          <div className="font-semibold">No picks submitted for this round yet.</div>
-          <div className="mt-1 text-slate-600">
-            Results will appear here once picks have been submitted and the round is processed.
+          <div className="font-semibold">
+            {showGuidance
+              ? "Results will appear once picks have been submitted."
+              : "No picks submitted for this round yet."}
           </div>
+          {!showGuidance && (
+            <div className="mt-1 text-slate-600">
+              Results will appear here once picks have been submitted and the round is processed.
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -1,8 +1,6 @@
 // src/pages/Stats.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchFplTeams, fetchFplFixtures } from "../lib/fpl";
-import { PreFirstPickHero } from "../components/PreFirstPickHero";
-import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 
 type FplTeam = {
   id: number;
@@ -48,7 +46,6 @@ export function Stats() {
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<TableRow[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const guidance = useFirstPickGuidance(localStorage.getItem("active_league_id") || "");
 
   async function load() {
     setLoading(true);
@@ -123,34 +120,15 @@ export function Stats() {
   if (!rows.length) {
     return (
       <div className="mx-auto max-w-6xl p-4 md:p-6">
-        {guidance.shouldGuide ? (
-          <PreFirstPickHero
-            roundNumber={guidance.currentRoundNumber}
-            deadlineUtc={guidance.deadlineUtc}
-          >
-            Your LMS statistics will appear after you've made your first pick.
-          </PreFirstPickHero>
-        ) : (
-          <div className="card p-6">
-            <div className="font-semibold">Stats will appear once league activity begins.</div>
-          </div>
-        )}
+        <div className="card p-6">
+          <div className="font-semibold">Stats will appear once league activity begins.</div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="mx-auto max-w-6xl p-4 md:p-6">
-      {guidance.shouldGuide ? (
-        <div className="mb-6">
-          <PreFirstPickHero
-            roundNumber={guidance.currentRoundNumber}
-            deadlineUtc={guidance.deadlineUtc}
-          >
-            Your LMS statistics will appear after you've made your first pick.
-          </PreFirstPickHero>
-        </div>
-      ) : null}
       {/* Hero header */}
       <div className="relative overflow-hidden rounded-3xl border shadow-sm mb-6">
         <div className="absolute inset-0 bg-gradient-to-r from-teal-600 via-emerald-600 to-cyan-500 opacity-95" />
