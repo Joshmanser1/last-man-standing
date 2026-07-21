@@ -9,6 +9,20 @@ import {
   rememberPendingAuthRedirect,
 } from "../lib/authRedirect";
 
+function hasSupabaseSessionStorageKey() {
+  if (typeof window === "undefined") return false;
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i) || "";
+    if (key.startsWith("sb-")) return true;
+  }
+  return false;
+}
+
+function authDebug(event: string, details: Record<string, unknown>) {
+  if (!import.meta.env.DEV) return;
+  console.debug("[auth][Login]", event, details);
+}
+
 export function Login() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -33,6 +47,14 @@ export function Login() {
   useEffect(() => {
     clearLegacyPendingAuthRedirect();
     const next = getNextParamRedirect(location.search);
+    const params = new URLSearchParams(location.search);
+    authDebug("init", {
+      path: location.pathname,
+      queryKeys: Array.from(params.keys()),
+      hasCode: params.has("code"),
+      hasTokenHash: params.has("token_hash"),
+      hasSessionKey: hasSupabaseSessionStorageKey(),
+    });
     if (next) {
       rememberPendingAuthRedirect(next);
     }
@@ -47,11 +69,20 @@ export function Login() {
     const redirectOnce = () => {
       if (!mounted || didPostAuthNavigate.current) return;
       didPostAuthNavigate.current = true;
+      authDebug("redirect", {
+        target: redirectTarget(),
+        hasSessionKey: hasSupabaseSessionStorageKey(),
+      });
       navigate(redirectTarget(), { replace: true });
     };
 
     const redirectIfAuthed = async () => {
       const { data } = await supa.auth.getSession();
+      authDebug("getSession", {
+        hasSession: !!data.session,
+        hasUserId: !!data.session?.user?.id,
+        hasSessionKey: hasSupabaseSessionStorageKey(),
+      });
       if (!mounted) return;
       if (data.session?.user?.id) {
         redirectOnce();
@@ -61,6 +92,12 @@ export function Login() {
     void redirectIfAuthed();
 
     const { data: sub } = supa.auth.onAuthStateChange((_e, session) => {
+      authDebug("onAuthStateChange", {
+        event: _e,
+        hasSession: !!session,
+        hasUserId: !!session?.user?.id,
+        hasSessionKey: hasSupabaseSessionStorageKey(),
+      });
       if (!mounted) return;
       if (session?.user?.id) {
         redirectOnce();
@@ -86,14 +123,15 @@ export function Login() {
       setSending(true);
       localStorage.setItem("player_name", name);
 
-      // Use either env var, fallback to current origin; trim trailing slash
-      const base =
-        (import.meta.env.VITE_PUBLIC_SITE_URL as string) ||
-        (import.meta.env.VITE_SITE_URL as string) ||
-        window.location.origin;
       const nextRedirect = getNextParamRedirect(location.search) || "/my-games";
       rememberPendingAuthRedirect(nextRedirect);
+      const base = window.location.origin;
       const redirectTo = `${base.replace(/\/$/, "")}/login?next=${encodeURIComponent(nextRedirect)}`;
+      authDebug("sendMagicLink", {
+        redirectTo,
+        nextRedirect,
+        currentOrigin: window.location.origin,
+      });
 
       const { error } = await supa.auth.signInWithOtp({
         email,

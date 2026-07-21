@@ -7,6 +7,20 @@ import { rememberPendingAuthRedirect } from "../lib/authRedirect";
 
 type RequireAuthProps = { children: React.ReactElement };
 
+function hasSupabaseSessionStorageKey() {
+  if (typeof window === "undefined") return false;
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i) || "";
+    if (key.startsWith("sb-")) return true;
+  }
+  return false;
+}
+
+function authDebug(event: string, details: Record<string, unknown>) {
+  if (!import.meta.env.DEV) return;
+  console.debug("[auth][RequireAuth]", event, details);
+}
+
 export function RequireAuth({ children }: RequireAuthProps) {
   const loc = useLocation();
   const [authed, setAuthed] = useState<boolean>(devOn() && localAuthed());
@@ -14,16 +28,32 @@ export function RequireAuth({ children }: RequireAuthProps) {
 
   useEffect(() => {
     let mounted = true;
+    authDebug("mount", {
+      path: loc.pathname,
+      queryKeys: Array.from(new URLSearchParams(loc.search).keys()),
+      hasSessionKey: hasSupabaseSessionStorageKey(),
+    });
 
     supa.auth.getSession().then(({ data }) => {
       if (!mounted) return;
       const s = !!data.session?.user?.id;
+      authDebug("hydrate", {
+        hasSession: !!data.session,
+        hasUserId: !!data.session?.user?.id,
+        hasSessionKey: hasSupabaseSessionStorageKey(),
+      });
       setAuthed(s || (devOn() && localAuthed()));
       setLoading(false);
     });
 
     const { data: sub } = supa.auth.onAuthStateChange((_e, s) => {
       if (!mounted) return;
+      authDebug("onAuthStateChange", {
+        event: _e,
+        hasSession: !!s,
+        hasUserId: !!s?.user?.id,
+        hasSessionKey: hasSupabaseSessionStorageKey(),
+      });
       setAuthed(!!s?.user?.id || (devOn() && localAuthed()));
     });
 
@@ -47,6 +77,11 @@ export function RequireAuth({ children }: RequireAuthProps) {
   if (authed) return children;
 
   const next = `${loc.pathname}${loc.search}${loc.hash}`;
+  authDebug("redirect-to-login", {
+    path: loc.pathname,
+    next,
+    hasSessionKey: hasSupabaseSessionStorageKey(),
+  });
   rememberPendingAuthRedirect(next);
   return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
 }
