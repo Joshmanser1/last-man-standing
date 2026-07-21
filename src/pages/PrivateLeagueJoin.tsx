@@ -1,107 +1,86 @@
-// src/pages/PrivateLeagueJoin.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
+import { supa } from "../lib/supabaseClient";
+import { dataService } from "../data/service";
 
-const PRIVATE_STORE_KEY = "lms_private_leagues_v1";
-
-type PrivateLeague = {
+type LeaguePreview = {
   id: string;
   name: string;
-  ownerId: string;
-  createdAt: string;
-  inviteCode: string;
-  startDateUtc?: string;
-  fplStartEvent?: number;
+  join_code: string;
+  is_public?: boolean;
+  is_test?: boolean;
+  created_by?: string;
 };
-
-type PrivateMembership = {
-  leagueId: string;
-  playerId: string;
-  joinedAt: string;
-  displayName?: string;
-};
-
-type PrivateStore = {
-  leagues: PrivateLeague[];
-  memberships: PrivateMembership[];
-};
-
-// --------- helpers ---------
-
-function loadStore(): PrivateStore {
-  try {
-    const raw = localStorage.getItem(PRIVATE_STORE_KEY);
-    if (!raw) return { leagues: [], memberships: [] };
-    const parsed = JSON.parse(raw);
-    return {
-      leagues: parsed.leagues ?? [],
-      memberships: parsed.memberships ?? [],
-    };
-  } catch {
-    return { leagues: [], memberships: [] };
-  }
-}
-
-function saveStore(store: PrivateStore) {
-  localStorage.setItem(PRIVATE_STORE_KEY, JSON.stringify(store));
-}
-
-function getPlayerId() {
-  return localStorage.getItem("player_id") || "anon-player";
-}
-
-function getPlayerName() {
-  return localStorage.getItem("player_name") || "You";
-}
-
-// --------- main page ---------
 
 export function PrivateLeagueJoin() {
-  const [store, setStore] = useState<PrivateStore>(() => loadStore());
-
   const [code, setCode] = useState("");
+  const [preview, setPreview] = useState<LeaguePreview | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(true);
+  const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const toast = useToast();
 
-  const playerId = getPlayerId();
-  const playerName = getPlayerName();
-
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const c = params.get("code");
-    if (c) setCode(c.toUpperCase());
+    setCode((params.get("code") || "").toUpperCase());
   }, []);
 
   useEffect(() => {
-    saveStore(store);
-  }, [store]);
-
-  const found = useMemo(() => {
     const trimmed = code.trim().toUpperCase();
-    if (!trimmed) return null;
-    return store.leagues.find(l => l.inviteCode.toUpperCase() === trimmed) || null;
-  }, [code, store.leagues]);
-
-  function alreadyJoinedNonOwned(): boolean {
-    return store.memberships.some(m => {
-      if (m.playerId !== playerId) return false;
-      const league = store.leagues.find(l => l.id === m.leagueId);
-      return league ? league.ownerId !== playerId : false;
-    });
-  }
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-
-    // Enforce: can join at most ONE non-owned league (owning one is fine)
-    if (alreadyJoinedNonOwned()) {
-      setError("You’ve already joined a private league. Limit is one joined league per player (plus one you own).");
+    if (!trimmed) {
+      setPreview(null);
+      setLoadingPreview(false);
+      setError("This invite link is missing a join code.");
       return;
     }
+
+    let active = true;
+
+    const loadPreview = async () => {
+      setLoadingPreview(true);
+      setError(null);
+      try {
+        const resp = await fetch("/api/league-by-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ join_code: trimmed }),
+        });
+
+        let body: any = null;
+        try {
+          body = await resp.json();
+        } catch {}
+
+        if (!active) return;
+
+        if (!resp.ok || !body?.id) {
+          setPreview(null);
+          setError(body?.error || "This invite link is invalid or expired.");
+          return;
+        }
+
+        setPreview(body as LeaguePreview);
+      } catch (err: any) {
+        if (!active) return;
+        setPreview(null);
+        setError(err?.message || "Failed to load this invite.");
+      } finally {
+        if (active) setLoadingPreview(false);
+      }
+    };
+
+    void loadPreview();
+    return () => {
+      active = false;
+    };
+  }, [code]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
 
     const trimmed = code.trim().toUpperCase();
     if (!trimmed) {
@@ -109,51 +88,69 @@ export function PrivateLeagueJoin() {
       return;
     }
 
-    const league = store.leagues.find(l => l.inviteCode.toUpperCase() === trimmed) || null;
-    if (!league) {
-      setError(
-        "No private league found for that code on this device. In this alpha build, private leagues are stored locally in your browser, so invite codes only work on the device that created the league."
-      );
+    if (!preview?.id) {
+      setError("This invite link is invalid or expired.");
       return;
     }
 
-    // If already member of this league, just inform
-    const alreadyHere = store.memberships.some(
-      m => m.leagueId === league.id && m.playerId === playerId
-    );
-    if (alreadyHere) {
-      toast(`You’re already in “${league.name}”.`, { variant: "info" });
-      navigate("/private/create");
-      return;
+    try {
+      setJoining(true);
+      const { data } = await supa.auth.getUser();
+      const user = data.user;
+      if (!user?.id) {
+        setError("You must be logged in to join this league.");
+        return;
+      }
+
+      const joinRes = await fetch("/api/join-league", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          join_code: trimmed,
+          player_id: user.id,
+          role: "player",
+        }),
+      });
+
+      let body: any = null;
+      try {
+        body = await joinRes.json();
+      } catch {}
+
+      if (!joinRes.ok) {
+        setError(body?.error || "Failed to join league.");
+        return;
+      }
+
+      localStorage.setItem("active_league_id", preview.id);
+      try {
+        await dataService.getCurrentRound(preview.id);
+      } catch {
+        // active league selection does not depend on current-round lookup succeeding
+      }
+
+      toast(`Joined ${preview.name}`, { variant: "success" });
+      navigate("/private/create", { replace: true });
+    } catch (err: any) {
+      setError(err?.message || "Failed to join league.");
+    } finally {
+      setJoining(false);
     }
-
-    const membership: PrivateMembership = {
-      leagueId: league.id,
-      playerId,
-      joinedAt: new Date().toISOString(),
-      displayName: playerName || "You",
-    };
-
-    const next: PrivateStore = {
-      ...store,
-      memberships: [...store.memberships, membership],
-    };
-    setStore(next);
-      toast(`Joined ${league.name}`, { variant: "success" });
-      navigate("/private/create");
   }
+
+  const subtitle = useMemo(() => {
+    if (loadingPreview) return "Loading invite...";
+    if (preview) return `League: ${preview.name}`;
+    if (error) return error;
+    return "Enter a valid invite code to continue.";
+  }, [error, loadingPreview, preview]);
 
   return (
     <div className="max-w-lg mx-auto p-4 sm:p-6 space-y-4">
       <header>
         <h1 className="text-2xl font-bold mb-2">Join a private league</h1>
         <p className="text-sm text-slate-600">
-          Limit: <b>own 1</b> + <b>join 1</b>.
-          <br />
-          <span className="text-xs">
-            For this alpha build, private leagues are stored locally in your browser —
-            invite codes only work on the device that created the league.
-          </span>
+          Confirm before joining. This page will not join the league automatically.
         </p>
       </header>
 
@@ -167,25 +164,24 @@ export function PrivateLeagueJoin() {
             onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 10))}
             autoFocus
           />
-          {found ? (
-            <div className="mt-1 text-xs text-slate-600">
-              League: <b>{found.name}</b>{" "}
-              {found.fplStartEvent && found.startDateUtc ? (
-                <span className="text-slate-500">
-                  (starts GW {found.fplStartEvent} — {new Date(found.startDateUtc).toLocaleString()})
-                </span>
-              ) : null}
+          <div className="mt-1 text-xs text-slate-600">{subtitle}</div>
+          {preview ? (
+            <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              <div className="font-medium text-slate-900">{preview.name}</div>
+              <div className="mt-1 text-xs text-slate-600">Code: {preview.join_code}</div>
             </div>
-          ) : code ? (
-            <div className="mt-1 text-xs text-slate-500">No match yet…</div>
           ) : null}
         </div>
 
-        <button type="submit" className="btn btn-primary">
-          Check code &amp; join
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={loadingPreview || joining || !preview}
+        >
+          {joining ? "Joining..." : "Confirm & join"}
         </button>
 
-        {error && (
+        {error && !loadingPreview && (
           <div className="text-sm text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
             {error}
           </div>

@@ -4,10 +4,15 @@ function isSafePath(value: string | null | undefined) {
   return !!value && value.startsWith("/") && !value.startsWith("//");
 }
 
+export function clearLegacyPendingAuthRedirect() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(KEY);
+}
+
 export function rememberPendingAuthRedirect(path: string) {
   if (typeof window === "undefined" || !isSafePath(path)) return;
+  clearLegacyPendingAuthRedirect();
   sessionStorage.setItem(KEY, path);
-  localStorage.setItem(KEY, path);
 }
 
 export function getNextParamRedirect(search: string) {
@@ -18,8 +23,8 @@ export function getNextParamRedirect(search: string) {
 
 export function consumePendingAuthRedirect() {
   if (typeof window === "undefined") return null;
-  const stored = sessionStorage.getItem(KEY) || localStorage.getItem(KEY);
+  clearLegacyPendingAuthRedirect();
+  const stored = sessionStorage.getItem(KEY);
   sessionStorage.removeItem(KEY);
-  localStorage.removeItem(KEY);
   return isSafePath(stored) ? stored : null;
 }
