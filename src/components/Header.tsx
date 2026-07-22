@@ -1,16 +1,17 @@
 // src/components/Header.tsx
-import React, { useEffect, useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import React, { useCallback, useEffect, useState } from "react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
 import { GameSelector } from "./GameSelector";
 import { subscribeStore } from "../data/service";
-import { isAdminNow } from "../lib/auth";
+import { getEffectiveUserId, isAdminNow } from "../lib/auth";
 import { NotificationBell } from "./NotificationBell";
 
 const linkCls = ({ isActive }: { isActive: boolean }) =>
   `nav-link ${isActive ? "nav-link-active" : ""}`;
 
 export function Header() {
+  const location = useLocation();
   // Dev switcher is enabled when this flag is set (via ?dev=1 or env in App.tsx)
   const devOn =
     typeof window !== "undefined" && localStorage.getItem("dev_switcher") === "1";
@@ -32,35 +33,85 @@ export function Header() {
   const playerName = localStorage.getItem("player_name") || "";
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const recomputeAuth = async () => {
-      const { data } = await supa.auth.getSession();
-      const supaAuthed = !!data.session?.user?.id;
-      const localAuthed = devOn && !!localStorage.getItem("player_id");
-      setAuthed(supaAuthed || localAuthed);
-      setAdmin(isAdminNow());
-    };
+  const syncLeagueAccess = useCallback(async (isAuthed: boolean) => {
+    const storedId = localStorage.getItem("active_league_id");
 
+    if (!isAuthed) {
+      setHasLeague(false);
+      setActiveLeagueId(null);
+      return;
+    }
+
+    const uid = await getEffectiveUserId();
+    if (!uid) {
+      setHasLeague(false);
+      setActiveLeagueId(null);
+      return;
+    }
+
+    try {
+      const resp = await fetch("/api/user-leagues", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: uid }),
+      });
+      if (!resp.ok) throw new Error("Failed to load user leagues");
+
+      const visibleLeagues = (await resp.json()) as Array<any>;
+      const visibleIds = (visibleLeagues ?? [])
+        .map((league: any) => (typeof league?.id === "string" ? league.id : ""))
+        .filter(Boolean);
+
+      if (visibleIds.length === 0) {
+        localStorage.removeItem("active_league_id");
+        setHasLeague(false);
+        setActiveLeagueId(null);
+        return;
+      }
+
+      const nextActiveId =
+        storedId && visibleIds.includes(storedId) ? storedId : visibleIds[0];
+
+      if (nextActiveId && nextActiveId !== storedId) {
+        localStorage.setItem("active_league_id", nextActiveId);
+      }
+
+      setActiveLeagueId(nextActiveId ?? null);
+      setHasLeague(!!nextActiveId);
+    } catch {
+      setActiveLeagueId(storedId);
+      setHasLeague(false);
+    }
+  }, []);
+
+  const recomputeAuth = useCallback(async () => {
+    const { data } = await supa.auth.getSession();
+    const supaAuthed = !!data.session?.user?.id;
+    const localAuthed = devOn && !!localStorage.getItem("player_id");
+    const isAuthed = supaAuthed || localAuthed;
+    setAuthed(isAuthed);
+    setAdmin(isAdminNow());
+    await syncLeagueAccess(isAuthed);
+  }, [devOn, syncLeagueAccess]);
+
+  useEffect(() => {
     // initial
-    recomputeAuth();
+    void recomputeAuth();
 
     // keep in sync with Supabase login state
     const { data: sub } = supa.auth.onAuthStateChange((_e, session) => {
       const supaAuthed = !!session?.user?.id;
       const localAuthed = devOn && !!localStorage.getItem("player_id");
-      setAuthed(supaAuthed || localAuthed);
+      const isAuthed = supaAuthed || localAuthed;
+      setAuthed(isAuthed);
       setAdmin(isAdminNow());
+      void syncLeagueAccess(isAuthed);
     });
 
     // react to our store changes (DevUserSwitcher fires this)
     const onStore = () => {
-      const id = localStorage.getItem("active_league_id");
-      setActiveLeagueId(id);
-      setHasLeague(!!id);
       setAdmin(isAdminNow());
-
-      const localAuthed = devOn && !!localStorage.getItem("player_id");
-      setAuthed((prev) => prev || localAuthed);
+      void recomputeAuth();
     };
 
     // also catch cross-tab changes and focus
@@ -79,7 +130,11 @@ export function Header() {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onFocus);
     };
-  }, [devOn]);
+  }, [devOn, recomputeAuth, syncLeagueAccess]);
+
+  useEffect(() => {
+    void syncLeagueAccess(authed);
+  }, [authed, location.pathname, location.search, syncLeagueAccess]);
 
   async function logout() {
     try {
@@ -164,7 +219,7 @@ export function Header() {
         <div className="flex shrink-0 items-center gap-2">
           {authed && <NotificationBell />}
           {/* Game selector */}
-          {authed && (
+          {authed && hasLeague && (
             <div className="hidden items-center gap-2 sm:flex">
               <GameSelector
                 variant="header"
