@@ -25,7 +25,6 @@ export function Results() {
   const [leagueId, setLeagueId] = useState<string>(
     () => localStorage.getItem("active_league_id") || ""
   );
-  const [leagueOwnerId, setLeagueOwnerId] = useState<string>("");
   const [viewerId, setViewerId] = useState<string>("");
   const [rounds, setRounds] = useState<any[]>([]);
   const [selectedRoundId, setSelectedRoundId] = useState<string>("");
@@ -41,7 +40,6 @@ export function Results() {
 
   useEffect(() => {
     if (!leagueId) {
-      setLeagueOwnerId("");
       setViewerId("");
       setRounds([]);
       setSelectedRoundId("");
@@ -71,7 +69,6 @@ export function Results() {
           ? initial
           : await loadLeagueRoundState(leagueId, nextSelectedRoundId);
       setViewerId(state.viewerId);
-      setLeagueOwnerId(state.league?.created_by ?? "");
       setRound(state.round);
       setTeams(state.teams);
       setPicks(state.selectedRoundEntries);
@@ -81,25 +78,16 @@ export function Results() {
     })();
   }, [leagueId, reloadTick, selectedRoundId]);
 
-  const isHost = useMemo(() => {
-    if (!viewerId) return false;
-    if (leagueOwnerId && leagueOwnerId === viewerId) return true;
-    return memberships.some(
-      (m: any) =>
-        m.player_id === viewerId && (m.role === "owner" || m.role === "admin")
-    );
-  }, [viewerId, leagueOwnerId, memberships]);
-
   const afterDeadline = useMemo(() => {
     if (!round?.pick_deadline_utc) return true;
     return new Date(round.pick_deadline_utc).getTime() <= Date.now();
   }, [round]);
 
   const visiblePicks = useMemo(() => {
-    if (afterDeadline || isHost) return picks || [];
+    if (afterDeadline) return picks || [];
     if (!viewerId) return [];
     return (picks || []).filter((p: any) => p.player_id === viewerId);
-  }, [picks, afterDeadline, isHost, viewerId]);
+  }, [picks, afterDeadline, viewerId]);
 
   const rows: Row[] = useMemo(() => {
     if (!round) return [];
@@ -213,8 +201,7 @@ export function Results() {
       </div>
 
       <div className="mb-3 text-xs text-slate-600">
-        {!afterDeadline && !isHost && "Only your pick is visible until the deadline."}
-        {!afterDeadline && isHost && "As host, you can view all submitted picks before deadline."}
+        {!afterDeadline && "Only your pick is visible until the deadline."}
         {afterDeadline && "All picks are visible after the deadline."}
       </div>
 

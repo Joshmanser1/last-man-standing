@@ -6,6 +6,7 @@ import { GameSelector } from "../components/GameSelector";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
 import { supa } from "../lib/supabaseClient";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
+import { postJsonWithAuth } from "../lib/apiAuth";
 
 type Row = {
   roundNumber: number;
@@ -57,10 +58,8 @@ export function EliminationHistory() {
         .eq("league_id", leagueId);
       setPicks(pickRows || []);
 
-      const memberResp = await fetch("/api/league-members", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ league_id: leagueId }),
+      const memberResp = await postJsonWithAuth("/api/league-members", {
+        league_id: leagueId,
       });
       if (!memberResp.ok) throw new Error("Failed to load league members");
       const memberRows = (await memberResp.json()) as Array<any>;

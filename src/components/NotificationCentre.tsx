@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { clearNotifications, getNotifications, markAllRead } from "../lib/notifyFeed";
+import { getEffectiveUserId } from "../lib/auth";
+import { supa } from "../lib/supabaseClient";
 
 export function NotificationCentre() {
-  const playerId = localStorage.getItem("player_id") || "";
+  const [playerId, setPlayerId] = useState("");
   const [items, setItems] = useState<any[]>([]);
 
   function load() {
@@ -11,8 +13,33 @@ export function NotificationCentre() {
   }
 
   useEffect(() => {
-    load();
+    let mounted = true;
+
+    const refreshUserId = async () => {
+      const nextUserId = (await getEffectiveUserId()) || "";
+      if (!mounted) return;
+      setPlayerId(nextUserId);
+      if (nextUserId) {
+        setItems(getNotifications(nextUserId));
+      } else {
+        setItems([]);
+      }
+    };
+
+    void refreshUserId();
+    const { data: sub } = supa.auth.onAuthStateChange(() => {
+      void refreshUserId();
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [playerId]);
 
   if (!items.length) return null;
 

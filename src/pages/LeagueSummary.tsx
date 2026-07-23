@@ -280,13 +280,11 @@ export function LeagueSummary() {
   }, [roundPicks, byTeamId]);
 
   const beforeDeadline = !!round?.pick_deadline_utc && Date.parse(round.pick_deadline_utc) > Date.now();
-  const isHost = !!viewerUserId && league?.created_by === viewerUserId;
   const visibleRoundPicks = useMemo(() => {
     if (!viewerUserId) return [];
     if (!beforeDeadline) return roundPicks;
-    if (isHost) return roundPicks;
     return roundPicks.filter((p: any) => p.player_id === viewerUserId);
-  }, [roundPicks, beforeDeadline, isHost, viewerUserId]);
+  }, [roundPicks, beforeDeadline, viewerUserId]);
 
   // Who picked what (sample table, top 12)
   const whoPicked = useMemo(() => {
@@ -562,9 +560,7 @@ export function LeagueSummary() {
             </h3>
             <p className="mb-2 text-xs text-slate-600">
               {beforeDeadline
-                ? isHost
-                  ? "You can view all submitted picks as host until deadline."
-                  : "Only your pick is visible until deadline."
+                ? "Only your pick is visible until deadline."
                 : "All picks are visible after deadline."}
             </p>
             {whoPicked.length ? (

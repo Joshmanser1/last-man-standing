@@ -6,6 +6,7 @@ import { useToast } from "../components/Toast";
 import { dataService } from "../data/service";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
+import { postJsonWithAuth } from "../lib/apiAuth";
 
 type PrivateLeague = {
   id: string;
@@ -130,10 +131,8 @@ export function PrivateLeagueCreate() {
 
     const memberBatches = await Promise.all(
       privateLeagues.map(async (l) => {
-        const resp = await fetch("/api/league-members", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ league_id: l.id }),
+        const resp = await postJsonWithAuth("/api/league-members", {
+          league_id: l.id,
         });
         if (!resp.ok) throw new Error("Failed to load league members");
         return (await resp.json()) as Array<any>;

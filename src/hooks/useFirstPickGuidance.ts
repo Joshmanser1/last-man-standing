@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { dataService } from "../data/service";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
+import { postJsonWithAuth } from "../lib/apiAuth";
 
 export function useFirstPickGuidance(leagueId?: string) {
   const [state, setState] = useState<{
@@ -50,11 +51,7 @@ export function useFirstPickGuidance(leagueId?: string) {
             .eq("round_id", round.id)
             .eq("player_id", uid)
             .maybeSingle(),
-          fetch("/api/league-members", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ league_id: leagueId }),
-          }),
+          postJsonWithAuth("/api/league-members", { league_id: leagueId }),
         ]);
 
         let isPrivileged = league?.created_by === uid;

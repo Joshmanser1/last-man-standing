@@ -4,6 +4,7 @@ import * as htmlToImage from "html-to-image";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
 import { supa } from "../lib/supabaseClient";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
+import { postJsonWithAuth } from "../lib/apiAuth";
 
 type ID = string;
 
@@ -131,17 +132,11 @@ export function Leaderboard() {
             .eq("league_id", activeLeagueId)
             .order("round_number", { ascending: true }),
           supa.from("teams").select("*").eq("league_id", activeLeagueId),
-          fetch("/api/league-picks", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ league_id: activeLeagueId }),
-          }),
+          postJsonWithAuth("/api/league-picks", { league_id: activeLeagueId }),
         ]);
 
-        const memberResp = await fetch("/api/league-members", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ league_id: activeLeagueId }),
+        const memberResp = await postJsonWithAuth("/api/league-members", {
+          league_id: activeLeagueId,
         });
         if (!memberResp.ok) throw new Error("Failed to load league members");
         if (!picksResp.ok) throw new Error("Failed to load league picks");

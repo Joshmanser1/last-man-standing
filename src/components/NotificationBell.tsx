@@ -10,6 +10,8 @@ import {
   setLastViewedAt,
 } from "../lib/notifyFeed";
 import { syncLeagueNotifications } from "../lib/generateNotifications";
+import { getEffectiveUserId } from "../lib/auth";
+import { supa } from "../lib/supabaseClient";
 
 function timeAgo(ts: number) {
   const diff = Date.now() - ts;
@@ -84,7 +86,7 @@ function NotificationList({
 
 export function NotificationBell() {
   const navigate = useNavigate();
-  const playerId = localStorage.getItem("player_id") || "";
+  const [playerId, setPlayerId] = useState("");
   const activeLeagueId = localStorage.getItem("active_league_id") || "";
   const [open, setOpen] = useState(false);
   const [tick, setTick] = useState(0);
@@ -93,6 +95,25 @@ export function NotificationBell() {
   const items = useMemo(() => (playerId ? getNotifications(playerId) : []), [playerId, tick]);
   const lastViewedAt = useMemo(() => (playerId ? getLastViewedAt(playerId) : 0), [playerId, tick]);
   const unread = useMemo(() => (playerId ? getUnreadCount(playerId) : 0), [playerId, tick]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const refreshUserId = async () => {
+      const nextUserId = (await getEffectiveUserId()) || "";
+      if (mounted) setPlayerId(nextUserId);
+    };
+
+    void refreshUserId();
+    const { data: sub } = supa.auth.onAuthStateChange(() => {
+      void refreshUserId();
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {

@@ -1,8 +1,10 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { OutcomeModal } from "./OutcomeModal";
 import { DeadlineBanner } from "./DeadlineBanner";
 import { deadlineShownKey, formatCountdown, getDeadlineLevel } from "../lib/deadline";
 import { appendNotification } from "../lib/notifyFeed";
+import { getEffectiveUserId } from "../lib/auth";
+import { supa } from "../lib/supabaseClient";
 
 export type OutcomePayload = {
   type: "progressed" | "eliminated" | "winner";
@@ -27,6 +29,7 @@ type Ctx = {
 const NotificationsCtx = createContext<Ctx | null>(null);
 
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
+  const [playerId, setPlayerId] = useState("");
   const [payload, setPayload] = useState<OutcomePayload | null>(null);
   const [deadlineState, setDeadlineState] = useState<{
     leagueId: string;
@@ -36,11 +39,29 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     countdown: string;
   } | null>(null);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const refreshUserId = async () => {
+      const nextUserId = (await getEffectiveUserId()) || "";
+      if (mounted) setPlayerId(nextUserId);
+    };
+
+    void refreshUserId();
+    const { data: sub } = supa.auth.onAuthStateChange(() => {
+      void refreshUserId();
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
   function showOutcome(p: OutcomePayload) {
     const shown = localStorage.getItem(p.key);
     if (shown) return;
     localStorage.setItem(p.key, "1");
-    const playerId = localStorage.getItem("player_id");
     if (playerId) {
       appendNotification(playerId, {
         key: p.key,

@@ -1,5 +1,6 @@
 import { supa } from "../lib/supabaseClient";
 import { appendNotification } from "./notifyFeed";
+import { postJsonWithAuth } from "./apiAuth";
 
 const MEMBERS_SNAPSHOT_KEY = "lms_notification_members_v1";
 
@@ -19,16 +20,8 @@ export async function syncLeagueNotifications(playerId: string, leagueId: string
   const safeRounds = rounds ?? [];
 
   const [picksResp, membersResp] = await Promise.all([
-    fetch("/api/league-picks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ league_id: leagueId }),
-    }),
-    fetch("/api/league-members", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ league_id: leagueId }),
-    }),
+    postJsonWithAuth("/api/league-picks", { league_id: leagueId }),
+    postJsonWithAuth("/api/league-members", { league_id: leagueId }),
   ]);
   if (!picksResp.ok || !membersResp.ok) return;
 

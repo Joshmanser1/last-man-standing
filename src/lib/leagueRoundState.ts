@@ -1,6 +1,7 @@
 import { supa } from "./supabaseClient";
 import { dataService } from "../data/service";
 import { getEffectiveUserId } from "./auth";
+import { postJsonWithAuth } from "./apiAuth";
 
 export type LeagueRoundState = {
   league: any | null;
@@ -43,16 +44,8 @@ export async function loadLeagueRoundState(
         .eq("league_id", leagueId)
         .order("round_number", { ascending: true }),
       dataService.listTeams(leagueId).catch(() => []),
-      fetch("/api/league-picks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ league_id: leagueId }),
-      }),
-      fetch("/api/league-members", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ league_id: leagueId }),
-      }),
+      postJsonWithAuth("/api/league-picks", { league_id: leagueId }),
+      postJsonWithAuth("/api/league-members", { league_id: leagueId }),
     ]);
 
   if (!picksResp.ok) throw new Error("Failed to load league picks");
