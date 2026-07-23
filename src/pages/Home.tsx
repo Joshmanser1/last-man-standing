@@ -88,28 +88,36 @@ export function Home() {
   }, []);
 
   useEffect(() => {
-    const leagueId = localStorage.getItem("active_league_id") || activeLeague?.id;
-    const playerId = localStorage.getItem("player_id");
-    if (!leagueId || !playerId) return;
+    let cancelled = false;
 
-    const raw = localStorage.getItem(STORE_KEY);
-    if (!raw) return;
+    (async () => {
+      const leagueId = localStorage.getItem("active_league_id") || activeLeague?.id;
+      if (cancelled || !leagueId) return;
 
-    const s = JSON.parse(raw);
-    const league = (s.leagues || []).find((l: any) => l.id === leagueId);
-    if (!league) return;
+      const raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return;
 
-    const round = (s.rounds || []).find(
-      (r: any) => r.league_id === leagueId && r.round_number === league.current_round
-    );
-    if (!round?.id || !round?.pick_deadline_utc) return;
+      const s = JSON.parse(raw);
+      const league = (s.leagues || []).find((l: any) => l.id === leagueId);
+      if (!league) return;
 
-    showDeadlineReminder({
-      leagueId,
-      roundId: round.id,
-      deadlineISO: round.pick_deadline_utc,
-      playerId,
-    });
+      const round = (s.rounds || []).find(
+        (r: any) => r.league_id === leagueId && r.round_number === league.current_round
+      );
+      if (!round?.id || !round?.pick_deadline_utc) return;
+
+      if (cancelled) return;
+
+      await showDeadlineReminder({
+        leagueId,
+        roundId: round.id,
+        deadlineISO: round.pick_deadline_utc,
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [activeLeague, hasGame, showDeadlineReminder]);
 
   async function join() {

@@ -22,8 +22,7 @@ type Ctx = {
     leagueId: string;
     roundId: string;
     deadlineISO: string;
-    playerId: string;
-  }) => void;
+  }) => Promise<void>;
 };
 
 const NotificationsCtx = createContext<Ctx | null>(null);
@@ -78,20 +77,21 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     setPayload(null);
   }
 
-  function showDeadlineReminder(args: {
+  async function showDeadlineReminder(args: {
     leagueId: string;
     roundId: string;
     deadlineISO: string;
-    playerId: string;
   }) {
-    const { leagueId, roundId, deadlineISO, playerId } = args;
+    const { leagueId, roundId, deadlineISO } = args;
+    const currentPlayerId = (await getEffectiveUserId()) || "";
+    if (!currentPlayerId) return;
     const level = getDeadlineLevel(deadlineISO, Date.now());
     if (!level) return;
 
-    const k = deadlineShownKey(leagueId, roundId, playerId, level);
+    const k = deadlineShownKey(leagueId, roundId, currentPlayerId, level);
     if (localStorage.getItem(k)) return;
     localStorage.setItem(k, "1");
-    appendNotification(playerId, {
+    appendNotification(currentPlayerId, {
       type: "deadline",
       title: "Deadline approaching",
       body: "Pick deadline is coming up soon.",
