@@ -12,6 +12,7 @@ type League = {
   name: string;
   current_round: number;
   fpl_start_event?: number;
+  status?: string;
 };
 
 type Round = {
@@ -179,10 +180,40 @@ export function Leaderboard() {
     return map;
   }, [teams]);
 
+  const effectivePicks = useMemo(() => {
+    const byRound = new Map<string, Round>(rounds.map((round) => [round.id, round]));
+    const existingKeys = new Set(
+      picks.map((pick) => `${pick.round_id}:${pick.player_id}`)
+    );
+    const synthetic: Pick[] = [];
+
+    for (const membership of memberships) {
+      const joinedAt = membership.joined_at ? Date.parse(membership.joined_at) : Number.NaN;
+      for (const round of rounds) {
+        if (!(round.status === "locked" || round.status === "completed")) continue;
+        const deadlineAt = round.pick_deadline_utc ? Date.parse(round.pick_deadline_utc) : Number.NaN;
+        if (!Number.isNaN(joinedAt) && !Number.isNaN(deadlineAt) && joinedAt > deadlineAt) continue;
+        const key = `${round.id}:${membership.player_id}`;
+        if (existingKeys.has(key)) continue;
+        synthetic.push({
+          id: `synthetic-no-pick:${round.id}:${membership.player_id}`,
+          league_id: league?.id ?? activeLeagueId,
+          round_id: round.id,
+          player_id: membership.player_id,
+          team_id: "" as ID,
+          status: "no-pick",
+          reason: "no-pick",
+        });
+      }
+    }
+
+    return [...picks, ...synthetic].filter((pick) => byRound.has(pick.round_id));
+  }, [activeLeagueId, league, memberships, picks, rounds]);
+
   const picksByPlayerByRound = useMemo(() => {
     const map = new Map<ID, Map<number, Pick>>();
     if (!league) return map;
-    const leaguePicks = picks.filter((p) => p.league_id === league.id);
+    const leaguePicks = effectivePicks.filter((p) => p.league_id === league.id);
     const roundById = new Map<ID, Round>();
     for (const r of rounds) roundById.set(r.id, r);
 
@@ -193,7 +224,7 @@ export function Leaderboard() {
       map.get(p.player_id)!.set(r.round_number, p);
     }
     return map;
-  }, [league, rounds, picks]);
+  }, [effectivePicks, league, rounds]);
 
   const rows = useMemo(() => {
     const membershipByPlayerId = new Map<ID, Membership>();
@@ -201,7 +232,7 @@ export function Leaderboard() {
       membershipByPlayerId.set(membership.player_id, membership);
     }
     const playerIds = Array.from(
-      new Set([...memberships.map((m) => m.player_id), ...picks.map((p) => p.player_id)])
+      new Set([...memberships.map((m) => m.player_id), ...effectivePicks.map((p) => p.player_id)])
     );
 
     const items = playerIds.map((playerId) => {
@@ -217,7 +248,7 @@ export function Leaderboard() {
       const player = playersById.get(playerId);
       const display = player?.display_name || "Unknown";
       const alive = !!membership.is_active;
-      const state = alive ? "Alive" : "Eliminated";
+      const state = league?.status === "completed" && alive ? "Winner" : alive ? "Alive" : "Eliminated";
       const lastElimRound = (() => {
         if (alive) return undefined;
         let elim: number | undefined;
@@ -249,11 +280,11 @@ export function Leaderboard() {
       return a.name.localeCompare(b.name);
     });
     return filtered;
-  }, [memberships, playersById, picksByPlayerByRound, showElims, picks, league, activeLeagueId]);
+  }, [memberships, playersById, picksByPlayerByRound, showElims, effectivePicks, league, activeLeagueId]);
 
   const eliminationRows = useMemo(() => {
     const byRound = new Map<string, Round>(rounds.map((r) => [r.id, r]));
-    return picks
+    return effectivePicks
       .filter((p) => p.status === "eliminated" || p.status === "no-pick")
       .map((p) => {
         const round = byRound.get(p.round_id);
@@ -267,7 +298,7 @@ export function Leaderboard() {
         } as EliminationRow;
       })
       .sort((a, b) => b.roundNumber - a.roundNumber || a.playerName.localeCompare(b.playerName));
-  }, [picks, rounds, teamsById, playersById]);
+  }, [effectivePicks, rounds, teamsById, playersById]);
 
   const maxRound = rounds.length > 0 ? Math.max(...rounds.map((r) => r.round_number)) : 0;
 

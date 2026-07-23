@@ -43,6 +43,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     const playerId = localStorage.getItem("player_id");
     if (playerId) {
       appendNotification(playerId, {
+        key: p.key,
         type: "outcome",
         title: p.title,
         body: p.body,

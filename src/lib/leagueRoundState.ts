@@ -10,6 +10,7 @@ export type LeagueRoundState = {
   teams: any[];
   allLeaguePicks: any[];
   selectedRoundPicks: any[];
+  selectedRoundEntries: any[];
   playersById: Record<string, any>;
   submittedCount: number;
   pendingCount: number;
@@ -19,6 +20,8 @@ export type LeagueRoundState = {
   topPickedTeams: Array<{ teamId: string; teamName: string; count: number }>;
   viewerPick: any | null;
   viewerId: string;
+  winnerPlayerId: string | null;
+  winnerName: string | null;
 };
 
 export async function loadLeagueRoundState(
@@ -63,8 +66,13 @@ export async function loadLeagueRoundState(
       ? ((league as any).current_round as number)
       : null;
   const currentRound = await dataService.getCurrentRound(leagueId).catch(() => null);
+  const latestCompletedRound =
+    [...rounds]
+      .filter((r: any) => r?.status === "completed")
+      .sort((a: any, b: any) => (b.round_number ?? 0) - (a.round_number ?? 0))[0] ?? null;
   const round =
     (selectedRoundId ? rounds.find((r: any) => r.id === selectedRoundId) : null) ??
+    ((league as any)?.status === "completed" ? latestCompletedRound : null) ??
     (leagueCurrentRound != null
       ? rounds.find((r: any) => r.round_number === leagueCurrentRound)
       : null) ??
@@ -74,6 +82,30 @@ export async function loadLeagueRoundState(
   const selectedRoundPicks = round
     ? allLeaguePicks.filter((pick: any) => String(pick.round_id) === String(round.id))
     : [];
+  const shouldSynthesizeNoPicks =
+    !!round && (round.status === "locked" || round.status === "completed" || (league as any)?.status === "completed");
+  const selectedRoundEntries = shouldSynthesizeNoPicks
+    ? memberships.map((member: any) => {
+        const existing =
+          selectedRoundPicks.find((pick: any) => String(pick.player_id) === String(member.player_id)) ?? null;
+        if (existing) return existing;
+        const joinedAt = member?.joined_at ? Date.parse(member.joined_at) : Number.NaN;
+        const deadlineAt = round?.pick_deadline_utc ? Date.parse(round.pick_deadline_utc) : Number.NaN;
+        if (!Number.isNaN(joinedAt) && !Number.isNaN(deadlineAt) && joinedAt > deadlineAt) {
+          return null;
+        }
+        return {
+          id: `synthetic-no-pick:${round.id}:${member.player_id}`,
+          league_id: leagueId,
+          round_id: round.id,
+          player_id: member.player_id,
+          team_id: null,
+          status: "no-pick",
+          reason: "no-pick",
+          synthetic: true,
+        };
+      }).filter(Boolean)
+    : selectedRoundPicks;
 
   const playersById: Record<string, any> = {};
   for (const member of memberships) {
@@ -85,11 +117,11 @@ export async function loadLeagueRoundState(
     }
   }
 
-  const submittedCount = selectedRoundPicks.filter((p: any) => p.status !== "no-pick").length;
-  const pendingCount = selectedRoundPicks.filter((p: any) => p.status === "pending").length;
-  const throughCount = selectedRoundPicks.filter((p: any) => p.status === "through").length;
-  const eliminatedCount = selectedRoundPicks.filter((p: any) => p.status === "eliminated").length;
-  const noPickCount = selectedRoundPicks.filter((p: any) => p.status === "no-pick").length;
+  const submittedCount = selectedRoundEntries.filter((p: any) => p.status !== "no-pick").length;
+  const pendingCount = selectedRoundEntries.filter((p: any) => p.status === "pending").length;
+  const throughCount = selectedRoundEntries.filter((p: any) => p.status === "through").length;
+  const eliminatedCount = selectedRoundEntries.filter((p: any) => p.status === "eliminated").length;
+  const noPickCount = selectedRoundEntries.filter((p: any) => p.status === "no-pick").length;
 
   const teamById = new Map<string, any>((teams || []).map((team: any) => [team.id, team]));
   const pickCounts = new Map<string, number>();
@@ -109,26 +141,17 @@ export async function loadLeagueRoundState(
 
   const viewerPick =
     round && viewerId
-      ? selectedRoundPicks.find((pick: any) => String(pick.player_id) === String(viewerId)) ?? null
+      ? selectedRoundEntries.find((pick: any) => String(pick.player_id) === String(viewerId)) ?? null
       : null;
-
-  console.log("[leagueRoundState] diagnostics", {
-    leagueId,
-    viewerId,
-    roundId: round?.id ?? null,
-    roundNumber: round?.round_number ?? null,
-    totalLeaguePicks: allLeaguePicks.length,
-    pickPlayerIds: allLeaguePicks.map((pick: any) => pick.player_id),
-    pickRoundIds: allLeaguePicks.map((pick: any) => pick.round_id),
-    viewerPick,
-    viewerIdMatchesAnyPlayerId:
-      !!viewerId &&
-      allLeaguePicks.some((pick: any) => String(pick.player_id) === String(viewerId)),
-    roundIdMatchesAnyPickRoundId:
-      !!round?.id &&
-      allLeaguePicks.some((pick: any) => String(pick.round_id) === String(round.id)),
-    selectedRoundPicks,
-  });
+  const winnerEntry =
+    ((league as any)?.status === "completed"
+      ? selectedRoundEntries.filter((pick: any) => pick.status === "through")
+      : []
+    )[0] ?? null;
+  const winnerPlayerId = typeof winnerEntry?.player_id === "string" ? winnerEntry.player_id : null;
+  const winnerName = winnerPlayerId
+    ? playersById[winnerPlayerId]?.display_name ?? winnerPlayerId
+    : null;
 
   return {
     league: league ?? null,
@@ -138,6 +161,7 @@ export async function loadLeagueRoundState(
     teams: teams || [],
     allLeaguePicks,
     selectedRoundPicks,
+    selectedRoundEntries,
     playersById,
     submittedCount,
     pendingCount,
@@ -147,5 +171,7 @@ export async function loadLeagueRoundState(
     topPickedTeams,
     viewerPick,
     viewerId,
+    winnerPlayerId,
+    winnerName,
   };
 }

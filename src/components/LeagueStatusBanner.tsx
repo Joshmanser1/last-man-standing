@@ -1,178 +1,144 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { dataService } from "../data/service";
-import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
-import { useToast } from "./Toast";
+import { loadLeagueRoundState } from "../lib/leagueRoundState";
+import { useNotifications } from "./Notifications";
+
+function buildOutcomePayload(state: any, leagueId: string) {
+  const league = state.league;
+  const round = state.round;
+  const viewerId = state.viewerId;
+  const viewerPick = state.viewerPick;
+  if (!league || !round || !viewerId || league.status !== "completed" || round.status !== "completed") {
+    return null;
+  }
+
+  const keyBase = `lms_outcome_shown_v2:${leagueId}:${round.round_number}:${viewerId}`;
+  if (state.winnerPlayerId && String(state.winnerPlayerId) === String(viewerId)) {
+    return {
+      type: "winner" as const,
+      title: "You won!",
+      body: `${league.name}. You were the last player standing.`,
+      emoji: "🏆",
+      key: `${keyBase}:winner`,
+      stats: [
+        { label: "League", value: league.name },
+        { label: "Round", value: String(round.round_number) },
+      ],
+      ctas: [
+        { label: "View final standings", to: "/leaderboard" },
+        { label: "Dismiss", action: "close" as const },
+      ],
+    };
+  }
+
+  if (!viewerPick) return null;
+  if (viewerPick.status === "eliminated" || viewerPick.status === "no-pick") {
+    const teamName =
+      viewerPick.status === "no-pick"
+        ? "No pick"
+        : state.teams.find((team: any) => String(team.id) === String(viewerPick.team_id))?.name ?? "Your pick";
+    const body =
+      viewerPick.status === "no-pick"
+        ? `No pick was submitted before the Round ${round.round_number} deadline.`
+        : `${teamName} did not win in Round ${round.round_number}.`;
+    return {
+      type: "eliminated" as const,
+      title: "You're out",
+      body,
+      emoji: "❌",
+      key: `${keyBase}:eliminated`,
+      stats: [
+        { label: "League", value: league.name },
+        { label: "Round", value: String(round.round_number) },
+      ],
+      ctas: [
+        { label: "View results", to: "/results" },
+        { label: "Dismiss", action: "close" as const },
+      ],
+    };
+  }
+
+  return null;
+}
 
 export function LeagueStatusBanner({ leagueId: leagueIdProp }: { leagueId?: string }) {
   const navigate = useNavigate();
-  const toast = useToast();
-  const [league, setLeague] = useState<any>(null);
-  const [round, setRound] = useState<any>(null);
-  const [pick, setPick] = useState<any>(null);
-  const [pickTeamName, setPickTeamName] = useState<string>("");
-  const [viewerActive, setViewerActive] = useState<boolean>(true);
-  const [progressNotice, setProgressNotice] = useState<{
-    completedRoundNumber: number;
-    survivors: number;
-    eliminated: number;
-    newRoundNumber: number;
-  } | null>(null);
+  const { showOutcome } = useNotifications();
+  const [state, setState] = useState<any>(null);
 
   const leagueId = leagueIdProp || localStorage.getItem("active_league_id") || "";
 
   useEffect(() => {
     if (!leagueId) {
-      setLeague(null);
-      setRound(null);
-      setPick(null);
-      setPickTeamName("");
-      setViewerActive(true);
-      setProgressNotice(null);
+      setState(null);
       return;
     }
 
     (async () => {
-      const [uid, leagues] = await Promise.all([
-        getEffectiveUserId(),
-        (dataService as any).listLeagues?.(),
-      ]);
-      const activeLeague = (leagues || []).find((l: any) => l.id === leagueId) || null;
-      setLeague(activeLeague);
-
-      if (!activeLeague) {
-        setRound(null);
-        setPick(null);
-        setPickTeamName("");
-        return;
-      }
-
-      const currentRound = await dataService.getCurrentRound(leagueId);
-      setRound(currentRound);
-
-      if (!uid || !currentRound?.id) {
-        setPick(null);
-        setPickTeamName("");
-        setViewerActive(true);
-        setProgressNotice(null);
-        return;
-      }
-
-      const [{ data: pickRow }, teams, memberResp] = await Promise.all([
-        supa
-          .from("picks")
-          .select("*")
-          .eq("round_id", currentRound.id)
-          .eq("player_id", uid)
-          .maybeSingle(),
-        dataService.listTeams(leagueId),
-        fetch("/api/league-members", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ league_id: leagueId }),
-        }),
-      ]);
-      setPick(pickRow ?? null);
-      setPickTeamName(
-        (teams || []).find((team: any) => team.id === pickRow?.team_id)?.name ?? ""
-      );
-
-      if (memberResp.ok) {
-        const members = (await memberResp.json()) as Array<any>;
-        const mine = members.find((member: any) => member.player_id === uid);
-        setViewerActive(mine?.is_active !== false);
-      } else {
-        setViewerActive(true);
-      }
-
-      const seenKey = `lms_last_seen_round_v1:${leagueId}:${uid}`;
-      const seenRoundNumber = Number(localStorage.getItem(seenKey) || "0");
-      if (currentRound.round_number > seenRoundNumber && currentRound.round_number > 1) {
-        const { data: previousRound } = await supa
-          .from("rounds")
-          .select("id, round_number")
-          .eq("league_id", leagueId)
-          .eq("round_number", currentRound.round_number - 1)
-          .maybeSingle();
-
-        if (previousRound?.id) {
-          const { data: previousPicks } = await supa
-            .from("picks")
-            .select("status")
-            .eq("round_id", previousRound.id);
-          const survivors = (previousPicks || []).filter((entry: any) => entry.status === "through").length;
-          const eliminated = (previousPicks || []).filter(
-            (entry: any) => entry.status === "eliminated" || entry.status === "no-pick"
-          ).length;
-          setProgressNotice({
-            completedRoundNumber: previousRound.round_number,
-            survivors,
-            eliminated,
-            newRoundNumber: currentRound.round_number,
-          });
-          toast(`Round ${currentRound.round_number} opened`, { variant: "success" });
-        }
-        localStorage.setItem(seenKey, String(currentRound.round_number));
-      } else {
-        setProgressNotice(null);
-        localStorage.setItem(seenKey, String(currentRound.round_number));
-      }
+      const nextState = await loadLeagueRoundState(leagueId);
+      const uid = await getEffectiveUserId();
+      const currentRound = nextState.round;
+      const previousRound =
+        currentRound && currentRound.round_number > 1
+          ? nextState.rounds.find((round: any) => round.round_number === currentRound.round_number - 1) ?? null
+          : null;
+      const viewerMembership =
+        uid
+          ? nextState.memberships.find((member: any) => String(member.player_id) === String(uid)) ?? null
+          : null;
+      setState({
+        ...nextState,
+        viewerId: uid ?? "",
+        viewerMembership,
+        previousRound,
+      });
     })();
   }, [leagueId]);
 
-  const pickOpen = useMemo(() => {
-    if (!round) return false;
-    if (round.status === "locked" || round.status === "completed") return false;
-    if (league?.is_test) return true;
-    if (!round.pick_deadline_utc) return true;
-    return Date.parse(round.pick_deadline_utc) > Date.now();
-  }, [round, league]);
+  useEffect(() => {
+    if (!state) return;
+    const payload = buildOutcomePayload(state, leagueId);
+    if (payload) showOutcome(payload);
+  }, [leagueId, showOutcome, state]);
 
-  if (!leagueId || !round) return null;
+  const pickOpen = useMemo(() => {
+    if (!state?.round) return false;
+    if (state.round.status === "locked" || state.round.status === "completed") return false;
+    if (state.league?.is_test) return true;
+    if (!state.round.pick_deadline_utc) return true;
+    return Date.parse(state.round.pick_deadline_utc) > Date.now();
+  }, [state]);
+
+  if (!leagueId || !state?.round || !state?.league) return null;
+
+  const viewerActive = state.viewerMembership?.is_active !== false;
+  const winnerLabel = state.winnerName ? `Winner: ${state.winnerName}` : "Results available";
 
   return (
     <div className="space-y-3">
-      {progressNotice && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 shadow-sm">
-          <div className="text-sm font-semibold text-emerald-800">
-            Round {progressNotice.completedRoundNumber} Complete
+      {state.league.status === "completed" ? (
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="text-sm font-semibold text-slate-700">
+            League Complete
           </div>
-          <div className="mt-1 text-sm text-emerald-900">
-            Survivors: {progressNotice.survivors} • Eliminated: {progressNotice.eliminated}
+          <div className="mt-1 text-sm text-slate-600">
+            Round {state.round.round_number} complete.
           </div>
-          <div className="mt-1 text-sm text-emerald-800">
-            Round {progressNotice.newRoundNumber} is now open.
-          </div>
-          {pickOpen && !pick && viewerActive && (
-            <div className="mt-3">
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => {
-                  localStorage.setItem("active_league_id", leagueId);
-                  navigate("/make-pick");
-                }}
-              >
-                Make Pick
-              </button>
-            </div>
-          )}
+          <div className="mt-1 text-sm text-slate-700">{winnerLabel}</div>
         </div>
-      )}
-      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-      {pickOpen && !pick ? (
-        <>
+      ) : pickOpen && !state.viewerPick ? (
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div className="text-sm font-semibold text-emerald-700">
-            Round {round.round_number} Open
+            Round {state.round.round_number} Open
           </div>
           <div className="mt-1 text-sm text-slate-700">
             Deadline:{" "}
-            {round.pick_deadline_utc
-              ? new Date(round.pick_deadline_utc).toLocaleString()
-              : "—"}
+            {state.round.pick_deadline_utc
+              ? new Date(state.round.pick_deadline_utc).toLocaleString()
+              : "\u2014"}
           </div>
-          <div className="mt-1 text-sm text-slate-700">You have NOT picked yet</div>
+          <div className="mt-1 text-sm text-slate-700">You have not picked yet</div>
           <div className="mt-3">
             <button
               type="button"
@@ -185,23 +151,27 @@ export function LeagueStatusBanner({ leagueId: leagueIdProp }: { leagueId?: stri
               Make Pick
             </button>
           </div>
-        </>
-      ) : pickOpen && pick ? (
-        <>
+        </div>
+      ) : pickOpen && state.viewerPick ? (
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div className="text-sm font-semibold text-emerald-700">Pick Submitted</div>
           <div className="mt-1 text-sm text-slate-700">
-            {`Selected team: ${pickTeamName || "Team selected"}`}
+            {`Selected team: ${
+              state.teams.find((team: any) => String(team.id) === String(state.viewerPick?.team_id))?.name ??
+              "Team selected"
+            }`}
           </div>
-        </>
+        </div>
       ) : (
-        <>
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div className="text-sm font-semibold text-slate-700">
-            Round {round.round_number} Complete
+            Round {state.round.round_number} Complete
           </div>
-          <div className="mt-1 text-sm text-slate-600">Results available</div>
-        </>
+          <div className="mt-1 text-sm text-slate-600">
+            {viewerActive ? "Results available" : "Your run has ended. Historical results remain available."}
+          </div>
+        </div>
       )}
-      </div>
     </div>
   );
 }

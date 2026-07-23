@@ -179,7 +179,7 @@ export function LeagueSummary() {
             is_active: m.is_active,
           }))
         );
-        setPicks(state.selectedRoundPicks);
+        setPicks(state.selectedRoundEntries);
         setPlayersById(state.playersById);
       } catch (err: any) {
         setLoadError(err?.message ?? "Failed to load league data");

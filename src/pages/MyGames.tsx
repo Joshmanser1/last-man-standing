@@ -19,6 +19,7 @@ type DashboardLeague = {
   deadlineUtc?: string;
   hasViewerPick: boolean;
   pickedTeamName?: string;
+  winnerName?: string;
 };
 
 export function MyGames() {
@@ -106,11 +107,10 @@ export function MyGames() {
               deadlineUtc: (state.round?.pick_deadline_utc as string) ?? undefined,
               hasViewerPick,
               pickedTeamName,
+              winnerName: state.winnerName ?? undefined,
             } as DashboardLeague;
           })
         );
-
-        console.log("[MyGames] dashboard leagues", rows);
         setLeagues(rows);
       } finally {
         setLoading(false);
@@ -172,13 +172,6 @@ export function MyGames() {
 
     const completed = leagues.filter((league) => league.status === "completed");
 
-    console.log("[MyGames] sections", {
-      open,
-      picked,
-      waiting,
-      completed,
-    });
-
     return { open, picked, waiting, completed };
   }, [leagues]);
 
@@ -222,7 +215,6 @@ export function MyGames() {
     empty: string,
     actions: (league: DashboardLeague) => ReactNode
   ) {
-    console.log("[MyGames] renderSection", { title, rows });
     return (
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
@@ -251,11 +243,18 @@ export function MyGames() {
                       </span>
                     </div>
                     <div className="mt-1 text-xs text-slate-600">
-                      Round {league.roundNumber} • {league.roundStatus.toUpperCase()}
+                      {league.status === "completed"
+                        ? `Completed \u2022 Round ${league.roundNumber}`
+                        : `Round ${league.roundNumber} \u2022 ${league.roundStatus.toUpperCase()}`}
                     </div>
                     {league.deadlineUtc && (
                       <div className="mt-1 text-xs text-slate-500">
                         Deadline: {new Date(league.deadlineUtc).toLocaleString()}
+                      </div>
+                    )}
+                    {league.status === "completed" && league.winnerName && (
+                      <div className="mt-1 text-xs text-slate-500">
+                        Winner: {league.winnerName}
                       </div>
                     )}
                     {league.pickedTeamName && (
@@ -357,3 +356,5 @@ export function MyGames() {
     </div>
   );
 }
+
+

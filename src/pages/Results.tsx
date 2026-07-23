@@ -4,8 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
-import { useNotifications } from "../components/Notifications";
-import { computeOutcome } from "../lib/outcome";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
@@ -24,7 +22,6 @@ type FilterKey = "all" | "pending" | "through" | "eliminated" | "no-pick";
 
 export function Results() {
   const navigate = useNavigate();
-  const { showOutcome } = useNotifications();
   const [leagueId, setLeagueId] = useState<string>(
     () => localStorage.getItem("active_league_id") || ""
   );
@@ -37,6 +34,7 @@ export function Results() {
   const [picks, setPicks] = useState<any[]>([]);
   const [memberships, setMemberships] = useState<any[]>([]);
   const [playersById, setPlayersById] = useState<Record<string, any>>({});
+  const [winnerPlayerId, setWinnerPlayerId] = useState<string>("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [reloadTick, setReloadTick] = useState(0);
   const guidance = useFirstPickGuidance(leagueId);
@@ -52,6 +50,7 @@ export function Results() {
       setPicks([]);
       setMemberships([]);
       setPlayersById({});
+      setWinnerPlayerId("");
       return;
     }
 
@@ -75,20 +74,12 @@ export function Results() {
       setLeagueOwnerId(state.league?.created_by ?? "");
       setRound(state.round);
       setTeams(state.teams);
-      setPicks(state.selectedRoundPicks);
+      setPicks(state.selectedRoundEntries);
       setMemberships(state.memberships);
       setPlayersById(state.playersById);
+      setWinnerPlayerId(state.winnerPlayerId ?? "");
     })();
   }, [leagueId, reloadTick, selectedRoundId]);
-
-  useEffect(() => {
-    if (!leagueId || !round) return;
-    const playerId = localStorage.getItem("player_id");
-    if (!playerId) return;
-
-    const outcome = computeOutcome(leagueId, playerId);
-    if (outcome) showOutcome(outcome);
-  }, [leagueId, round, showOutcome]);
 
   const isHost = useMemo(() => {
     if (!viewerId) return false;
@@ -112,14 +103,20 @@ export function Results() {
 
   const rows: Row[] = useMemo(() => {
     if (!round) return [];
-    const teamName = (id: string) => teams.find((t: any) => t.id === id)?.name ?? "—";
+    const teamName = (id?: string | null) =>
+      id ? teams.find((t: any) => t.id === id)?.name ?? "\u2014" : "No pick";
     return (visiblePicks || []).map((p: any) => ({
       player: playersById[p.player_id]?.display_name ?? p.player_id.slice(0, 6),
       team: teamName(p.team_id),
       status: (p.status ?? "pending") as Row["status"],
-      reason: p.reason ?? "",
+      reason:
+        winnerPlayerId && String(p.player_id) === String(winnerPlayerId)
+          ? "Winner"
+          : p.status === "no-pick"
+          ? "No pick submitted"
+          : p.reason ?? "",
     }));
-  }, [round, teams, playersById, visiblePicks]);
+  }, [round, teams, playersById, visiblePicks, winnerPlayerId]);
 
   const filtered = useMemo(() => {
     if (filter === "all") return rows;
@@ -279,3 +276,6 @@ export function Results() {
     </div>
   );
 }
+
+
+

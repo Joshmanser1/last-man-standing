@@ -37,8 +37,13 @@ export async function syncLeagueNotifications(playerId: string, leagueId: string
   const currentRound =
     safeRounds.find((round: any) => round.round_number === league.current_round) ||
     safeRounds[safeRounds.length - 1];
+  const latestCompletedRound =
+    [...safeRounds]
+      .filter((round: any) => round.status === "completed")
+      .sort((a: any, b: any) => (b.round_number ?? 0) - (a.round_number ?? 0))[0] ?? null;
 
   const currentRoundOpen =
+    league.status !== "completed" &&
     currentRound &&
     currentRound.status !== "completed" &&
     currentRound.status !== "locked" &&
@@ -71,29 +76,76 @@ export async function syncLeagueNotifications(playerId: string, leagueId: string
     }
   }
 
-  const previousRound =
-    currentRound && currentRound.round_number > 1
-      ? safeRounds.find((round: any) => round.round_number === currentRound.round_number - 1)
-      : null;
-  if (previousRound) {
-    const myPrevPick = picks.find(
-      (pick: any) => pick.round_id === previousRound.id && pick.player_id === playerId
-    );
-    if (myPrevPick?.status === "through") {
+  if (league.status === "completed" && latestCompletedRound) {
+    const finalRoundPicks = picks.filter((pick: any) => pick.round_id === latestCompletedRound.id);
+    const myFinalPick =
+      finalRoundPicks.find((pick: any) => pick.player_id === playerId) ??
+      (members.some((member: any) => member.player_id === playerId)
+        ? {
+            round_id: latestCompletedRound.id,
+            player_id: playerId,
+            team_id: null,
+            status: "no-pick",
+            reason: "no-pick",
+          }
+        : null);
+    const through = finalRoundPicks.filter((pick: any) => pick.status === "through");
+    const winner = through.length === 1 ? through[0] : null;
+    const teamName = myFinalPick?.team_id
+      ? " " + (myFinalPick.team_id as string)
+      : "";
+
+    if (winner?.player_id === playerId) {
       appendNotification(playerId, {
-        key: `league:${leagueId}:survived:${previousRound.round_number}`,
-        type: "survived",
-        title: `You survived Round ${previousRound.round_number}`,
-        body: `Round ${currentRound?.round_number ?? previousRound.round_number + 1} is now open.`,
-        cta: { label: "Make Pick", to: "/make-pick" },
+        key: `league:${leagueId}:winner:${latestCompletedRound.round_number}`,
+        type: "winner",
+        title: `You won ${league.name}`,
+        body: `You were the last player standing after Round ${latestCompletedRound.round_number}.`,
+        cta: { label: "View League", to: "/league" },
       });
-    } else if (myPrevPick?.status === "eliminated" || myPrevPick?.status === "no-pick") {
+    } else if (myFinalPick?.status === "eliminated") {
       appendNotification(playerId, {
-        key: `league:${leagueId}:eliminated:${previousRound.round_number}`,
+        key: `league:${leagueId}:eliminated:${latestCompletedRound.round_number}:${playerId}`,
         type: "eliminated",
-        title: `You were eliminated in Round ${previousRound.round_number}`,
-        body: "Results are available in your league pages.",
+        title: "You were eliminated",
+        body: `${teamName.trim() || "Your team"} did not win in Round ${latestCompletedRound.round_number}.`,
+        cta: { label: "View Results", to: "/results" },
       });
+    } else if (myFinalPick?.status === "no-pick") {
+      appendNotification(playerId, {
+        key: `league:${leagueId}:no-pick:${latestCompletedRound.round_number}:${playerId}`,
+        type: "eliminated",
+        title: "You were eliminated",
+        body: `No pick was submitted before the Round ${latestCompletedRound.round_number} deadline.`,
+        cta: { label: "View Results", to: "/results" },
+      });
+    }
+  } else {
+    const previousRound =
+      currentRound && currentRound.round_number > 1
+        ? safeRounds.find((round: any) => round.round_number === currentRound.round_number - 1)
+        : null;
+    if (previousRound) {
+      const myPrevPick = picks.find(
+        (pick: any) => pick.round_id === previousRound.id && pick.player_id === playerId
+      );
+      if (myPrevPick?.status === "through") {
+        appendNotification(playerId, {
+          key: `league:${leagueId}:survived:${previousRound.round_number}`,
+          type: "survived",
+          title: `You survived Round ${previousRound.round_number}`,
+          body: `Round ${currentRound?.round_number ?? previousRound.round_number + 1} is now open.`,
+          cta: { label: "Make Pick", to: "/make-pick" },
+        });
+      } else if (myPrevPick?.status === "eliminated" || myPrevPick?.status === "no-pick") {
+        appendNotification(playerId, {
+          key: `league:${leagueId}:eliminated:${previousRound.round_number}`,
+          type: "eliminated",
+          title: `You were eliminated in Round ${previousRound.round_number}`,
+          body: "Results are available in your league pages.",
+          cta: { label: "View Results", to: "/results" },
+        });
+      }
     }
   }
 
