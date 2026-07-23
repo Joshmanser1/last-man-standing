@@ -8,6 +8,7 @@ import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
 import { loadLeagueRoundState } from "../lib/leagueRoundState";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
+import { isRoundRevealable } from "../lib/roundReveal";
 
 type CardProps = {
   title: string;
@@ -279,12 +280,13 @@ export function LeagueSummary() {
     return rows.map((r) => ({ ...r, pct: clamp01(r.count / max) }));
   }, [roundPicks, byTeamId]);
 
-  const beforeDeadline = !!round?.pick_deadline_utc && Date.parse(round.pick_deadline_utc) > Date.now();
+  const revealable = isRoundRevealable(round);
+  const beforeDeadline = !revealable;
   const visibleRoundPicks = useMemo(() => {
     if (!viewerUserId) return [];
-    if (!beforeDeadline) return roundPicks;
+    if (revealable) return roundPicks;
     return roundPicks.filter((p: any) => p.player_id === viewerUserId);
-  }, [roundPicks, beforeDeadline, viewerUserId]);
+  }, [roundPicks, revealable, viewerUserId]);
 
   // Who picked what (sample table, top 12)
   const whoPicked = useMemo(() => {
@@ -499,16 +501,25 @@ export function LeagueSummary() {
           subtitle={`${kpis.noPick} no-pick`}
           glow
         />
-        <StatCard title="Unique Teams" value={kpis.uniqueTeamCount} glow />
+        <StatCard
+          title="Unique Teams"
+          value={revealable ? kpis.uniqueTeamCount : "\u2014"}
+          subtitle={revealable ? undefined : "Hidden until deadline"}
+          glow
+        />
         <StatCard
           title="Most Picked"
           value={
-            kpis.mostPicked.length
+            revealable && kpis.mostPicked.length
               ? kpis.mostPicked.map((x: any) => x.teamName).join(", ")
               : "\u2014"
           }
           subtitle={
-            kpis.mostPicked.length ? `${kpis.mostPicked[0].count} picks` : ""
+            revealable && kpis.mostPicked.length
+              ? `${kpis.mostPicked[0].count} picks`
+              : !revealable
+              ? "Hidden until deadline"
+              : ""
           }
           glow
         />
@@ -529,7 +540,9 @@ export function LeagueSummary() {
             <h3 className="mb-2 text-base font-semibold">
               Top Picks (Round)
             </h3>
-            {popularity.length ? (
+            {!revealable ? (
+              <div className="text-sm text-slate-500">Pick trends will appear after the deadline.</div>
+            ) : popularity.length ? (
               <ul className="space-y-2">
                 {popularity.map((row, i) => (
                   <li key={i}>
@@ -556,7 +569,7 @@ export function LeagueSummary() {
           {/* Who picked (sample) */}
           <div className="rounded-2xl border bg-white p-4 shadow-sm">
             <h3 className="mb-2 text-base font-semibold">
-              Who Picked (sample)
+              Who Picked
             </h3>
             <p className="mb-2 text-xs text-slate-600">
               {beforeDeadline

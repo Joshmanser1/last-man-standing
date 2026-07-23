@@ -5,6 +5,8 @@ import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
 import { supa } from "../lib/supabaseClient";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 import { postJsonWithAuth } from "../lib/apiAuth";
+import { getEffectiveUserId } from "../lib/auth";
+import { isRoundRevealable, shouldHidePickForViewer } from "../lib/roundReveal";
 
 type ID = string;
 
@@ -75,6 +77,7 @@ export function Leaderboard() {
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [picks, setPicks] = useState<Pick[]>([]);
   const [playersById, setPlayersById] = useState<Map<ID, Player>>(new Map());
+  const [viewerId, setViewerId] = useState("");
   const [loading, setLoading] = useState<boolean>(true);
 
   const exportRef = useRef<HTMLDivElement>(null);
@@ -108,6 +111,7 @@ export function Leaderboard() {
     (async () => {
       setLoading(true);
       try {
+        setViewerId((await getEffectiveUserId()) || "");
         const { data: lg } = await supa
           .from("leagues")
           .select("*")
@@ -296,6 +300,10 @@ export function Leaderboard() {
   }, [effectivePicks, rounds, teamsById, playersById]);
 
   const maxRound = rounds.length > 0 ? Math.max(...rounds.map((r) => r.round_number)) : 0;
+  const roundsByNumber = useMemo(
+    () => new Map<number, Round>(rounds.map((round) => [round.round_number, round])),
+    [rounds]
+  );
 
   function symbolForPick(p?: Pick) {
     if (!p) return "";
@@ -304,6 +312,22 @@ export function Leaderboard() {
     if (p.status === "through") return `${code} \u2713`;
     if (p.status === "eliminated" || p.status === "no-pick") return `${code} \u2715`;
     return `${code}`;
+  }
+
+  function matrixCellValue(roundNumber: number, playerId: ID, pick?: Pick) {
+    const round = roundsByNumber.get(roundNumber);
+    if (!round) return "";
+    if (round.round_number > (league?.current_round ?? 0)) return "";
+    if (
+      shouldHidePickForViewer({
+        round,
+        viewerId,
+        playerId,
+      })
+    ) {
+      return "Hidden until deadline";
+    }
+    return symbolForPick(pick);
   }
 
   async function exportPNG() {
@@ -500,7 +524,7 @@ export function Leaderboard() {
                         No entrants yet. Invite players to join the league.
                       </td>
                     </tr>
-                  ) : picks.length === 0 ? (
+                  ) : effectivePicks.length === 0 ? (
                     <tr>
                       <td className="px-3 py-6 text-center text-slate-500" colSpan={2 + maxRound}>
                         No picks have been submitted yet.
@@ -529,7 +553,7 @@ export function Leaderboard() {
                             const p = perRound?.get(rd);
                             return (
                               <td key={rd} className="px-3 py-2">
-                                {symbolForPick(p)}
+                                {matrixCellValue(rd, r.playerId, p)}
                               </td>
                             );
                           })}

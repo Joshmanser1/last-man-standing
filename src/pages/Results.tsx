@@ -8,6 +8,7 @@ import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 import { loadLeagueRoundState } from "../lib/leagueRoundState";
+import { isRoundRevealable } from "../lib/roundReveal";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -78,16 +79,13 @@ export function Results() {
     })();
   }, [leagueId, reloadTick, selectedRoundId]);
 
-  const afterDeadline = useMemo(() => {
-    if (!round?.pick_deadline_utc) return true;
-    return new Date(round.pick_deadline_utc).getTime() <= Date.now();
-  }, [round]);
+  const revealable = useMemo(() => isRoundRevealable(round), [round]);
 
   const visiblePicks = useMemo(() => {
-    if (afterDeadline) return picks || [];
+    if (revealable) return picks || [];
     if (!viewerId) return [];
     return (picks || []).filter((p: any) => p.player_id === viewerId);
-  }, [picks, afterDeadline, viewerId]);
+  }, [picks, revealable, viewerId]);
 
   const rows: Row[] = useMemo(() => {
     if (!round) return [];
@@ -201,8 +199,8 @@ export function Results() {
       </div>
 
       <div className="mb-3 text-xs text-slate-600">
-        {!afterDeadline && "Only your pick is visible until the deadline."}
-        {afterDeadline && "All picks are visible after the deadline."}
+        {!revealable && "Only your pick is visible until the deadline."}
+        {revealable && "All picks are visible after the deadline."}
       </div>
 
       {/* Quick filter */}

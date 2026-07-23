@@ -89,19 +89,33 @@ export function NotificationBell() {
   const [playerId, setPlayerId] = useState("");
   const activeLeagueId = localStorage.getItem("active_league_id") || "";
   const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<any[]>([]);
+  const [lastViewedAt, setLastViewedAtState] = useState(0);
   const [tick, setTick] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const unread = useMemo(
+    () => (playerId ? items.filter((x: any) => x.ts > lastViewedAt).length : 0),
+    [items, lastViewedAt, playerId]
+  );
 
-  const items = useMemo(() => (playerId ? getNotifications(playerId) : []), [playerId, tick]);
-  const lastViewedAt = useMemo(() => (playerId ? getLastViewedAt(playerId) : 0), [playerId, tick]);
-  const unread = useMemo(() => (playerId ? getUnreadCount(playerId) : 0), [playerId, tick]);
+  function refreshFeed(nextPlayerId = playerId) {
+    if (!nextPlayerId) {
+      setItems([]);
+      setLastViewedAtState(0);
+      return;
+    }
+    setItems(getNotifications(nextPlayerId));
+    setLastViewedAtState(getLastViewedAt(nextPlayerId));
+  }
 
   useEffect(() => {
     let mounted = true;
 
     const refreshUserId = async () => {
       const nextUserId = (await getEffectiveUserId()) || "";
-      if (mounted) setPlayerId(nextUserId);
+      if (!mounted) return;
+      setPlayerId(nextUserId);
+      refreshFeed(nextUserId);
     };
 
     void refreshUserId();
@@ -135,7 +149,7 @@ export function NotificationBell() {
 
     const run = async () => {
       await syncLeagueNotifications(playerId, activeLeagueId);
-      if (!disposed) setTick((x) => x + 1);
+      if (!disposed) refreshFeed(playerId);
     };
 
     void run();
@@ -145,6 +159,10 @@ export function NotificationBell() {
       window.clearInterval(t);
     };
   }, [playerId, activeLeagueId]);
+
+  useEffect(() => {
+    refreshFeed(playerId);
+  }, [playerId]);
 
   useEffect(() => {
     if (!open) return;
@@ -168,6 +186,7 @@ export function NotificationBell() {
             const next = !x;
             if (next) {
               setLastViewedAt(playerId);
+              setLastViewedAtState(Date.now());
               setTick((v) => v + 1);
             }
             return next;
@@ -201,7 +220,7 @@ export function NotificationBell() {
                   className="text-xs text-emerald-400 hover:text-emerald-300"
                   onClick={() => {
                     markAllRead(playerId);
-                    setTick((x) => x + 1);
+                    refreshFeed(playerId);
                   }}
                 >
                   Mark read
@@ -210,7 +229,8 @@ export function NotificationBell() {
                   className="text-xs text-slate-400 hover:text-slate-200"
                   onClick={() => {
                     clearNotifications(playerId);
-                    setTick((x) => x + 1);
+                    setItems([]);
+                    setLastViewedAtState(0);
                   }}
                 >
                   Clear
@@ -250,16 +270,19 @@ export function NotificationBell() {
                           className="text-xs text-emerald-400 hover:text-emerald-300"
                           onClick={() => {
                             markAllRead(playerId);
-                            setTick((x) => x + 1);
+                            refreshFeed(playerId);
                           }}
                         >
                           Mark read
                         </button>
                         <button
                           className="text-xs text-slate-400 hover:text-slate-200"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
                             clearNotifications(playerId);
-                            setTick((x) => x + 1);
+                            setItems([]);
+                            setLastViewedAtState(0);
                           }}
                         >
                           Clear
