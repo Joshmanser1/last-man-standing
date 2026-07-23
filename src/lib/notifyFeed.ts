@@ -1,14 +1,25 @@
 const KEY = "lms_notifications_v1";
 const VIEWED_KEY = "lms_notifications_viewed_v1";
+const DISMISSED_KEY = "lms_notifications_dismissed_v1";
 
 function getPlayerKey(playerId: string) {
   return `${KEY}:${playerId}`;
+}
+
+function getDismissedKey(playerId: string) {
+  return `${DISMISSED_KEY}:${playerId}`;
+}
+
+function getDismissedNotificationKeys(playerId: string) {
+  return JSON.parse(localStorage.getItem(getDismissedKey(playerId)) || "[]") as string[];
 }
 
 export function appendNotification(playerId: string, item: any) {
   const k = getPlayerKey(playerId);
   const raw = localStorage.getItem(k) || "[]";
   const arr = JSON.parse(raw);
+  const dismissed = getDismissedNotificationKeys(playerId);
+  if (item?.key && dismissed.includes(item.key)) return;
   if (item?.key && arr.some((x: any) => x.key === item.key)) return;
 
   arr.unshift({
@@ -35,6 +46,12 @@ export function markAllRead(playerId: string) {
 }
 
 export function clearNotifications(playerId: string) {
+  const arr = getNotifications(playerId);
+  const dismissed = new Set(getDismissedNotificationKeys(playerId));
+  arr.forEach((item: any) => {
+    if (item?.key) dismissed.add(item.key);
+  });
+  localStorage.setItem(getDismissedKey(playerId), JSON.stringify(Array.from(dismissed)));
   localStorage.removeItem(getPlayerKey(playerId));
   localStorage.removeItem(`${VIEWED_KEY}:${playerId}`);
 }
