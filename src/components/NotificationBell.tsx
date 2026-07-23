@@ -93,6 +93,7 @@ export function NotificationBell() {
   const [lastViewedAt, setLastViewedAtState] = useState(0);
   const [tick, setTick] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const mobileSheetRef = useRef<HTMLDivElement>(null);
   const unread = useMemo(
     () => (playerId ? items.filter((x: any) => x.ts > lastViewedAt).length : 0),
     [items, lastViewedAt, playerId]
@@ -131,8 +132,10 @@ export function NotificationBell() {
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
-      if (!wrapRef.current) return;
-      if (!wrapRef.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (wrapRef.current?.contains(target)) return;
+      if (mobileSheetRef.current?.contains(target)) return;
+      setOpen(false);
     }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -259,8 +262,11 @@ export function NotificationBell() {
                     onClick={() => setOpen(false)}
                   />
                   <div
+                    ref={mobileSheetRef}
                     className="absolute inset-x-0 bottom-0 overflow-hidden rounded-t-3xl border border-white/10 bg-gradient-to-b from-slate-900 to-slate-950 shadow-[0_-18px_60px_rgba(0,0,0,0.65)] ring-1 ring-white/10"
                     style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
                   >
                     <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-white/20" />
                     <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
