@@ -7,6 +7,7 @@ import { GameSelector } from "../components/GameSelector";
 import { useToast } from "../components/Toast";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
+import { getMemberElimination, loadLeagueRoundState } from "../lib/leagueRoundState";
 
 type OpponentMap = Record<string, string>;
 
@@ -24,6 +25,9 @@ export function MakePick() {
   const [loading, setLoading] = useState(true);
   const [reloadTick, setReloadTick] = useState(0);
   const [authUserId, setAuthUserId] = useState<string>("");
+  const [viewerMembership, setViewerMembership] = useState<any>(null);
+  const [winnerName, setWinnerName] = useState<string>("");
+  const [inactiveMessage, setInactiveMessage] = useState<string>("");
 
   const navigate = useNavigate();
   const toast = useToast();
@@ -52,6 +56,9 @@ export function MakePick() {
       setUsedByRound({});
       setCurrentPick(null);
       setOpponentByTeamId({});
+      setViewerMembership(null);
+      setWinnerName("");
+      setInactiveMessage("");
       setLoading(false);
       return;
     }
@@ -70,6 +77,50 @@ export function MakePick() {
           setUsedByRound({});
           setCurrentPick(null);
           setOpponentByTeamId({});
+          setViewerMembership(null);
+          setWinnerName("");
+          setInactiveMessage("");
+          return;
+        }
+
+        const roundState = await loadLeagueRoundState(leagueId);
+        const myMembership =
+          (roundState.memberships ?? []).find((member: any) => String(member.player_id) === String(playerId)) ??
+          null;
+        setViewerMembership(myMembership);
+        setWinnerName(roundState.winnerName ?? "");
+        const elimination = myMembership
+          ? getMemberElimination(myMembership, roundState.rounds, roundState.allLeaguePicks, leagueId)
+          : null;
+        if (activeLeague.status === "completed") {
+          setLeague(roundState.league ?? activeLeague);
+          setRound(roundState.round);
+          setTeams(roundState.teams ?? []);
+          setCurrentPick(roundState.viewerPick ?? null);
+          setUsedTeamIds(new Set());
+          setUsedByRound({});
+          setOpponentByTeamId({});
+          setInactiveMessage("");
+          return;
+        }
+        if (myMembership?.is_active === false) {
+          setLeague(roundState.league ?? activeLeague);
+          setRound(roundState.round);
+          setTeams(roundState.teams ?? []);
+          setCurrentPick(roundState.viewerPick ?? null);
+          setUsedTeamIds(new Set());
+          setUsedByRound({});
+          setOpponentByTeamId({});
+          setInactiveMessage(
+            elimination?.pick?.status === "no-pick"
+              ? `No pick was submitted before the Round ${elimination.round.round_number} deadline.`
+              : elimination?.pick?.team_id
+              ? `${
+                  roundState.teams.find((team: any) => String(team.id) === String(elimination.pick.team_id))?.name ??
+                  "Your team"
+                } did not win in Round ${elimination?.round?.round_number ?? roundState.round?.round_number}.`
+              : "You can still follow the remaining rounds and view the league history."
+          );
           return;
         }
 
@@ -260,6 +311,66 @@ export function MakePick() {
             }}
           />
           <div className="text-slate-500 text-sm">Loading picks...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (league.status === "completed") {
+    return (
+      <div data-testid="make-pick-page" className="container-page py-6">
+        <div className="mb-4 flex justify-end">
+          <GameSelector
+            label="Viewing game"
+            onChange={(id) => {
+              setLeagueId(id);
+              setReloadTick((x) => x + 1);
+            }}
+          />
+        </div>
+        <div className="mx-auto max-w-xl card p-6 space-y-4">
+          <h1 className="text-2xl font-bold">This league is complete</h1>
+          <p className="text-sm text-slate-600">
+            {winnerName ? `Winner: ${winnerName}.` : "Final results are available."}
+          </p>
+          <div className="flex gap-2">
+            <button className="btn btn-primary" type="button" onClick={() => navigate("/results")}>
+              View Results
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={() => navigate("/leaderboard")}>
+              View Leaderboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (viewerMembership?.is_active === false) {
+    return (
+      <div data-testid="make-pick-page" className="container-page py-6">
+        <div className="mb-4 flex justify-end">
+          <GameSelector
+            label="Viewing game"
+            onChange={(id) => {
+              setLeagueId(id);
+              setReloadTick((x) => x + 1);
+            }}
+          />
+        </div>
+        <div className="mx-auto max-w-xl card p-6 space-y-4">
+          <h1 className="text-2xl font-bold">You've been eliminated</h1>
+          <p className="text-sm text-slate-600">
+            {inactiveMessage || "You can still follow the remaining rounds and view the league history."}
+          </p>
+          <div className="flex gap-2">
+            <button className="btn btn-primary" type="button" onClick={() => navigate("/results")}>
+              View Results
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={() => navigate("/leaderboard")}>
+              View Leaderboard
+            </button>
+          </div>
         </div>
       </div>
     );

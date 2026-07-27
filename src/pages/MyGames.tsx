@@ -18,6 +18,7 @@ type DashboardLeague = {
   roundStatus: string;
   deadlineUtc?: string;
   hasViewerPick: boolean;
+  viewerActive: boolean;
   pickedTeamName?: string;
   winnerName?: string;
 };
@@ -92,6 +93,9 @@ export function MyGames() {
           (visibleLeagues ?? []).map(async (league: any) => {
             const state = await loadLeagueRoundState(league.id);
             const hasViewerPick = !!state.viewerPick;
+            const viewerMembership =
+              (state.memberships ?? []).find((member: any) => String(member.player_id) === String(state.viewerId)) ??
+              null;
             const pickedTeamName =
               state.viewerPick?.team_id && Array.isArray(state.teams)
                 ? (state.teams.find((team: any) => String(team.id) === String(state.viewerPick.team_id))?.name as string | undefined)
@@ -106,6 +110,7 @@ export function MyGames() {
               roundStatus: (state.round?.status as string) ?? "upcoming",
               deadlineUtc: (state.round?.pick_deadline_utc as string) ?? undefined,
               hasViewerPick,
+              viewerActive: viewerMembership?.is_active !== false,
               pickedTeamName,
               winnerName: state.winnerName ?? undefined,
             } as DashboardLeague;
@@ -142,6 +147,7 @@ export function MyGames() {
   const sections = useMemo(() => {
     const now = Date.now();
     const open = leagues.filter((league) => {
+      if (!league.viewerActive) return false;
       const deadlineOpen =
         !league.deadlineUtc || Date.parse(league.deadlineUtc) > now;
       return (
@@ -154,6 +160,7 @@ export function MyGames() {
     });
 
     const picked = leagues.filter((league) => {
+      if (!league.viewerActive) return false;
       return (
         league.status !== "completed" &&
         league.roundStatus !== "locked" &&
@@ -163,6 +170,7 @@ export function MyGames() {
     });
 
     const waiting = leagues.filter((league) => {
+      if (!league.viewerActive) return false;
       if (league.status === "completed") return false;
       if (open.some((x) => x.id === league.id) || picked.some((x) => x.id === league.id)) {
         return false;

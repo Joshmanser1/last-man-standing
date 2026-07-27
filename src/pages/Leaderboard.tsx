@@ -7,6 +7,7 @@ import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 import { postJsonWithAuth } from "../lib/apiAuth";
 import { getEffectiveUserId } from "../lib/auth";
 import { isRoundRevealable, shouldHidePickForViewer } from "../lib/roundReveal";
+import { buildRoundEntries } from "../lib/leagueRoundState";
 
 type ID = string;
 
@@ -97,25 +98,37 @@ export function Leaderboard() {
   }, [location.search]);
 
   useEffect(() => {
-    if (!activeLeagueId) {
-      setLeague(null);
-      setRounds([]);
-      setTeams([]);
-      setMemberships([]);
-      setPicks([]);
-      setPlayersById(new Map());
-      setLoading(false);
-      return;
-    }
-
     (async () => {
       setLoading(true);
       try {
-        setViewerId((await getEffectiveUserId()) || "");
+        const uid = (await getEffectiveUserId()) || "";
+        setViewerId(uid);
+        let leagueId = activeLeagueId;
+        if (!leagueId && uid) {
+          const resp = await fetch("/api/user-leagues", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: uid }),
+          });
+          if (resp.ok) {
+            const visible = (await resp.json()) as Array<any>;
+            leagueId = visible[0]?.id ?? "";
+            if (leagueId) localStorage.setItem("active_league_id", leagueId);
+          }
+        }
+        if (!leagueId) {
+          setLeague(null);
+          setRounds([]);
+          setTeams([]);
+          setMemberships([]);
+          setPicks([]);
+          setPlayersById(new Map());
+          return;
+        }
         const { data: lg } = await supa
           .from("leagues")
           .select("*")
-          .eq("id", activeLeagueId)
+          .eq("id", leagueId)
           .is("deleted_at", null)
           .maybeSingle();
         if (!lg) {
@@ -133,14 +146,14 @@ export function Leaderboard() {
           supa
             .from("rounds")
             .select("*")
-            .eq("league_id", activeLeagueId)
+            .eq("league_id", leagueId)
             .order("round_number", { ascending: true }),
-          supa.from("teams").select("*").eq("league_id", activeLeagueId),
-          postJsonWithAuth("/api/league-picks", { league_id: activeLeagueId }),
+          supa.from("teams").select("*").eq("league_id", leagueId),
+          postJsonWithAuth("/api/league-picks", { league_id: leagueId }),
         ]);
 
         const memberResp = await postJsonWithAuth("/api/league-members", {
-          league_id: activeLeagueId,
+          league_id: leagueId,
         });
         if (!memberResp.ok) throw new Error("Failed to load league members");
         if (!picksResp.ok) throw new Error("Failed to load league picks");
@@ -181,28 +194,19 @@ export function Leaderboard() {
 
   const effectivePicks = useMemo(() => {
     const byRound = new Map<string, Round>(rounds.map((round) => [round.id, round]));
-    const existingKeys = new Set(
-      picks.map((pick) => `${pick.round_id}:${pick.player_id}`)
-    );
     const synthetic: Pick[] = [];
 
-    for (const membership of memberships) {
-      const joinedAt = membership.joined_at ? Date.parse(membership.joined_at) : Number.NaN;
-      for (const round of rounds) {
-        if (!(round.status === "locked" || round.status === "completed")) continue;
-        const deadlineAt = round.pick_deadline_utc ? Date.parse(round.pick_deadline_utc) : Number.NaN;
-        if (!Number.isNaN(joinedAt) && !Number.isNaN(deadlineAt) && joinedAt > deadlineAt) continue;
-        const key = `${round.id}:${membership.player_id}`;
-        if (existingKeys.has(key)) continue;
-        synthetic.push({
-          id: `synthetic-no-pick:${round.id}:${membership.player_id}`,
-          league_id: league?.id ?? activeLeagueId,
-          round_id: round.id,
-          player_id: membership.player_id,
-          team_id: "" as ID,
-          status: "no-pick",
-          reason: "no-pick",
-        });
+    for (const round of rounds) {
+      const { selectedRoundEntries } = buildRoundEntries(
+        league?.id ?? activeLeagueId,
+        round,
+        rounds,
+        memberships,
+        picks,
+        round.status === "locked" || round.status === "completed"
+      );
+      for (const entry of selectedRoundEntries) {
+        if ((entry as any).synthetic) synthetic.push(entry as Pick);
       }
     }
 

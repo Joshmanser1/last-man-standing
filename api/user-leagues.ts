@@ -49,7 +49,7 @@ export default async function handler(req: Req, res: Res) {
 
     const { data: memberships, error: membershipError } = await supabase
       .from("memberships")
-      .select("league_id")
+      .select("league_id, role, is_active, joined_at")
       .eq("player_id", userId);
     if (membershipError) {
       return sendJson(res, 502, {
@@ -73,6 +73,11 @@ export default async function handler(req: Req, res: Res) {
         hint: ownedError.hint,
       });
     }
+
+    const membershipByLeagueId = new Map<string, any>();
+    (memberships ?? []).forEach((membership: any) => {
+      if (membership?.league_id) membershipByLeagueId.set(membership.league_id, membership);
+    });
 
     const leagueIds = Array.from(
       new Set([
@@ -100,8 +105,32 @@ export default async function handler(req: Req, res: Res) {
     }
 
     const merged = new Map<string, any>();
-    (ownedLeagues ?? []).forEach((league: any) => merged.set(league.id, league));
-    (leagues ?? []).forEach((league: any) => merged.set(league.id, league));
+    (ownedLeagues ?? []).forEach((league: any) =>
+      merged.set(league.id, {
+        ...league,
+        viewer_has_membership: membershipByLeagueId.has(league.id),
+        viewer_is_owner: true,
+        viewer_role: membershipByLeagueId.get(league.id)?.role ?? "owner",
+        viewer_is_active:
+          membershipByLeagueId.has(league.id)
+            ? membershipByLeagueId.get(league.id)?.is_active !== false
+            : true,
+        viewer_joined_at: membershipByLeagueId.get(league.id)?.joined_at ?? null,
+      })
+    );
+    (leagues ?? []).forEach((league: any) =>
+      merged.set(league.id, {
+        ...league,
+        viewer_has_membership: membershipByLeagueId.has(league.id),
+        viewer_is_owner: league.created_by === userId,
+        viewer_role: membershipByLeagueId.get(league.id)?.role ?? null,
+        viewer_is_active:
+          membershipByLeagueId.has(league.id)
+            ? membershipByLeagueId.get(league.id)?.is_active !== false
+            : true,
+        viewer_joined_at: membershipByLeagueId.get(league.id)?.joined_at ?? null,
+      })
+    );
 
     return sendJson(
       res,

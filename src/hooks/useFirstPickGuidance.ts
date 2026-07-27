@@ -55,17 +55,26 @@ export function useFirstPickGuidance(leagueId?: string) {
         ]);
 
         let isPrivileged = league?.created_by === uid;
+        let mine: any = null;
         if (memberResp.ok) {
           const members = (await memberResp.json()) as Array<any>;
-          const mine = members.find((member: any) => member.player_id === uid);
+          mine = members.find((member: any) => member.player_id === uid) ?? null;
           if (mine?.role === "owner" || mine?.role === "admin") {
             isPrivileged = true;
           }
         }
 
+        const canGuide =
+          !isPrivileged &&
+          mine?.is_active !== false &&
+          league?.status !== "completed" &&
+          round?.status !== "completed" &&
+          round?.status !== "locked" &&
+          !pickRow;
+
         setState({
           loading: false,
-          shouldGuide: !isPrivileged && !pickRow,
+          shouldGuide: !!canGuide,
           currentRoundId: round?.id ?? "",
           currentRoundNumber: round?.round_number ?? null,
           deadlineUtc: round?.pick_deadline_utc ?? null,

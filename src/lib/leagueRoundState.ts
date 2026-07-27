@@ -25,6 +25,143 @@ export type LeagueRoundState = {
   winnerName: string | null;
 };
 
+function joinedBeforeRoundDeadline(member: any, round: any): boolean {
+  if (!round) return false;
+  const joinedAt = member?.joined_at ? Date.parse(member.joined_at) : Number.NaN;
+  const deadlineAt = round?.pick_deadline_utc ? Date.parse(round.pick_deadline_utc) : Number.NaN;
+  if (Number.isNaN(joinedAt) || Number.isNaN(deadlineAt)) return true;
+  return joinedAt <= deadlineAt;
+}
+
+function isResolvedRound(round: any): boolean {
+  return round?.status === "locked" || round?.status === "completed";
+}
+
+function pickKey(roundId: string, playerId: string) {
+  return `${roundId}:${playerId}`;
+}
+
+export function wasMemberEligibleForRound(
+  member: any,
+  round: any,
+  rounds: any[],
+  allLeaguePicks: any[]
+): boolean {
+  if (!member?.player_id || !round?.id) return false;
+  if (!joinedBeforeRoundDeadline(member, round)) return false;
+
+  const byRoundPlayer = new Map<string, any>();
+  for (const pick of allLeaguePicks || []) {
+    byRoundPlayer.set(pickKey(String(pick.round_id), String(pick.player_id)), pick);
+  }
+
+  const priorRounds = [...(rounds || [])]
+    .filter((candidate: any) => (candidate?.round_number ?? 0) < (round?.round_number ?? 0))
+    .sort((a: any, b: any) => (a.round_number ?? 0) - (b.round_number ?? 0));
+
+  for (const priorRound of priorRounds) {
+    if (!joinedBeforeRoundDeadline(member, priorRound)) continue;
+    if (!isResolvedRound(priorRound)) continue;
+
+    const priorPick = byRoundPlayer.get(
+      pickKey(String(priorRound.id), String(member.player_id))
+    );
+    if (!priorPick) return false;
+    if (priorPick.status === "eliminated" || priorPick.status === "no-pick") {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function buildRoundEntries(
+  leagueId: string,
+  round: any,
+  rounds: any[],
+  memberships: any[],
+  allLeaguePicks: any[],
+  shouldSynthesizeNoPicks: boolean
+) {
+  const selectedRoundPicks = round
+    ? allLeaguePicks.filter((pick: any) => String(pick.round_id) === String(round.id))
+    : [];
+
+  if (!round) return { selectedRoundPicks, selectedRoundEntries: [] as any[] };
+
+  const selectedRoundEntries = memberships
+    .map((member: any) => {
+      if (!wasMemberEligibleForRound(member, round, rounds, allLeaguePicks)) {
+        return null;
+      }
+      const existing =
+        selectedRoundPicks.find(
+          (pick: any) => String(pick.player_id) === String(member.player_id)
+        ) ?? null;
+      if (existing) return existing;
+      if (!shouldSynthesizeNoPicks) return null;
+      return {
+        id: `synthetic-no-pick:${round.id}:${member.player_id}`,
+        league_id: leagueId,
+        round_id: round.id,
+        player_id: member.player_id,
+        team_id: null,
+        status: "no-pick",
+        reason: "no-pick",
+        synthetic: true,
+      };
+    })
+    .filter(Boolean);
+
+  return { selectedRoundPicks, selectedRoundEntries };
+}
+
+export function getMemberElimination(
+  member: any,
+  rounds: any[],
+  allLeaguePicks: any[],
+  leagueId: string
+) {
+  if (!member?.player_id) return null;
+  const resolvedRounds = [...(rounds || [])]
+    .filter((round: any) => isResolvedRound(round))
+    .sort((a: any, b: any) => (a.round_number ?? 0) - (b.round_number ?? 0));
+
+  for (const round of resolvedRounds) {
+    if (!wasMemberEligibleForRound(member, round, rounds, allLeaguePicks)) continue;
+    const pick =
+      allLeaguePicks.find(
+        (entry: any) =>
+          String(entry.round_id) === String(round.id) &&
+          String(entry.player_id) === String(member.player_id)
+      ) ?? null;
+    const effectivePick =
+      pick ??
+      ({
+        id: `synthetic-no-pick:${round.id}:${member.player_id}`,
+        league_id: leagueId,
+        round_id: round.id,
+        player_id: member.player_id,
+        team_id: null,
+        status: "no-pick",
+        reason: "no-pick",
+        synthetic: true,
+      } as any);
+
+    if (
+      effectivePick.status === "eliminated" ||
+      effectivePick.status === "no-pick"
+    ) {
+      return {
+        round,
+        pick: effectivePick,
+      };
+    }
+  }
+
+  return null;
+}
+
 export async function loadLeagueRoundState(
   leagueId: string,
   selectedRoundId?: string
@@ -72,33 +209,16 @@ export async function loadLeagueRoundState(
     currentRound ??
     rounds[rounds.length - 1] ??
     null;
-  const selectedRoundPicks = round
-    ? allLeaguePicks.filter((pick: any) => String(pick.round_id) === String(round.id))
-    : [];
   const shouldSynthesizeNoPicks =
     !!round && (round.status === "locked" || round.status === "completed" || (league as any)?.status === "completed");
-  const selectedRoundEntries = shouldSynthesizeNoPicks
-    ? memberships.map((member: any) => {
-        const existing =
-          selectedRoundPicks.find((pick: any) => String(pick.player_id) === String(member.player_id)) ?? null;
-        if (existing) return existing;
-        const joinedAt = member?.joined_at ? Date.parse(member.joined_at) : Number.NaN;
-        const deadlineAt = round?.pick_deadline_utc ? Date.parse(round.pick_deadline_utc) : Number.NaN;
-        if (!Number.isNaN(joinedAt) && !Number.isNaN(deadlineAt) && joinedAt > deadlineAt) {
-          return null;
-        }
-        return {
-          id: `synthetic-no-pick:${round.id}:${member.player_id}`,
-          league_id: leagueId,
-          round_id: round.id,
-          player_id: member.player_id,
-          team_id: null,
-          status: "no-pick",
-          reason: "no-pick",
-          synthetic: true,
-        };
-      }).filter(Boolean)
-    : selectedRoundPicks;
+  const { selectedRoundPicks, selectedRoundEntries } = buildRoundEntries(
+    leagueId,
+    round,
+    rounds,
+    memberships,
+    allLeaguePicks,
+    shouldSynthesizeNoPicks
+  );
 
   const playersById: Record<string, any> = {};
   for (const member of memberships) {
@@ -136,11 +256,20 @@ export async function loadLeagueRoundState(
     round && viewerId
       ? selectedRoundEntries.find((pick: any) => String(pick.player_id) === String(viewerId)) ?? null
       : null;
-  const winnerEntry =
-    ((league as any)?.status === "completed"
-      ? selectedRoundEntries.filter((pick: any) => pick.status === "through")
-      : []
-    )[0] ?? null;
+  const finalCompletedRound =
+    (league as any)?.status === "completed" ? latestCompletedRound : null;
+  const finalCompletedEntries = finalCompletedRound
+    ? buildRoundEntries(
+        leagueId,
+        finalCompletedRound,
+        rounds,
+        memberships,
+        allLeaguePicks,
+        true
+      ).selectedRoundEntries
+    : [];
+  const survivingEntries = finalCompletedEntries.filter((pick: any) => pick.status === "through");
+  const winnerEntry = survivingEntries.length === 1 ? survivingEntries[0] : null;
   const winnerPlayerId = typeof winnerEntry?.player_id === "string" ? winnerEntry.player_id : null;
   const winnerName = winnerPlayerId
     ? playersById[winnerPlayerId]?.display_name ?? winnerPlayerId

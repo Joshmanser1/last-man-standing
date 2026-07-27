@@ -1,6 +1,7 @@
 import { supa } from "../lib/supabaseClient";
 import { appendNotification } from "./notifyFeed";
 import { postJsonWithAuth } from "./apiAuth";
+import { getMemberElimination } from "./leagueRoundState";
 
 const MEMBERS_SNAPSHOT_KEY = "lms_notification_members_v1";
 
@@ -18,6 +19,10 @@ export async function syncLeagueNotifications(playerId: string, leagueId: string
   ]);
   if (!league) return;
   const safeRounds = rounds ?? [];
+  const { data: teams } = await supa.from("teams").select("id, name").eq("league_id", leagueId);
+  const teamById = new Map<string, string>(
+    (teams ?? []).map((team: any) => [String(team.id), String(team.name)])
+  );
 
   const [picksResp, membersResp] = await Promise.all([
     postJsonWithAuth("/api/league-picks", { league_id: leagueId }),
@@ -71,22 +76,13 @@ export async function syncLeagueNotifications(playerId: string, leagueId: string
 
   if (league.status === "completed" && latestCompletedRound) {
     const finalRoundPicks = picks.filter((pick: any) => pick.round_id === latestCompletedRound.id);
-    const myFinalPick =
-      finalRoundPicks.find((pick: any) => pick.player_id === playerId) ??
-      (members.some((member: any) => member.player_id === playerId)
-        ? {
-            round_id: latestCompletedRound.id,
-            player_id: playerId,
-            team_id: null,
-            status: "no-pick",
-            reason: "no-pick",
-          }
-        : null);
+    const myMembership =
+      members.find((member: any) => String(member.player_id) === String(playerId)) ?? null;
+    const myElimination = myMembership
+      ? getMemberElimination(myMembership, safeRounds, picks, leagueId)
+      : null;
     const through = finalRoundPicks.filter((pick: any) => pick.status === "through");
     const winner = through.length === 1 ? through[0] : null;
-    const teamName = myFinalPick?.team_id
-      ? " " + (myFinalPick.team_id as string)
-      : "";
 
     if (winner?.player_id === playerId) {
       appendNotification(playerId, {
@@ -96,20 +92,24 @@ export async function syncLeagueNotifications(playerId: string, leagueId: string
         body: `You were the last player standing after Round ${latestCompletedRound.round_number}.`,
         cta: { label: "View League", to: "/league" },
       });
-    } else if (myFinalPick?.status === "eliminated") {
+    } else if (myElimination?.pick?.status === "eliminated") {
+      const teamName =
+        myElimination.pick?.team_id
+          ? teamById.get(String(myElimination.pick.team_id)) ?? "Your team"
+          : "Your team";
       appendNotification(playerId, {
-        key: `league:${leagueId}:eliminated:${latestCompletedRound.round_number}:${playerId}`,
+        key: `league:${leagueId}:eliminated:${myElimination.round.round_number}:${playerId}`,
         type: "eliminated",
         title: "You were eliminated",
-        body: `${teamName.trim() || "Your team"} did not win in Round ${latestCompletedRound.round_number}.`,
+        body: `${teamName} did not win in Round ${myElimination.round.round_number}.`,
         cta: { label: "View Results", to: "/results" },
       });
-    } else if (myFinalPick?.status === "no-pick") {
+    } else if (myElimination?.pick?.status === "no-pick") {
       appendNotification(playerId, {
-        key: `league:${leagueId}:no-pick:${latestCompletedRound.round_number}:${playerId}`,
+        key: `league:${leagueId}:no-pick:${myElimination.round.round_number}:${playerId}`,
         type: "eliminated",
         title: "You were eliminated",
-        body: `No pick was submitted before the Round ${latestCompletedRound.round_number} deadline.`,
+        body: `No pick was submitted before the Round ${myElimination.round.round_number} deadline.`,
         cta: { label: "View Results", to: "/results" },
       });
     }

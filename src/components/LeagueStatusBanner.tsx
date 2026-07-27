@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getEffectiveUserId } from "../lib/auth";
-import { loadLeagueRoundState } from "../lib/leagueRoundState";
+import { getMemberElimination, loadLeagueRoundState } from "../lib/leagueRoundState";
 import { useNotifications } from "./Notifications";
 
 function buildOutcomePayload(state: any, leagueId: string) {
@@ -19,7 +19,7 @@ function buildOutcomePayload(state: any, leagueId: string) {
       type: "winner" as const,
       title: "You won!",
       body: `${league.name}. You were the last player standing.`,
-      emoji: "🏆",
+      emoji: "\uD83C\uDFC6",
       key: `${keyBase}:winner`,
       stats: [
         { label: "League", value: league.name },
@@ -32,25 +32,36 @@ function buildOutcomePayload(state: any, leagueId: string) {
     };
   }
 
-  if (!viewerPick) return null;
-  if (viewerPick.status === "eliminated" || viewerPick.status === "no-pick") {
+  const elimination = state.viewerMembership
+    ? getMemberElimination(
+        state.viewerMembership,
+        state.rounds,
+        state.allLeaguePicks,
+        leagueId
+      )
+    : null;
+  const eliminationRound = elimination?.round ?? round;
+  const eliminationPick = elimination?.pick ?? viewerPick;
+
+  if (!eliminationPick) return null;
+  if (eliminationPick.status === "eliminated" || eliminationPick.status === "no-pick") {
     const teamName =
-      viewerPick.status === "no-pick"
+      eliminationPick.status === "no-pick"
         ? "No pick"
-        : state.teams.find((team: any) => String(team.id) === String(viewerPick.team_id))?.name ?? "Your pick";
+        : state.teams.find((team: any) => String(team.id) === String(eliminationPick.team_id))?.name ?? "Your pick";
     const body =
-      viewerPick.status === "no-pick"
-        ? `No pick was submitted before the Round ${round.round_number} deadline.`
-        : `${teamName} did not win in Round ${round.round_number}.`;
+      eliminationPick.status === "no-pick"
+        ? `No pick was submitted before the Round ${eliminationRound.round_number} deadline.`
+        : `${teamName} did not win in Round ${eliminationRound.round_number}.`;
     return {
       type: "eliminated" as const,
-      title: "You're out",
+      title: "You've been eliminated",
       body,
-      emoji: "❌",
-      key: `${keyBase}:eliminated`,
+      emoji: "\u274C",
+      key: `lms_outcome_shown_v2:${leagueId}:${eliminationRound.round_number}:${viewerId}:eliminated`,
       stats: [
         { label: "League", value: league.name },
-        { label: "Round", value: String(round.round_number) },
+        { label: "Round", value: String(eliminationRound.round_number) },
       ],
       ctas: [
         { label: "View results", to: "/results" },
@@ -81,7 +92,7 @@ export function LeagueStatusBanner({ leagueId: leagueIdProp }: { leagueId?: stri
       const currentRound = nextState.round;
       const previousRound =
         currentRound && currentRound.round_number > 1
-          ? nextState.rounds.find((round: any) => round.round_number === currentRound.round_number - 1) ?? null
+          ? nextState.rounds.find((entry: any) => entry.round_number === currentRound.round_number - 1) ?? null
           : null;
       const viewerMembership =
         uid
@@ -127,7 +138,7 @@ export function LeagueStatusBanner({ leagueId: leagueIdProp }: { leagueId?: stri
           </div>
           <div className="mt-1 text-sm text-slate-700">{winnerLabel}</div>
         </div>
-      ) : pickOpen && !state.viewerPick ? (
+      ) : pickOpen && viewerActive && !state.viewerPick ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div className="text-sm font-semibold text-emerald-700">
             Round {state.round.round_number} Open
@@ -152,7 +163,7 @@ export function LeagueStatusBanner({ leagueId: leagueIdProp }: { leagueId?: stri
             </button>
           </div>
         </div>
-      ) : pickOpen && state.viewerPick ? (
+      ) : pickOpen && viewerActive && state.viewerPick ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div className="text-sm font-semibold text-emerald-700">Pick Submitted</div>
           <div className="mt-1 text-sm text-slate-700">

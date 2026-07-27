@@ -139,14 +139,32 @@ export function LeagueSummary() {
       try {
         setLoadError(null);
         await (dataService as any).seed?.();
-        setViewerUserId(await getEffectiveUserId());
+        const uid = await getEffectiveUserId();
+        setViewerUserId(uid);
 
         let lg = null;
-        if (activeLeagueId) {
+        let leagueId = activeLeagueId;
+        if (!leagueId && uid) {
+          const resp = await fetch("/api/user-leagues", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: uid }),
+          });
+          if (resp.ok) {
+            const visible = (await resp.json()) as Array<any>;
+            leagueId = visible[0]?.id ?? "";
+            if (leagueId) {
+              localStorage.setItem("active_league_id", leagueId);
+              setActiveLeagueId(leagueId);
+            }
+          }
+        }
+
+        if (leagueId) {
           const { data } = await supa
             .from("leagues")
             .select("*")
-            .eq("id", activeLeagueId)
+            .eq("id", leagueId)
             .is("deleted_at", null)
             .maybeSingle();
           lg = data ?? null;
@@ -354,6 +372,8 @@ export function LeagueSummary() {
   const roundNumber = round?.round_number ?? league.current_round ?? "\u2014";
   const pickRatio = kpis.entrants ? kpis.picksSubmitted / kpis.entrants : 0;
   const showPreFirstPick = guidance.shouldGuide && activeLeagueId === league.id;
+  const viewerMembership = memberships.find((member: any) => String(member.player_id) === String(viewerUserId)) ?? null;
+  const viewerCanPick = viewerMembership?.is_active !== false && league.status !== "completed";
 
   if (showPreFirstPick) {
     return (
@@ -449,10 +469,10 @@ export function LeagueSummary() {
 
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => navigate("/make-pick")}
+                onClick={() => navigate(viewerCanPick ? "/make-pick" : "/results")}
                 className="rounded-lg bg-white text-slate-900 px-4 py-2 font-medium hover:bg-slate-100 transition"
               >
-                Make / Change Pick
+                {viewerCanPick ? "Make / Change Pick" : "Results"}
               </button>
               <button
                 onClick={() => navigate("/leaderboard")}
