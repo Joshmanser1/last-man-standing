@@ -1,4 +1,3 @@
-import { supa } from "../lib/supabaseClient";
 import { appendNotification } from "./notifyFeed";
 import { postJsonWithAuth } from "./apiAuth";
 import { getMemberElimination } from "./leagueRoundState";
@@ -8,18 +7,17 @@ const MEMBERS_SNAPSHOT_KEY = "lms_notification_members_v1";
 export async function syncLeagueNotifications(playerId: string, leagueId: string) {
   if (!playerId || !leagueId) return;
 
-  const [{ data: league }, { data: rounds }] = await Promise.all([
-    supa
-      .from("leagues")
-      .select("id, name, current_round, status, is_test")
-      .eq("id", leagueId)
-      .is("deleted_at", null)
-      .maybeSingle(),
-    supa.from("rounds").select("*").eq("league_id", leagueId).order("round_number", { ascending: true }),
-  ]);
+  const stateResp = await postJsonWithAuth("/api/league-state", { league_id: leagueId });
+  if (!stateResp.ok) return;
+  const state = (await stateResp.json()) as {
+    league?: any;
+    rounds?: any[];
+    teams?: any[];
+  };
+  const league = state.league;
   if (!league) return;
-  const safeRounds = rounds ?? [];
-  const { data: teams } = await supa.from("teams").select("id, name").eq("league_id", leagueId);
+  const safeRounds = state.rounds ?? [];
+  const teams = state.teams ?? [];
   const teamById = new Map<string, string>(
     (teams ?? []).map((team: any) => [String(team.id), String(team.name)])
   );

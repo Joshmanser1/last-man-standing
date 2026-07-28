@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import * as htmlToImage from "html-to-image";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
-import { supa } from "../lib/supabaseClient";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 import { postJsonWithAuth } from "../lib/apiAuth";
 import { getEffectiveUserId } from "../lib/auth";
@@ -129,13 +128,10 @@ export function Leaderboard() {
           return;
         }
 
-        const { data: lg } = await supa
-          .from("leagues")
-          .select("*")
-          .eq("id", nextLeagueId)
-          .is("deleted_at", null)
-          .maybeSingle();
-        if (!lg) {
+        const leagueStateResp = await postJsonWithAuth("/api/league-state", {
+          league_id: nextLeagueId,
+        });
+        if (!leagueStateResp.ok) {
           setLeague(null);
           setRounds([]);
           setTeams([]);
@@ -144,28 +140,33 @@ export function Leaderboard() {
           setPlayersById(new Map());
           return;
         }
-        setLeague(lg as League);
+        const leagueState = (await leagueStateResp.json()) as {
+          league?: League | null;
+          rounds?: Round[];
+          teams?: Team[];
+        };
+        if (!leagueState.league) {
+          setLeague(null);
+          setRounds([]);
+          setTeams([]);
+          setMemberships([]);
+          setPicks([]);
+          setPlayersById(new Map());
+          return;
+        }
+        setLeague(leagueState.league);
 
-        const [roundsRes, teamsRes, picksResp] = await Promise.all([
-          supa
-            .from("rounds")
-            .select("*")
-            .eq("league_id", nextLeagueId)
-            .order("round_number", { ascending: true }),
-          supa.from("teams").select("*").eq("league_id", nextLeagueId),
+        const [picksResp, memberResp] = await Promise.all([
           postJsonWithAuth("/api/league-picks", { league_id: nextLeagueId }),
+          postJsonWithAuth("/api/league-members", { league_id: nextLeagueId }),
         ]);
-
-        const memberResp = await postJsonWithAuth("/api/league-members", {
-          league_id: nextLeagueId,
-        });
         if (!memberResp.ok) throw new Error("Failed to load league members");
         if (!picksResp.ok) throw new Error("Failed to load league picks");
         const memberRows = (await memberResp.json()) as Array<any>;
         const pickRows = (await picksResp.json()) as Pick[];
 
-        setRounds((roundsRes.data ?? []) as Round[]);
-        setTeams((teamsRes.data ?? []) as Team[]);
+        setRounds((leagueState.rounds ?? []) as Round[]);
+        setTeams((leagueState.teams ?? []) as Team[]);
         setMemberships(
           (memberRows ?? []).map((m: any) => ({
             id: `${m.league_id}:${m.player_id}`,

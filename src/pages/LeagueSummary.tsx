@@ -2,9 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
-import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
-import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
 import { loadLeagueRoundState } from "../lib/leagueRoundState";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
@@ -138,11 +136,9 @@ export function LeagueSummary() {
       setLoading(true);
       try {
         setLoadError(null);
-        await (dataService as any).seed?.();
         const uid = await getEffectiveUserId();
         setViewerUserId(uid);
 
-        let lg = null;
         let leagueId = activeLeagueId;
         if (!leagueId && uid) {
           const resp = await fetch("/api/user-leagues", {
@@ -159,22 +155,7 @@ export function LeagueSummary() {
             }
           }
         }
-
-        if (leagueId) {
-          const { data } = await supa
-            .from("leagues")
-            .select("*")
-            .eq("id", leagueId)
-            .is("deleted_at", null)
-            .maybeSingle();
-          lg = data ?? null;
-        }
-
-        if (!lg) {
-          lg = (await (dataService as any).listLeagues?.())?.[0] || null;
-        }
-
-        if (!lg) {
+        if (!leagueId) {
           setLeague(null);
           setRound(null);
           setTeams([]);
@@ -185,7 +166,7 @@ export function LeagueSummary() {
           return;
         }
 
-        const state = await loadLeagueRoundState(lg.id);
+        const state = await loadLeagueRoundState(leagueId);
         setLeague(state.league);
         setRound(state.round);
         setTeams([...(state.teams || [])].sort((a: any, b: any) => a.name.localeCompare(b.name)));

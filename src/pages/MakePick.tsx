@@ -28,6 +28,7 @@ export function MakePick() {
   const [viewerMembership, setViewerMembership] = useState<any>(null);
   const [winnerName, setWinnerName] = useState<string>("");
   const [inactiveMessage, setInactiveMessage] = useState<string>("");
+  const [loadError, setLoadError] = useState<string>("");
 
   const navigate = useNavigate();
   const toast = useToast();
@@ -59,6 +60,7 @@ export function MakePick() {
       setViewerMembership(null);
       setWinnerName("");
       setInactiveMessage("");
+      setLoadError("");
       setLoading(false);
       return;
     }
@@ -66,8 +68,9 @@ export function MakePick() {
     (async () => {
       setLoading(true);
       try {
-        const leagues = await (dataService as any).listLeagues();
-        const activeLeague = leagues.find((x: any) => x.id === leagueId) || null;
+        setLoadError("");
+        const roundState = await loadLeagueRoundState(leagueId);
+        const activeLeague = roundState.league ?? null;
         setLeague(activeLeague);
 
         if (!activeLeague) {
@@ -80,23 +83,23 @@ export function MakePick() {
           setViewerMembership(null);
           setWinnerName("");
           setInactiveMessage("");
+          setLoadError("League not found");
           return;
         }
 
-        const roundState = await loadLeagueRoundState(leagueId);
         const myMembership =
           (roundState.memberships ?? []).find((member: any) => String(member.player_id) === String(playerId)) ??
           null;
         setViewerMembership(myMembership);
         setWinnerName(roundState.winnerName ?? "");
+        setLeague(roundState.league ?? activeLeague);
+        setRound(roundState.round);
+        setTeams(roundState.teams ?? []);
+        setCurrentPick(roundState.viewerPick ?? null);
         const elimination = myMembership
           ? getMemberElimination(myMembership, roundState.rounds, roundState.allLeaguePicks, leagueId)
           : null;
         if (activeLeague.status === "completed") {
-          setLeague(roundState.league ?? activeLeague);
-          setRound(roundState.round);
-          setTeams(roundState.teams ?? []);
-          setCurrentPick(roundState.viewerPick ?? null);
           setUsedTeamIds(new Set());
           setUsedByRound({});
           setOpponentByTeamId({});
@@ -104,10 +107,6 @@ export function MakePick() {
           return;
         }
         if (myMembership?.is_active === false) {
-          setLeague(roundState.league ?? activeLeague);
-          setRound(roundState.round);
-          setTeams(roundState.teams ?? []);
-          setCurrentPick(roundState.viewerPick ?? null);
           setUsedTeamIds(new Set());
           setUsedByRound({});
           setOpponentByTeamId({});
@@ -124,18 +123,20 @@ export function MakePick() {
           return;
         }
 
-        const currentRound = await dataService.getCurrentRound(leagueId);
+        const currentRound = roundState.round;
+        if (!currentRound) {
+          setLoadError("Failed to load the current round");
+          return;
+        }
         setRound(currentRound);
 
-        const leagueTeams = await dataService.listTeams(leagueId);
+        const leagueTeams = roundState.teams ?? [];
         setTeams(leagueTeams ?? []);
 
         const used = await dataService.listUsedTeamIds(leagueId, playerId);
         setUsedTeamIds(used);
 
-        const picksThisRound = await dataService.listPicks(currentRound.id);
-        const mine = picksThisRound.find((p: any) => p.player_id === playerId);
-        setCurrentPick(mine ?? null);
+        setCurrentPick(roundState.viewerPick ?? null);
 
         try {
           const [{ data: myPicks }, { data: roundRows }] = await Promise.all([
@@ -195,6 +196,8 @@ export function MakePick() {
         } catch {
           setOpponentByTeamId({});
         }
+      } catch (err: any) {
+        setLoadError(err?.message ?? "Failed to load picks");
       } finally {
         setLoading(false);
       }
@@ -298,6 +301,7 @@ export function MakePick() {
   }
 
   if (loading || !league || !round) {
+    const message = loadError || "Loading picks...";
     return (
       <div
         data-testid="make-pick-page"
@@ -312,7 +316,7 @@ export function MakePick() {
               setReloadTick((x) => x + 1);
             }}
           />
-          <div className="text-slate-500 text-sm">Loading picks...</div>
+          <div className="text-slate-500 text-sm">{message}</div>
         </div>
       </div>
     );

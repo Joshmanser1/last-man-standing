@@ -1,5 +1,3 @@
-import { supa } from "./supabaseClient";
-import { dataService } from "../data/service";
 import { getEffectiveUserId } from "./auth";
 import { postJsonWithAuth } from "./apiAuth";
 
@@ -167,30 +165,26 @@ export async function loadLeagueRoundState(
   selectedRoundId?: string
 ): Promise<LeagueRoundState> {
   const viewerId = (await getEffectiveUserId()) ?? "";
-  const [{ data: league }, { data: roundRows }, teams, picksResp, memberResp] =
-    await Promise.all([
-      supa
-        .from("leagues")
-        .select("*")
-        .eq("id", leagueId)
-        .is("deleted_at", null)
-        .maybeSingle(),
-      supa
-        .from("rounds")
-        .select("*")
-        .eq("league_id", leagueId)
-        .order("round_number", { ascending: true }),
-      dataService.listTeams(leagueId).catch(() => []),
-      postJsonWithAuth("/api/league-picks", { league_id: leagueId }),
-      postJsonWithAuth("/api/league-members", { league_id: leagueId }),
-    ]);
+  const [stateResp, picksResp, memberResp] = await Promise.all([
+    postJsonWithAuth("/api/league-state", { league_id: leagueId }),
+    postJsonWithAuth("/api/league-picks", { league_id: leagueId }),
+    postJsonWithAuth("/api/league-members", { league_id: leagueId }),
+  ]);
 
+  if (!stateResp.ok) throw new Error("Failed to load league state");
   if (!picksResp.ok) throw new Error("Failed to load league picks");
   if (!memberResp.ok) throw new Error("Failed to load league members");
 
+  const stateBody = (await stateResp.json()) as {
+    league?: any;
+    rounds?: any[];
+    teams?: any[];
+  };
+  const league = stateBody?.league ?? null;
+  const rounds = stateBody?.rounds ?? [];
+  const teams = stateBody?.teams ?? [];
   const allLeaguePicks = (await picksResp.json()) as any[];
   const memberships = (await memberResp.json()) as any[];
-  const rounds = roundRows ?? [];
   const viewerMembership =
     viewerId
       ? memberships.find((member: any) => String(member.player_id) === String(viewerId)) ?? null
@@ -202,7 +196,6 @@ export async function loadLeagueRoundState(
     typeof (league as any)?.current_round === "number"
       ? ((league as any).current_round as number)
       : null;
-  const currentRound = await dataService.getCurrentRound(leagueId).catch(() => null);
   const latestCompletedRound =
     [...rounds]
       .filter((r: any) => r?.status === "completed")
@@ -214,7 +207,6 @@ export async function loadLeagueRoundState(
     (leagueCurrentRound != null
       ? rounds.find((r: any) => r.round_number === leagueCurrentRound)
       : null) ??
-    currentRound ??
     rounds[rounds.length - 1] ??
     null;
   const shouldSynthesizeNoPicks =
@@ -288,7 +280,7 @@ export async function loadLeagueRoundState(
     rounds,
     round,
     memberships,
-    teams: teams || [],
+    teams,
     allLeaguePicks,
     selectedRoundPicks,
     selectedRoundEntries,
