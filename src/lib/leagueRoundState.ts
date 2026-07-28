@@ -191,6 +191,13 @@ export async function loadLeagueRoundState(
   const allLeaguePicks = (await picksResp.json()) as any[];
   const memberships = (await memberResp.json()) as any[];
   const rounds = roundRows ?? [];
+  const viewerMembership =
+    viewerId
+      ? memberships.find((member: any) => String(member.player_id) === String(viewerId)) ?? null
+      : null;
+  const viewerElimination = viewerMembership
+    ? getMemberElimination(viewerMembership, rounds, allLeaguePicks, leagueId)
+    : null;
   const leagueCurrentRound =
     typeof (league as any)?.current_round === "number"
       ? ((league as any).current_round as number)
@@ -203,6 +210,7 @@ export async function loadLeagueRoundState(
   const round =
     (selectedRoundId ? rounds.find((r: any) => r.id === selectedRoundId) : null) ??
     ((league as any)?.status === "completed" ? latestCompletedRound : null) ??
+    (viewerMembership?.is_active === false ? viewerElimination?.round ?? null : null) ??
     (leagueCurrentRound != null
       ? rounds.find((r: any) => r.round_number === leagueCurrentRound)
       : null) ??

@@ -339,6 +339,7 @@ export function LeagueSummary() {
         <div className="max-w-lg text-center space-y-4">
           <div className="flex justify-center">
             <GameSelector
+              value={activeLeagueId}
               label="Select game"
               onChange={(id) => {
                 setActiveLeagueId(id);
@@ -380,6 +381,7 @@ export function LeagueSummary() {
       <div className="mx-auto max-w-6xl p-4 md:p-6">
         <div className="mb-3 flex justify-end">
           <GameSelector
+            value={activeLeagueId}
             label="Viewing game"
             onChange={(id) => {
               setActiveLeagueId(id);
@@ -423,6 +425,7 @@ export function LeagueSummary() {
       {/* Page-level game selector */}
       <div className="mb-3 flex justify-end">
         <GameSelector
+          value={activeLeagueId}
           label="Viewing game"
           onChange={(id) => {
             setActiveLeagueId(id);

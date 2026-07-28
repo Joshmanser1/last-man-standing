@@ -19,6 +19,7 @@ type DashboardLeague = {
   deadlineUtc?: string;
   hasViewerPick: boolean;
   viewerActive: boolean;
+  eliminationRound?: number;
   pickedTeamName?: string;
   winnerName?: string;
 };
@@ -96,6 +97,25 @@ export function MyGames() {
             const viewerMembership =
               (state.memberships ?? []).find((member: any) => String(member.player_id) === String(state.viewerId)) ??
               null;
+            const eliminationEntry =
+              viewerMembership?.is_active === false
+                ? (state.rounds || [])
+                    .sort((a: any, b: any) => (a.round_number ?? 0) - (b.round_number ?? 0))
+                    .map((entry: any) => ({
+                      round: entry,
+                      pick:
+                        (state.allLeaguePicks || []).find(
+                          (pick: any) =>
+                            String(pick.round_id) === String(entry.id) &&
+                            String(pick.player_id) === String(state.viewerId)
+                        ) ?? null,
+                    }))
+                    .find(
+                      (entry: any) =>
+                        entry.pick &&
+                        (entry.pick.status === "eliminated" || entry.pick.status === "no-pick")
+                    ) ?? null
+                : null;
             const pickedTeamName =
               state.viewerPick?.team_id && Array.isArray(state.teams)
                 ? (state.teams.find((team: any) => String(team.id) === String(state.viewerPick.team_id))?.name as string | undefined)
@@ -111,6 +131,7 @@ export function MyGames() {
               deadlineUtc: (state.round?.pick_deadline_utc as string) ?? undefined,
               hasViewerPick,
               viewerActive: viewerMembership?.is_active !== false,
+              eliminationRound: eliminationEntry?.round?.round_number ?? undefined,
               pickedTeamName,
               winnerName: state.winnerName ?? undefined,
             } as DashboardLeague;
@@ -178,9 +199,14 @@ export function MyGames() {
       return league.roundStatus === "locked" || league.roundStatus === "completed";
     });
 
+    const following = leagues.filter((league) => {
+      if (league.viewerActive) return false;
+      return league.status !== "completed";
+    });
+
     const completed = leagues.filter((league) => league.status === "completed");
 
-    return { open, picked, waiting, completed };
+    return { open, picked, waiting, following, completed };
   }, [leagues]);
 
   if (!hydrated) {
@@ -270,6 +296,11 @@ export function MyGames() {
                         Selected team: {league.pickedTeamName}
                       </div>
                     )}
+                    {!league.viewerActive && league.status !== "completed" && league.eliminationRound && (
+                      <div className="mt-1 text-xs text-slate-500">
+                        Eliminated in Round {league.eliminationRound}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap gap-2 text-xs">{actions(league)}</div>
@@ -334,6 +365,22 @@ export function MyGames() {
         "Waiting / Locked",
         sections.waiting,
         "No leagues are waiting right now. We'll show them here once picks are locked or results are pending.",
+        (league) => (
+          <>
+            <button className="btn btn-primary text-xs" onClick={() => goToResults(league.id)}>
+              Results
+            </button>
+            <button className="btn btn-ghost text-xs" onClick={() => goToLeaderboard(league.id)}>
+              Leaderboard
+            </button>
+          </>
+        )
+      )}
+
+      {renderSection(
+        "Eliminated / Following",
+        sections.following,
+        "No eliminated leagues to follow right now.",
         (league) => (
           <>
             <button className="btn btn-primary text-xs" onClick={() => goToResults(league.id)}>

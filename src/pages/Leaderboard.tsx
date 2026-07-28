@@ -80,10 +80,10 @@ export function Leaderboard() {
   const [playersById, setPlayersById] = useState<Map<ID, Player>>(new Map());
   const [viewerId, setViewerId] = useState("");
   const [loading, setLoading] = useState<boolean>(true);
+  const [leagueId, setLeagueId] = useState(() => localStorage.getItem("active_league_id") || "");
 
   const exportRef = useRef<HTMLDivElement>(null);
-  const activeLeagueId = localStorage.getItem("active_league_id") || "";
-  const guidance = useFirstPickGuidance(activeLeagueId);
+  const guidance = useFirstPickGuidance(leagueId);
 
   function changeView(next: ViewMode) {
     setView(next);
@@ -103,8 +103,8 @@ export function Leaderboard() {
       try {
         const uid = (await getEffectiveUserId()) || "";
         setViewerId(uid);
-        let leagueId = activeLeagueId;
-        if (!leagueId && uid) {
+        let nextLeagueId = leagueId;
+        if (!nextLeagueId && uid) {
           const resp = await fetch("/api/user-leagues", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -112,11 +112,14 @@ export function Leaderboard() {
           });
           if (resp.ok) {
             const visible = (await resp.json()) as Array<any>;
-            leagueId = visible[0]?.id ?? "";
-            if (leagueId) localStorage.setItem("active_league_id", leagueId);
+            nextLeagueId = visible[0]?.id ?? "";
+            if (nextLeagueId) {
+              localStorage.setItem("active_league_id", nextLeagueId);
+              setLeagueId(nextLeagueId);
+            }
           }
         }
-        if (!leagueId) {
+        if (!nextLeagueId) {
           setLeague(null);
           setRounds([]);
           setTeams([]);
@@ -125,10 +128,11 @@ export function Leaderboard() {
           setPlayersById(new Map());
           return;
         }
+
         const { data: lg } = await supa
           .from("leagues")
           .select("*")
-          .eq("id", leagueId)
+          .eq("id", nextLeagueId)
           .is("deleted_at", null)
           .maybeSingle();
         if (!lg) {
@@ -146,14 +150,14 @@ export function Leaderboard() {
           supa
             .from("rounds")
             .select("*")
-            .eq("league_id", leagueId)
+            .eq("league_id", nextLeagueId)
             .order("round_number", { ascending: true }),
-          supa.from("teams").select("*").eq("league_id", leagueId),
-          postJsonWithAuth("/api/league-picks", { league_id: leagueId }),
+          supa.from("teams").select("*").eq("league_id", nextLeagueId),
+          postJsonWithAuth("/api/league-picks", { league_id: nextLeagueId }),
         ]);
 
         const memberResp = await postJsonWithAuth("/api/league-members", {
-          league_id: leagueId,
+          league_id: nextLeagueId,
         });
         if (!memberResp.ok) throw new Error("Failed to load league members");
         if (!picksResp.ok) throw new Error("Failed to load league picks");
@@ -184,7 +188,7 @@ export function Leaderboard() {
         setLoading(false);
       }
     })();
-  }, [activeLeagueId]);
+  }, [leagueId]);
 
   const teamsById = useMemo(() => {
     const map = new Map<ID, Team>();
@@ -198,7 +202,7 @@ export function Leaderboard() {
 
     for (const round of rounds) {
       const { selectedRoundEntries } = buildRoundEntries(
-        league?.id ?? activeLeagueId,
+        league?.id ?? leagueId,
         round,
         rounds,
         memberships,
@@ -211,7 +215,7 @@ export function Leaderboard() {
     }
 
     return [...picks, ...synthetic].filter((pick) => byRound.has(pick.round_id));
-  }, [activeLeagueId, league, memberships, picks, rounds]);
+  }, [leagueId, league, memberships, picks, rounds]);
 
   const picksByPlayerByRound = useMemo(() => {
     const map = new Map<ID, Map<number, Pick>>();
@@ -242,8 +246,8 @@ export function Leaderboard() {
       const membership =
         membershipByPlayerId.get(playerId) ??
         ({
-          id: `${league?.id ?? activeLeagueId}:${playerId}`,
-          league_id: league?.id ?? activeLeagueId,
+          id: `${league?.id ?? leagueId}:${playerId}`,
+          league_id: league?.id ?? leagueId,
           player_id: playerId,
           is_active: false,
           joined_at: "",
@@ -283,7 +287,7 @@ export function Leaderboard() {
       return a.name.localeCompare(b.name);
     });
     return filtered;
-  }, [memberships, playersById, picksByPlayerByRound, showElims, effectivePicks, league, activeLeagueId]);
+  }, [memberships, playersById, picksByPlayerByRound, showElims, effectivePicks, league, leagueId]);
 
   const eliminationRows = useMemo(() => {
     const byRound = new Map<string, Round>(rounds.map((r) => [r.id, r]));
@@ -295,7 +299,7 @@ export function Leaderboard() {
         return {
           roundNumber: round?.round_number ?? 0,
           playerName: playersById.get(p.player_id)?.display_name ?? "Unknown",
-          teamName: team?.name ?? "—",
+          teamName: team?.name ?? "\u2014",
           reason: p.reason ?? (p.status === "no-pick" ? "no-pick" : "loss"),
           when: round?.pick_deadline_utc ?? "",
         } as EliminationRow;
@@ -384,7 +388,7 @@ export function Leaderboard() {
     }
   }
 
-  if (loading && activeLeagueId) {
+  if (loading && leagueId) {
     return (
       <div className="container-page py-10 grid place-items-center text-slate-600">
         <div className="text-center">
@@ -400,7 +404,7 @@ export function Leaderboard() {
         <div className="text-center">
           <div className="font-semibold mb-2">No active game selected</div>
         </div>
-        {!activeLeagueId && (
+        {!leagueId && (
           <button className="btn btn-primary" onClick={() => navigate("/my-games")}>
             Open My Games
           </button>
@@ -411,7 +415,7 @@ export function Leaderboard() {
 
   return (
     <div className="container-page py-6 space-y-4">
-      <LeagueStatusBanner leagueId={activeLeagueId} />
+      <LeagueStatusBanner leagueId={leagueId} />
       {guidance.shouldGuide ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
           The leaderboard will appear once players have submitted their picks.
@@ -588,7 +592,7 @@ export function Leaderboard() {
                         {row.reason === "no-pick" ? "No Pick" : row.reason}
                       </td>
                       <td className="px-3 py-2">
-                        {row.when ? new Date(row.when).toLocaleString() : "—"}
+                        {row.when ? new Date(row.when).toLocaleString() : "\u2014"}
                       </td>
                     </tr>
                   ))}

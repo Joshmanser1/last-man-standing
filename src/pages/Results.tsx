@@ -40,21 +40,36 @@ export function Results() {
   const guidance = useFirstPickGuidance(leagueId);
 
   useEffect(() => {
-    if (!leagueId) {
-      setViewerId("");
-      setRounds([]);
-      setSelectedRoundId("");
-      setRound(null);
-      setTeams([]);
-      setPicks([]);
-      setMemberships([]);
-      setPlayersById({});
-      setWinnerPlayerId("");
-      return;
-    }
-
     (async () => {
-      const initial = await loadLeagueRoundState(leagueId, selectedRoundId);
+      let nextLeagueId = leagueId;
+      if (!nextLeagueId) {
+        const uid = (await getEffectiveUserId()) ?? "";
+        if (!uid) {
+          setViewerId("");
+          setRounds([]);
+          setSelectedRoundId("");
+          setRound(null);
+          setTeams([]);
+          setPicks([]);
+          setMemberships([]);
+          setPlayersById({});
+          setWinnerPlayerId("");
+          return;
+        }
+        const visibleResp = await fetch("/api/user-leagues", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: uid }),
+        });
+        if (!visibleResp.ok) return;
+        const visibleLeagues = (await visibleResp.json()) as Array<any>;
+        nextLeagueId = visibleLeagues[0]?.id ?? "";
+        if (!nextLeagueId) return;
+        localStorage.setItem("active_league_id", nextLeagueId);
+        setLeagueId(nextLeagueId);
+      }
+
+      const initial = await loadLeagueRoundState(nextLeagueId, selectedRoundId);
       const allRounds = initial.rounds ?? [];
       setRounds(allRounds);
       const nextSelectedRoundId =
@@ -68,7 +83,7 @@ export function Results() {
       const state =
         nextSelectedRoundId === initial.round?.id
           ? initial
-          : await loadLeagueRoundState(leagueId, nextSelectedRoundId);
+          : await loadLeagueRoundState(nextLeagueId, nextSelectedRoundId);
       setViewerId(state.viewerId);
       setRound(state.round);
       setTeams(state.teams);
@@ -138,6 +153,7 @@ export function Results() {
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-2xl font-bold">Results</h2>
           <GameSelector
+            value={leagueId}
             label="Viewing game"
             onChange={(id) => {
               setLeagueId(id);
@@ -188,6 +204,7 @@ export function Results() {
             ))}
           </select>
           <GameSelector
+            value={leagueId}
             label="Viewing game"
             onChange={(id) => {
               setLeagueId(id);

@@ -87,7 +87,6 @@ function NotificationList({
 export function NotificationBell() {
   const navigate = useNavigate();
   const [playerId, setPlayerId] = useState("");
-  const activeLeagueId = localStorage.getItem("active_league_id") || "";
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<any[]>([]);
   const [lastViewedAt, setLastViewedAtState] = useState(0);
@@ -147,11 +146,21 @@ export function NotificationBell() {
   }, []);
 
   useEffect(() => {
-    if (!playerId || !activeLeagueId) return;
+    if (!playerId) return;
     let disposed = false;
 
     const run = async () => {
-      await syncLeagueNotifications(playerId, activeLeagueId);
+      const visibleResp = await fetch("/api/user-leagues", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: playerId }),
+      });
+      if (!visibleResp.ok) return;
+      const visibleLeagues = (await visibleResp.json()) as Array<any>;
+      for (const league of visibleLeagues ?? []) {
+        if (!league?.id) continue;
+        await syncLeagueNotifications(playerId, String(league.id));
+      }
       if (!disposed) refreshFeed(playerId);
     };
 
@@ -161,7 +170,7 @@ export function NotificationBell() {
       disposed = true;
       window.clearInterval(t);
     };
-  }, [playerId, activeLeagueId]);
+  }, [playerId]);
 
   useEffect(() => {
     refreshFeed(playerId);

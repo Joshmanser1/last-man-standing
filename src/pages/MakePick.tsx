@@ -264,6 +264,7 @@ export function MakePick() {
           <div className="flex justify-between items-center gap-3">
             <h1 className="text-2xl font-bold">Make your pick</h1>
             <GameSelector
+              value={leagueId}
               label="Select game"
               onChange={(id) => {
                 setLeagueId(id);
@@ -304,6 +305,7 @@ export function MakePick() {
       >
         <div className="flex flex-col items-center gap-3">
           <GameSelector
+            value={leagueId}
             label="Viewing game"
             onChange={(id) => {
               setLeagueId(id);
@@ -321,6 +323,7 @@ export function MakePick() {
       <div data-testid="make-pick-page" className="container-page py-6">
         <div className="mb-4 flex justify-end">
           <GameSelector
+            value={leagueId}
             label="Viewing game"
             onChange={(id) => {
               setLeagueId(id);
@@ -380,6 +383,7 @@ export function MakePick() {
     <div data-testid="make-pick-page" className="container-page py-6">
       <div className="mb-4 flex justify-end">
         <GameSelector
+          value={leagueId}
           label="Viewing game"
           onChange={(id) => {
             setLeagueId(id);
