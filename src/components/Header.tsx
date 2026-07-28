@@ -181,9 +181,6 @@ export function Header() {
                   <NavLink to="/make-pick" className={linkCls}>
                     Picks
                   </NavLink>
-                  <NavLink to="/results" className={linkCls}>
-                    Results
-                  </NavLink>
                   <NavLink to="/leaderboard" className={linkCls}>
                     Leaderboard
                   </NavLink>
@@ -269,9 +266,6 @@ export function Header() {
             <>
               <NavLink to="/make-pick" className={linkCls}>
                 Picks
-              </NavLink>
-              <NavLink to="/results" className={linkCls}>
-                Results
               </NavLink>
               <NavLink to="/leaderboard" className={linkCls}>
                 Leaderboard

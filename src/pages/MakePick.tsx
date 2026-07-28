@@ -254,7 +254,7 @@ export function MakePick() {
         throw new Error(msg);
       }
       toast(isUpdatingPick ? "Pick updated" : "Pick submitted", { variant: "success" });
-      navigate("/results");
+      navigate("/leaderboard");
     } catch (e: any) {
       toast(e?.message ?? "Could not save pick.", { variant: "error" });
     }
@@ -341,8 +341,8 @@ export function MakePick() {
             {winnerName ? `Winner: ${winnerName}.` : "Final results are available."}
           </p>
           <div className="flex gap-2">
-            <button className="btn btn-primary" type="button" onClick={() => navigate("/results")}>
-              View Results
+            <button className="btn btn-primary" type="button" onClick={() => navigate("/leaderboard")}>
+              View Leaderboard
             </button>
             <button className="btn btn-ghost" type="button" onClick={() => navigate("/leaderboard")}>
               View Leaderboard
@@ -371,8 +371,8 @@ export function MakePick() {
             {inactiveMessage || "You can still follow the remaining rounds and view the league history."}
           </p>
           <div className="flex gap-2">
-            <button className="btn btn-primary" type="button" onClick={() => navigate("/results")}>
-              View Results
+            <button className="btn btn-primary" type="button" onClick={() => navigate("/leaderboard")}>
+              View Leaderboard
             </button>
             <button className="btn btn-ghost" type="button" onClick={() => navigate("/leaderboard")}>
               View Leaderboard

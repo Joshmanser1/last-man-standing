@@ -155,11 +155,6 @@ export function MyGames() {
     navigate("/make-pick");
   }
 
-  function goToResults(id: string) {
-    setActive(id);
-    navigate("/results");
-  }
-
   function goToLeaderboard(id: string) {
     setActive(id);
     navigate("/leaderboard");
@@ -350,14 +345,9 @@ export function MyGames() {
         sections.picked,
         "No picks submitted for this round yet.",
         (league) => (
-          <>
-            <button className="btn btn-primary text-xs" onClick={() => goToResults(league.id)}>
-              View Pick / Results
-            </button>
-            <button className="btn btn-ghost text-xs" onClick={() => goToLeaderboard(league.id)}>
-              Leaderboard
-            </button>
-          </>
+          <button className="btn btn-primary text-xs" onClick={() => goToLeaderboard(league.id)}>
+            Leaderboard
+          </button>
         )
       )}
 
@@ -366,14 +356,9 @@ export function MyGames() {
         sections.waiting,
         "No leagues are waiting right now. We'll show them here once picks are locked or results are pending.",
         (league) => (
-          <>
-            <button className="btn btn-primary text-xs" onClick={() => goToResults(league.id)}>
-              Results
-            </button>
-            <button className="btn btn-ghost text-xs" onClick={() => goToLeaderboard(league.id)}>
-              Leaderboard
-            </button>
-          </>
+          <button className="btn btn-primary text-xs" onClick={() => goToLeaderboard(league.id)}>
+            Leaderboard
+          </button>
         )
       )}
 
@@ -382,14 +367,9 @@ export function MyGames() {
         sections.following,
         "No eliminated leagues to follow right now.",
         (league) => (
-          <>
-            <button className="btn btn-primary text-xs" onClick={() => goToResults(league.id)}>
-              Results
-            </button>
-            <button className="btn btn-ghost text-xs" onClick={() => goToLeaderboard(league.id)}>
-              Leaderboard
-            </button>
-          </>
+          <button className="btn btn-primary text-xs" onClick={() => goToLeaderboard(league.id)}>
+            Leaderboard
+          </button>
         )
       )}
 
@@ -398,14 +378,9 @@ export function MyGames() {
         sections.completed,
         "No completed games yet. Finished leagues will appear here.",
         (league) => (
-          <>
-            <button className="btn btn-primary text-xs" onClick={() => goToLeaderboard(league.id)}>
-              Leaderboard
-            </button>
-            <button className="btn btn-ghost text-xs" onClick={() => goToResults(league.id)}>
-              Results
-            </button>
-          </>
+          <button className="btn btn-primary text-xs" onClick={() => goToLeaderboard(league.id)}>
+            Leaderboard
+          </button>
         )
       )}
     </div>

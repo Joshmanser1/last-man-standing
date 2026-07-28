@@ -95,22 +95,22 @@ export async function syncLeagueNotifications(playerId: string, leagueId: string
         myElimination.pick?.team_id
           ? teamById.get(String(myElimination.pick.team_id)) ?? "Your team"
           : "Your team";
-      appendNotification(playerId, {
-        key: `league:${leagueId}:eliminated:${myElimination.round.round_number}:${playerId}`,
-        type: "eliminated",
-        title: "You were eliminated",
-        body: `${teamName} did not win in Round ${myElimination.round.round_number}.`,
-        cta: { label: "View Results", to: "/results" },
-      });
-    } else if (myElimination?.pick?.status === "no-pick") {
-      appendNotification(playerId, {
-        key: `league:${leagueId}:no-pick:${myElimination.round.round_number}:${playerId}`,
-        type: "eliminated",
-        title: "You were eliminated",
-        body: `No pick was submitted before the Round ${myElimination.round.round_number} deadline.`,
-        cta: { label: "View Results", to: "/results" },
-      });
-    }
+        appendNotification(playerId, {
+          key: `league:${leagueId}:eliminated:${myElimination.round.round_number}:${playerId}`,
+          type: "eliminated",
+          title: "You were eliminated",
+          body: `${teamName} did not win in Round ${myElimination.round.round_number}.`,
+          cta: { label: "View Leaderboard", to: "/leaderboard" },
+        });
+      } else if (myElimination?.pick?.status === "no-pick") {
+        appendNotification(playerId, {
+          key: `league:${leagueId}:no-pick:${myElimination.round.round_number}:${playerId}`,
+          type: "eliminated",
+          title: "You were eliminated",
+          body: `No pick was submitted before the Round ${myElimination.round.round_number} deadline.`,
+          cta: { label: "View Leaderboard", to: "/leaderboard" },
+        });
+      }
   } else {
     const previousRound =
       currentRound && currentRound.round_number > 1
@@ -134,7 +134,7 @@ export async function syncLeagueNotifications(playerId: string, leagueId: string
           type: "eliminated",
           title: `You were eliminated in Round ${previousRound.round_number}`,
           body: "Results are available in your league pages.",
-          cta: { label: "View Results", to: "/results" },
+          cta: { label: "View Leaderboard", to: "/leaderboard" },
         });
       }
     }

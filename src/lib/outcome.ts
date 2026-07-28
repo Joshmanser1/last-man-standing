@@ -44,7 +44,7 @@ export function computeOutcome(leagueId: string, playerId: string): OutcomePaylo
       ],
       ctas: [
         { label: "Share", action: "share" as const },
-        { label: "View Results", to: "/results" },
+        { label: "View Leaderboard", to: "/leaderboard" },
       ],
       key: `${keyBase}:winner`,
     };
@@ -63,7 +63,7 @@ export function computeOutcome(leagueId: string, playerId: string): OutcomePaylo
       ],
       ctas: [
         { label: "Make next pick", to: "/make-pick" },
-        { label: "View Results", to: "/results" },
+        { label: "View Leaderboard", to: "/leaderboard" },
       ],
       key: `${keyBase}:progressed`,
     };
@@ -82,7 +82,7 @@ export function computeOutcome(leagueId: string, playerId: string): OutcomePaylo
         { label: "Reason", value: why },
       ],
       ctas: [
-        { label: "View Results", to: "/results" },
+        { label: "View Leaderboard", to: "/leaderboard" },
         { label: "Join new game", to: "/home" },
       ],
       key: `${keyBase}:eliminated`,

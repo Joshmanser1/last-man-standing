@@ -9,12 +9,22 @@ function buildOutcomePayload(state: any, leagueId: string) {
   const round = state.round;
   const viewerId = state.viewerId;
   const viewerPick = state.viewerPick;
-  if (!league || !round || !viewerId || league.status !== "completed" || round.status !== "completed") {
+  if (!league || !viewerId) {
     return null;
   }
 
-  const keyBase = `lms_outcome_shown_v2:${leagueId}:${round.round_number}:${viewerId}`;
-  if (state.winnerPlayerId && String(state.winnerPlayerId) === String(viewerId)) {
+  const completedRound =
+    [...(state.rounds || [])]
+      .filter((entry: any) => entry?.status === "completed")
+      .sort((a: any, b: any) => (b.round_number ?? 0) - (a.round_number ?? 0))[0] ?? null;
+
+  if (
+    league.status === "completed" &&
+    completedRound &&
+    state.winnerPlayerId &&
+    String(state.winnerPlayerId) === String(viewerId)
+  ) {
+    const keyBase = `lms_outcome_shown_v2:${leagueId}:${completedRound.round_number}:${viewerId}`;
     return {
       type: "winner" as const,
       title: "You won!",
@@ -23,7 +33,7 @@ function buildOutcomePayload(state: any, leagueId: string) {
       key: `${keyBase}:winner`,
       stats: [
         { label: "League", value: league.name },
-        { label: "Round", value: String(round.round_number) },
+        { label: "Round", value: String(completedRound.round_number) },
       ],
       ctas: [
         { label: "View final standings", to: "/leaderboard" },
@@ -43,7 +53,7 @@ function buildOutcomePayload(state: any, leagueId: string) {
   const eliminationRound = elimination?.round ?? round;
   const eliminationPick = elimination?.pick ?? viewerPick;
 
-  if (!eliminationPick) return null;
+  if (!eliminationRound || !eliminationPick) return null;
   if (eliminationPick.status === "eliminated" || eliminationPick.status === "no-pick") {
     const teamName =
       eliminationPick.status === "no-pick"
@@ -51,8 +61,8 @@ function buildOutcomePayload(state: any, leagueId: string) {
         : state.teams.find((team: any) => String(team.id) === String(eliminationPick.team_id))?.name ?? "Your pick";
     const body =
       eliminationPick.status === "no-pick"
-        ? `No pick was submitted before the Round ${eliminationRound.round_number} deadline.`
-        : `${teamName} did not win in Round ${eliminationRound.round_number}.`;
+        ? `No pick was submitted before the Round ${eliminationRound.round_number} deadline. You can still follow the remaining rounds.`
+        : `${teamName} did not win in Round ${eliminationRound.round_number}. You can still follow the remaining rounds.`;
     return {
       type: "eliminated" as const,
       title: "You've been eliminated",
@@ -64,7 +74,7 @@ function buildOutcomePayload(state: any, leagueId: string) {
         { label: "Round", value: String(eliminationRound.round_number) },
       ],
       ctas: [
-        { label: "View results", to: "/results" },
+        { label: "View Leaderboard", to: "/leaderboard" },
         { label: "Dismiss", action: "close" as const },
       ],
     };

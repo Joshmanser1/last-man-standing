@@ -453,10 +453,10 @@ export function LeagueSummary() {
 
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => navigate(viewerCanPick ? "/make-pick" : "/results")}
+                onClick={() => navigate(viewerCanPick ? "/make-pick" : "/leaderboard")}
                 className="rounded-lg bg-white text-slate-900 px-4 py-2 font-medium hover:bg-slate-100 transition"
               >
-                {viewerCanPick ? "Make / Change Pick" : "Results"}
+                {viewerCanPick ? "Make / Change Pick" : "Leaderboard"}
               </button>
               <button
                 onClick={() => navigate("/leaderboard")}
