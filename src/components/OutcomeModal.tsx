@@ -15,6 +15,10 @@ type Cta = { label: string; to?: string; action?: "share" | "close" };
 
 export function OutcomeModal({ payload, onClose }: { payload: Payload; onClose: () => void }) {
   const [open, setOpen] = useState(false);
+  const ctas = payload.ctas?.length
+    ? payload.ctas
+    : ([{ label: "Continue", action: "close" }] as Cta[]);
+  const hasCloseCta = ctas.some((cta) => cta.action === "close");
 
   useEffect(() => {
     const t = setTimeout(() => setOpen(true), 10);
@@ -120,10 +124,7 @@ export function OutcomeModal({ payload, onClose }: { payload: Payload; onClose: 
             </div>
 
             <div className="mt-6 flex flex-col sm:flex-row gap-2">
-            {(payload.ctas?.length
-              ? payload.ctas
-              : ([{ label: "Continue", action: "close" }] as Cta[])
-            ).map(
+            {ctas.map(
                 (cta, idx) => {
                   const primary = idx === 0;
                   return (
@@ -146,13 +147,15 @@ export function OutcomeModal({ payload, onClose }: { payload: Payload; onClose: 
               )}
             </div>
 
-            <button
-              onClick={onClose}
-              className="mt-3 w-full text-xs text-slate-400 hover:text-slate-200"
-              aria-label="Close"
-            >
-              Dismiss
-            </button>
+            {!hasCloseCta && (
+              <button
+                onClick={onClose}
+                className="mt-3 w-full text-xs text-slate-400 hover:text-slate-200"
+                aria-label="Close"
+              >
+                Dismiss
+              </button>
+            )}
           </div>
         </div>
       </div>

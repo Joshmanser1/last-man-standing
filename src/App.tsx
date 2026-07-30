@@ -2,6 +2,7 @@
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { useEffect, useMemo } from "react";
 import { Header } from "./components/Header";
+import { LeagueOutcomeWatcher } from "./components/LeagueOutcomeWatcher";
 import { ToastProvider } from "./components/Toast";
 import { RequireAuth } from "./components/RequireAuth";
 import { RequireAdmin } from "./components/RequireAdmin";
@@ -67,6 +68,7 @@ function AppInner() {
     <>
       {/* Header everywhere except no-chrome routes */}
       {!isNoChrome && <Header />}
+      {!isNoChrome && <LeagueOutcomeWatcher />}
 
       <main className={isFullBleed ? "" : "container-page py-4"}>
         <Routes>

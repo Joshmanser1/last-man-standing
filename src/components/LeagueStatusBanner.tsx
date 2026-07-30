@@ -4,7 +4,7 @@ import { getEffectiveUserId } from "../lib/auth";
 import { getMemberElimination, loadLeagueRoundState } from "../lib/leagueRoundState";
 import { useNotifications } from "./Notifications";
 
-function buildOutcomePayload(state: any, leagueId: string) {
+export function buildOutcomePayload(state: any, leagueId: string) {
   const league = state.league;
   const round = state.round;
   const viewerId = state.viewerId;
@@ -24,13 +24,12 @@ function buildOutcomePayload(state: any, leagueId: string) {
     state.winnerPlayerId &&
     String(state.winnerPlayerId) === String(viewerId)
   ) {
-    const keyBase = `lms_outcome_shown_v2:${leagueId}:${completedRound.round_number}:${viewerId}`;
     return {
       type: "winner" as const,
       title: "You won!",
       body: `${league.name}. You were the last player standing.`,
       emoji: "\uD83C\uDFC6",
-      key: `${keyBase}:winner`,
+      key: `league_outcome:${viewerId}:${leagueId}:winner:${completedRound.round_number}`,
       stats: [
         { label: "League", value: league.name },
         { label: "Round", value: String(completedRound.round_number) },
@@ -61,20 +60,20 @@ function buildOutcomePayload(state: any, leagueId: string) {
         : state.teams.find((team: any) => String(team.id) === String(eliminationPick.team_id))?.name ?? "Your pick";
     const body =
       eliminationPick.status === "no-pick"
-        ? `No pick was submitted before the Round ${eliminationRound.round_number} deadline. You can still follow the remaining rounds.`
-        : `${teamName} did not win in Round ${eliminationRound.round_number}. You can still follow the remaining rounds.`;
+        ? `You were eliminated in Round ${eliminationRound.round_number}. Your run in ${league.name} is over.`
+        : `Your ${teamName} pick did not win in Round ${eliminationRound.round_number}. Your run in ${league.name} is over.`;
     return {
       type: "eliminated" as const,
       title: "You've been eliminated",
       body,
       emoji: "\u274C",
-      key: `lms_outcome_shown_v2:${leagueId}:${eliminationRound.round_number}:${viewerId}:eliminated`,
+      key: `league_outcome:${viewerId}:${leagueId}:eliminated:${eliminationRound.round_number}`,
       stats: [
         { label: "League", value: league.name },
-        { label: "Round", value: String(eliminationRound.round_number) },
+        { label: "Eliminated in", value: `Round ${eliminationRound.round_number}` },
       ],
       ctas: [
-        { label: "View Leaderboard", to: "/leaderboard" },
+        { label: "View standings", to: "/leaderboard" },
         { label: "Dismiss", action: "close" as const },
       ],
     };

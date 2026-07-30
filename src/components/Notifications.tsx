@@ -60,7 +60,6 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   function showOutcome(p: OutcomePayload) {
     const shown = localStorage.getItem(p.key);
     if (shown) return;
-    localStorage.setItem(p.key, "1");
     if (playerId) {
       appendNotification(playerId, {
         key: p.key,
@@ -74,6 +73,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }
 
   function close() {
+    if (payload?.key) {
+      localStorage.setItem(payload.key, "1");
+    }
     setPayload(null);
   }
 
