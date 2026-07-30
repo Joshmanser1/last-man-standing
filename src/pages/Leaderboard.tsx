@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import * as htmlToImage from "html-to-image";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
+import { useToast } from "../components/Toast";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 import { postJsonWithAuth } from "../lib/apiAuth";
 import { getEffectiveUserId } from "../lib/auth";
@@ -68,6 +69,7 @@ function teamShort(name: string) {
 
 export function Leaderboard() {
   const navigate = useNavigate();
+  const toast = useToast();
   const location = useLocation();
   const [view, setView] = useState<ViewMode>("leaderboard");
   const [showElims, setShowElims] = useState(true);
@@ -79,6 +81,7 @@ export function Leaderboard() {
   const [playersById, setPlayersById] = useState<Map<ID, Player>>(new Map());
   const [viewerId, setViewerId] = useState("");
   const [loading, setLoading] = useState<boolean>(true);
+  const [exporting, setExporting] = useState(false);
   const [leagueId, setLeagueId] = useState(() => localStorage.getItem("active_league_id") || "");
 
   const exportRef = useRef<HTMLDivElement>(null);
@@ -340,7 +343,8 @@ export function Leaderboard() {
   }
 
   async function exportPNG() {
-    if (!exportRef.current || !league) return;
+    if (!exportRef.current || !league || exporting) return;
+    setExporting(true);
     const source = exportRef.current;
     const clone = source.cloneNode(true) as HTMLDivElement;
     const wrapper = document.createElement("div");
@@ -364,8 +368,9 @@ export function Leaderboard() {
       const width = Math.max(clone.scrollWidth, clone.clientWidth);
       const height = Math.max(clone.scrollHeight, clone.clientHeight);
       const pixelRatio = width * height > 6_000_000 ? 1 : 2;
+      const filename = `${slug(league.name)}-${view}.png`;
 
-      const dataUrl = await htmlToImage.toPng(clone, {
+      const blob = await htmlToImage.toBlob(clone, {
         backgroundColor: "#ffffff",
         pixelRatio,
         width,
@@ -376,16 +381,64 @@ export function Leaderboard() {
         },
         cacheBust: true,
       });
+      if (!blob) throw new Error("PNG export returned no data");
 
-      const a = document.createElement("a");
-      a.download = `${slug(league.name)}-${view}.png`;
-      a.href = dataUrl;
-      a.click();
+      const file = new File([blob], filename, { type: "image/png" });
+      const nav = navigator as Navigator & {
+        canShare?: (data?: ShareData) => boolean;
+      };
+      const canShareFile =
+        typeof nav.share === "function" &&
+        typeof nav.canShare === "function" &&
+        nav.canShare({ files: [file] });
+
+      if (canShareFile) {
+        try {
+          await nav.share({
+            files: [file],
+            title: `${league.name} leaderboard`,
+            text: `${league.name} leaderboard export`,
+          });
+          return;
+        } catch (err: any) {
+          if (err?.name === "AbortError") return;
+          const previewUrl = URL.createObjectURL(blob);
+          const opened = window.open(previewUrl, "_blank", "noopener,noreferrer");
+          window.setTimeout(() => URL.revokeObjectURL(previewUrl), 60_000);
+          if (opened) return;
+        }
+      }
+
+      const blobUrl = URL.createObjectURL(blob);
+      const isCoarsePointer =
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(pointer: coarse)").matches;
+
+      if (isCoarsePointer) {
+        const opened = window.open(blobUrl, "_blank", "noopener,noreferrer");
+        if (!opened) {
+          const a = document.createElement("a");
+          a.download = filename;
+          a.href = blobUrl;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }
+      } else {
+        const a = document.createElement("a");
+        a.download = filename;
+        a.href = blobUrl;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
     } catch (err) {
       console.error("PNG export failed", err);
-      alert("Failed to export PNG.");
+      toast("Couldn't export the leaderboard. Please try again.", { variant: "error" });
     } finally {
       wrapper.remove();
+      setExporting(false);
     }
   }
 
@@ -477,9 +530,10 @@ export function Leaderboard() {
               <button
                 type="button"
                 className="btn btn-ghost w-full text-xs md:w-auto"
+                disabled={exporting}
                 onClick={exportPNG}
               >
-                Export PNG
+                {exporting ? "Exporting..." : "Export PNG"}
               </button>
             </div>
           </div>
