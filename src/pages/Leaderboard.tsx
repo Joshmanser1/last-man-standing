@@ -423,10 +423,10 @@ export function Leaderboard() {
         </div>
       ) : (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">
             <div className="text-lg font-semibold">{league.name} - Leaderboard</div>
-            <div className="flex items-center gap-2">
-              <label className="text-sm flex items-center gap-2">
+            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:justify-end">
+              <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   checked={showElims}
@@ -435,10 +435,11 @@ export function Leaderboard() {
                 Show eliminated
               </label>
 
-              <div className="inline-flex rounded-xl bg-white border px-1 py-1 shadow-sm">
+              <div className="grid w-full grid-cols-3 rounded-xl border bg-white p-1 shadow-sm md:inline-flex md:w-auto">
                 <button
+                  type="button"
                   className={
-                    "px-3 py-1.5 text-xs rounded-lg " +
+                    "min-w-0 rounded-lg px-2 py-2 text-xs leading-tight text-center whitespace-normal " +
                     (view === "leaderboard"
                       ? "bg-teal-600 text-white"
                       : "text-slate-700 hover:bg-slate-100")
@@ -448,8 +449,9 @@ export function Leaderboard() {
                   Standings
                 </button>
                 <button
+                  type="button"
                   className={
-                    "px-3 py-1.5 text-xs rounded-lg " +
+                    "min-w-0 rounded-lg px-2 py-2 text-xs leading-tight text-center whitespace-normal " +
                     (view === "matrix"
                       ? "bg-teal-600 text-white"
                       : "text-slate-700 hover:bg-slate-100")
@@ -459,8 +461,9 @@ export function Leaderboard() {
                   Pick Matrix
                 </button>
                 <button
+                  type="button"
                   className={
-                    "px-3 py-1.5 text-xs rounded-lg " +
+                    "min-w-0 rounded-lg px-2 py-2 text-xs leading-tight text-center whitespace-normal " +
                     (view === "eliminations"
                       ? "bg-teal-600 text-white"
                       : "text-slate-700 hover:bg-slate-100")
@@ -471,7 +474,11 @@ export function Leaderboard() {
                 </button>
               </div>
 
-              <button className="btn btn-ghost text-xs" onClick={exportPNG}>
+              <button
+                type="button"
+                className="btn btn-ghost w-full text-xs md:w-auto"
+                onClick={exportPNG}
+              >
                 Export PNG
               </button>
             </div>
