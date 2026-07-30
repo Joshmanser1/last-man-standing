@@ -1,13 +1,24 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { getEffectiveUserId } from "../lib/auth";
 import { loadLeagueRoundState } from "../lib/leagueRoundState";
 import { useNotifications } from "./Notifications";
 import { buildOutcomePayload } from "./LeagueStatusBanner";
+import { supa } from "../lib/supabaseClient";
 
 export function LeagueOutcomeWatcher() {
   const location = useLocation();
   const { showOutcome } = useNotifications();
+  const [authTick, setAuthTick] = useState(0);
+
+  useEffect(() => {
+    const { data: sub } = supa.auth.onAuthStateChange(() => {
+      setAuthTick((value) => value + 1);
+    });
+    return () => {
+      sub.subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,13 +46,11 @@ export function LeagueOutcomeWatcher() {
         if (!league?.id || cancelled) continue;
         const nextState = await loadLeagueRoundState(String(league.id));
         if (cancelled) return;
-        const viewerMembership =
-          nextState.memberships.find((member: any) => String(member.player_id) === String(viewerId)) ?? null;
         const payload = buildOutcomePayload(
           {
             ...nextState,
             viewerId,
-            viewerMembership,
+            viewerMembership: nextState.viewerMembership,
           },
           String(league.id)
         );
@@ -55,7 +64,7 @@ export function LeagueOutcomeWatcher() {
     return () => {
       cancelled = true;
     };
-  }, [location.pathname, location.search, showOutcome]);
+  }, [authTick, location.pathname, location.search, showOutcome]);
 
   return null;
 }

@@ -168,7 +168,6 @@ export function LeagueSummary() {
 
         const state = await loadLeagueRoundState(leagueId);
         setLeague(state.league);
-        setRound(state.round);
         setTeams([...(state.teams || [])].sort((a: any, b: any) => a.name.localeCompare(b.name)));
         setMembershipsRaw(
           (state.memberships ?? []).map((m: any) => ({
@@ -179,7 +178,8 @@ export function LeagueSummary() {
             is_active: m.is_active,
           }))
         );
-        setPicks(state.selectedRoundEntries);
+        setRound(state.currentLeagueRound ?? state.round);
+        setPicks(state.currentLeagueRoundEntries ?? state.selectedRoundEntries);
         setPlayersById(state.playersById);
       } catch (err: any) {
         setLoadError(err?.message ?? "Failed to load league data");
@@ -217,15 +217,16 @@ export function LeagueSummary() {
     ).length;
     const noPick = roundPicks.filter((p: any) => p.status === "no-pick").length;
 
-    const through = roundPicks.filter(
-      (p: any) => p.status === "through"
-    ).length;
-    const eliminated = roundPicks.filter(
-      (p: any) => p.status === "eliminated"
-    ).length;
-    const pending = roundPicks.filter(
-      (p: any) => p.status === "pending"
-    ).length;
+    const through = memberships.filter((m: any) => m.is_active !== false).length;
+    const eliminated = memberships.filter((m: any) => m.is_active === false).length;
+    const activePlayers = memberships.filter((m: any) => m.is_active !== false);
+    const currentRoundPickByPlayer = new Map<string, any>(
+      roundPicks.map((pick: any) => [String(pick.player_id), pick])
+    );
+    const pending = activePlayers.filter((member: any) => {
+      const pick = currentRoundPickByPlayer.get(String(member.player_id));
+      return !pick || pick.status === "pending";
+    }).length;
 
     // unique teams picked this round
     const uniqueTeams = new Set<string>();
@@ -356,6 +357,10 @@ export function LeagueSummary() {
   const showPreFirstPick = guidance.shouldGuide && activeLeagueId === league.id;
   const viewerMembership = memberships.find((member: any) => String(member.player_id) === String(viewerUserId)) ?? null;
   const viewerCanPick = viewerMembership?.is_active !== false && league.status !== "completed";
+  const viewerIsOwner =
+    String(league?.created_by ?? "") === String(viewerUserId ?? "") ||
+    viewerMembership?.role === "owner" ||
+    viewerMembership?.role === "admin";
 
   if (showPreFirstPick) {
     return (
@@ -456,20 +461,24 @@ export function LeagueSummary() {
                 onClick={() => navigate(viewerCanPick ? "/make-pick" : "/leaderboard")}
                 className="rounded-lg bg-white text-slate-900 px-4 py-2 font-medium hover:bg-slate-100 transition"
               >
-                {viewerCanPick ? "Make / Change Pick" : "Leaderboard"}
+                {viewerCanPick ? "Make / Change Pick" : "View standings"}
               </button>
-              <button
-                onClick={() => navigate("/leaderboard")}
-                className="rounded-lg bg-white/10 backdrop-blur px-4 py-2 font-medium hover:bg-white/15 transition"
-              >
-                Leaderboard
-              </button>
-              <button
-                onClick={() => navigate("/admin")}
-                className="rounded-lg bg-white/10 backdrop-blur px-4 py-2 font-medium hover:bg-white/15 transition"
-              >
-                Admin
-              </button>
+              {viewerCanPick && (
+                <button
+                  onClick={() => navigate("/leaderboard")}
+                  className="rounded-lg bg-white/10 backdrop-blur px-4 py-2 font-medium hover:bg-white/15 transition"
+                >
+                  Leaderboard
+                </button>
+              )}
+              {viewerIsOwner && (
+                <button
+                  onClick={() => navigate("/admin")}
+                  className="rounded-lg bg-white/10 backdrop-blur px-4 py-2 font-medium hover:bg-white/15 transition"
+                >
+                  Admin
+                </button>
+              )}
             </div>
           </div>
 

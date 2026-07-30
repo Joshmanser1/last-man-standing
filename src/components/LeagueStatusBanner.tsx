@@ -98,19 +98,15 @@ export function LeagueStatusBanner({ leagueId: leagueIdProp }: { leagueId?: stri
     (async () => {
       const nextState = await loadLeagueRoundState(leagueId);
       const uid = await getEffectiveUserId();
-      const currentRound = nextState.round;
+      const currentRound = nextState.currentLeagueRound ?? nextState.round;
       const previousRound =
         currentRound && currentRound.round_number > 1
           ? nextState.rounds.find((entry: any) => entry.round_number === currentRound.round_number - 1) ?? null
           : null;
-      const viewerMembership =
-        uid
-          ? nextState.memberships.find((member: any) => String(member.player_id) === String(uid)) ?? null
-          : null;
       setState({
         ...nextState,
         viewerId: uid ?? "",
-        viewerMembership,
+        viewerMembership: nextState.viewerMembership,
         previousRound,
       });
     })();
@@ -123,17 +119,20 @@ export function LeagueStatusBanner({ leagueId: leagueIdProp }: { leagueId?: stri
   }, [leagueId, showOutcome, state]);
 
   const pickOpen = useMemo(() => {
-    if (!state?.round) return false;
-    if (state.round.status === "locked" || state.round.status === "completed") return false;
+    const activeRound = state?.currentLeagueRound ?? state?.round;
+    if (!activeRound) return false;
+    if (activeRound.status === "locked" || activeRound.status === "completed") return false;
     if (state.league?.is_test) return true;
-    if (!state.round.pick_deadline_utc) return true;
-    return Date.parse(state.round.pick_deadline_utc) > Date.now();
+    if (!activeRound.pick_deadline_utc) return true;
+    return Date.parse(activeRound.pick_deadline_utc) > Date.now();
   }, [state]);
 
   if (!leagueId || !state?.round || !state?.league) return null;
 
   const viewerActive = state.viewerMembership?.is_active !== false;
   const winnerLabel = state.winnerName ? `Winner: ${state.winnerName}` : "Results available";
+  const currentRound = state.currentLeagueRound ?? state.round;
+  const elimination = state.viewerElimination;
 
   return (
     <div className="space-y-3">
@@ -147,15 +146,24 @@ export function LeagueStatusBanner({ leagueId: leagueIdProp }: { leagueId?: stri
           </div>
           <div className="mt-1 text-sm text-slate-700">{winnerLabel}</div>
         </div>
+      ) : !viewerActive && elimination ? (
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="text-sm font-semibold text-slate-700">
+            You were eliminated in Round {elimination.round.round_number}
+          </div>
+          <div className="mt-1 text-sm text-slate-600">
+            You can still follow the remaining rounds and view historical results.
+          </div>
+        </div>
       ) : pickOpen && viewerActive && !state.viewerPick ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div className="text-sm font-semibold text-emerald-700">
-            Round {state.round.round_number} Open
+            Round {currentRound.round_number} Open
           </div>
           <div className="mt-1 text-sm text-slate-700">
             Deadline:{" "}
-            {state.round.pick_deadline_utc
-              ? new Date(state.round.pick_deadline_utc).toLocaleString()
+            {currentRound.pick_deadline_utc
+              ? new Date(currentRound.pick_deadline_utc).toLocaleString()
               : "\u2014"}
           </div>
           <div className="mt-1 text-sm text-slate-700">You have not picked yet</div>
@@ -185,7 +193,7 @@ export function LeagueStatusBanner({ leagueId: leagueIdProp }: { leagueId?: stri
       ) : (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div className="text-sm font-semibold text-slate-700">
-            Round {state.round.round_number} Complete
+            Round {currentRound.round_number} Complete
           </div>
           <div className="mt-1 text-sm text-slate-600">
             {viewerActive ? "Results available" : "Your run has ended. Historical results remain available."}

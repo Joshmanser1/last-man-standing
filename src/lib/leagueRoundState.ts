@@ -5,11 +5,14 @@ export type LeagueRoundState = {
   league: any | null;
   rounds: any[];
   round: any | null;
+  currentLeagueRound: any | null;
   memberships: any[];
   teams: any[];
   allLeaguePicks: any[];
   selectedRoundPicks: any[];
   selectedRoundEntries: any[];
+  currentLeagueRoundPicks: any[];
+  currentLeagueRoundEntries: any[];
   playersById: Record<string, any>;
   submittedCount: number;
   pendingCount: number;
@@ -19,6 +22,8 @@ export type LeagueRoundState = {
   topPickedTeams: Array<{ teamId: string; teamName: string; count: number }>;
   viewerPick: any | null;
   viewerId: string;
+  viewerMembership: any | null;
+  viewerElimination: { round: any; pick: any } | null;
   winnerPlayerId: string | null;
   winnerName: string | null;
 };
@@ -200,13 +205,17 @@ export async function loadLeagueRoundState(
     [...rounds]
       .filter((r: any) => r?.status === "completed")
       .sort((a: any, b: any) => (b.round_number ?? 0) - (a.round_number ?? 0))[0] ?? null;
+  const currentLeagueRound =
+    (leagueCurrentRound != null
+      ? rounds.find((r: any) => r.round_number === leagueCurrentRound)
+      : null) ??
+    rounds[rounds.length - 1] ??
+    null;
   const round =
     (selectedRoundId ? rounds.find((r: any) => r.id === selectedRoundId) : null) ??
     ((league as any)?.status === "completed" ? latestCompletedRound : null) ??
     (viewerMembership?.is_active === false ? viewerElimination?.round ?? null : null) ??
-    (leagueCurrentRound != null
-      ? rounds.find((r: any) => r.round_number === leagueCurrentRound)
-      : null) ??
+    currentLeagueRound ??
     rounds[rounds.length - 1] ??
     null;
   const shouldSynthesizeNoPicks =
@@ -218,6 +227,22 @@ export async function loadLeagueRoundState(
     memberships,
     allLeaguePicks,
     shouldSynthesizeNoPicks
+  );
+  const shouldSynthesizeCurrentRoundNoPicks =
+    !!currentLeagueRound &&
+    (currentLeagueRound.status === "locked" ||
+      currentLeagueRound.status === "completed" ||
+      (league as any)?.status === "completed");
+  const {
+    selectedRoundPicks: currentLeagueRoundPicks,
+    selectedRoundEntries: currentLeagueRoundEntries,
+  } = buildRoundEntries(
+    leagueId,
+    currentLeagueRound,
+    rounds,
+    memberships,
+    allLeaguePicks,
+    shouldSynthesizeCurrentRoundNoPicks
   );
 
   const playersById: Record<string, any> = {};
@@ -279,11 +304,14 @@ export async function loadLeagueRoundState(
     league: league ?? null,
     rounds,
     round,
+    currentLeagueRound,
     memberships,
     teams,
     allLeaguePicks,
     selectedRoundPicks,
     selectedRoundEntries,
+    currentLeagueRoundPicks,
+    currentLeagueRoundEntries,
     playersById,
     submittedCount,
     pendingCount,
@@ -293,6 +321,8 @@ export async function loadLeagueRoundState(
     topPickedTeams,
     viewerPick,
     viewerId,
+    viewerMembership,
+    viewerElimination,
     winnerPlayerId,
     winnerName,
   };
