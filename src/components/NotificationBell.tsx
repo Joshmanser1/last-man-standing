@@ -12,6 +12,8 @@ import {
 import { syncLeagueNotifications } from "../lib/generateNotifications";
 import { getEffectiveUserId } from "../lib/auth";
 import { supa } from "../lib/supabaseClient";
+import { useNotifications } from "./Notifications";
+import { buildOutcomePayloadFromLeagueOutcome } from "../lib/leagueOutcome";
 
 function timeAgo(ts: number) {
   const diff = Date.now() - ts;
@@ -86,6 +88,7 @@ function NotificationList({
 
 export function NotificationBell() {
   const navigate = useNavigate();
+  const { showOutcome } = useNotifications();
   const [playerId, setPlayerId] = useState("");
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<any[]>([]);
@@ -159,7 +162,12 @@ export function NotificationBell() {
       const visibleLeagues = (await visibleResp.json()) as Array<any>;
       for (const league of visibleLeagues ?? []) {
         if (!league?.id) continue;
-        await syncLeagueNotifications(playerId, String(league.id));
+        const { outcome } = await syncLeagueNotifications(playerId, String(league.id));
+        const payload = buildOutcomePayloadFromLeagueOutcome(playerId, outcome);
+        if (payload) {
+          showOutcome(payload);
+          break;
+        }
       }
       if (!disposed) refreshFeed(playerId);
     };
@@ -170,7 +178,7 @@ export function NotificationBell() {
       disposed = true;
       window.clearInterval(t);
     };
-  }, [playerId]);
+  }, [playerId, showOutcome]);
 
   useEffect(() => {
     refreshFeed(playerId);

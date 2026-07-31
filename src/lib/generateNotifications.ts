@@ -4,29 +4,33 @@ import { getLeagueOutcomeForPlayer } from "./leagueOutcome";
 
 const MEMBERS_SNAPSHOT_KEY = "lms_notification_members_v1";
 
-export async function syncLeagueNotifications(playerId: string, leagueId: string) {
-  if (!playerId || !leagueId) return;
+export type LeagueNotificationSyncResult = {
+  outcome: ReturnType<typeof getLeagueOutcomeForPlayer>;
+};
+
+export async function syncLeagueNotifications(
+  playerId: string,
+  leagueId: string
+): Promise<LeagueNotificationSyncResult> {
+  if (!playerId || !leagueId) return { outcome: null };
 
   const stateResp = await postJsonWithAuth("/api/league-state", { league_id: leagueId });
-  if (!stateResp.ok) return;
+  if (!stateResp.ok) return { outcome: null };
   const state = (await stateResp.json()) as {
     league?: any;
     rounds?: any[];
     teams?: any[];
   };
   const league = state.league;
-  if (!league) return;
+  if (!league) return { outcome: null };
   const safeRounds = state.rounds ?? [];
   const teams = state.teams ?? [];
-  const teamById = new Map<string, string>(
-    (teams ?? []).map((team: any) => [String(team.id), String(team.name)])
-  );
 
   const [picksResp, membersResp] = await Promise.all([
     postJsonWithAuth("/api/league-picks", { league_id: leagueId }),
     postJsonWithAuth("/api/league-members", { league_id: leagueId }),
   ]);
-  if (!picksResp.ok || !membersResp.ok) return;
+  if (!picksResp.ok || !membersResp.ok) return { outcome: null };
 
   const picks = (await picksResp.json()) as Array<any>;
   const members = (await membersResp.json()) as Array<any>;
@@ -72,13 +76,22 @@ export async function syncLeagueNotifications(playerId: string, leagueId: string
     }
   }
 
+  const winnerPlayerId =
+    league.status === "completed" && latestCompletedRound
+      ? (() => {
+          const finalRoundPicks = picks.filter((pick: any) => pick.round_id === latestCompletedRound.id);
+          const through = finalRoundPicks.filter((pick: any) => pick.status === "through");
+          return through.length === 1 ? String(through[0].player_id) : null;
+        })()
+      : null;
+
   const playerOutcome = getLeagueOutcomeForPlayer(playerId, leagueId, {
     league,
     rounds: safeRounds,
     teams,
     memberships: members,
     allLeaguePicks: picks,
-    winnerPlayerId: null,
+    winnerPlayerId,
   });
 
   if (playerOutcome?.type === "winner") {
@@ -107,15 +120,7 @@ export async function syncLeagueNotifications(playerId: string, leagueId: string
     });
   }
 
-  if (league.status === "completed" && latestCompletedRound) {
-    const finalRoundPicks = picks.filter((pick: any) => pick.round_id === latestCompletedRound.id);
-    const through = finalRoundPicks.filter((pick: any) => pick.status === "through");
-    const winner = through.length === 1 ? through[0] : null;
-
-    if (!winner || winner?.player_id !== playerId) {
-      return;
-    }
-  } else {
+  if (league.status !== "completed") {
     const previousRound =
       currentRound && currentRound.round_number > 1
         ? safeRounds.find((round: any) => round.round_number === currentRound.round_number - 1)
@@ -164,4 +169,5 @@ export async function syncLeagueNotifications(playerId: string, leagueId: string
     });
   }
   localStorage.setItem(snapshotKey, JSON.stringify(currentMemberIds));
+  return { outcome: playerOutcome };
 }
