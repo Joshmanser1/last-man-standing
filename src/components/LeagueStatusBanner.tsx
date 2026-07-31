@@ -1,84 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getEffectiveUserId } from "../lib/auth";
-import { getMemberElimination, loadLeagueRoundState } from "../lib/leagueRoundState";
+import { loadLeagueRoundState } from "../lib/leagueRoundState";
+import {
+  buildOutcomePayloadFromLeagueOutcome,
+  getLeagueOutcomeForPlayer,
+} from "../lib/leagueOutcome";
 
 export function buildOutcomePayload(state: any, leagueId: string) {
-  const league = state.league;
-  const round = state.round;
   const viewerId = state.viewerId;
-  const viewerPick = state.viewerPick;
-  if (!league || !viewerId) {
-    return null;
-  }
-
-  const completedRound =
-    [...(state.rounds || [])]
-      .filter((entry: any) => entry?.status === "completed")
-      .sort((a: any, b: any) => (b.round_number ?? 0) - (a.round_number ?? 0))[0] ?? null;
-
-  if (
-    league.status === "completed" &&
-    completedRound &&
-    state.winnerPlayerId &&
-    String(state.winnerPlayerId) === String(viewerId)
-  ) {
-    return {
-      type: "winner" as const,
-      title: "You won!",
-      body: `${league.name}. You were the last player standing.`,
-      emoji: "\uD83C\uDFC6",
-      key: `league_outcome:${viewerId}:${leagueId}:winner:${completedRound.round_number}`,
-      stats: [
-        { label: "League", value: league.name },
-        { label: "Round", value: String(completedRound.round_number) },
-      ],
-      ctas: [
-        { label: "View final standings", to: "/leaderboard" },
-        { label: "Dismiss", action: "close" as const },
-      ],
-    };
-  }
-
-  const elimination = state.viewerMembership
-    ? getMemberElimination(
-        state.viewerMembership,
-        state.rounds,
-        state.allLeaguePicks,
-        leagueId
-      )
-    : null;
-  const eliminationRound = elimination?.round ?? round;
-  const eliminationPick = elimination?.pick ?? viewerPick;
-
-  if (!eliminationRound || !eliminationPick) return null;
-  if (eliminationPick.status === "eliminated" || eliminationPick.status === "no-pick") {
-    const teamName =
-      eliminationPick.status === "no-pick"
-        ? "No pick"
-        : state.teams.find((team: any) => String(team.id) === String(eliminationPick.team_id))?.name ?? "Your pick";
-    const body =
-      eliminationPick.status === "no-pick"
-        ? `You were eliminated in Round ${eliminationRound.round_number}. Your run in ${league.name} is over.`
-        : `Your ${teamName} pick did not win in Round ${eliminationRound.round_number}. Your run in ${league.name} is over.`;
-    return {
-      type: "eliminated" as const,
-      title: "You've been eliminated",
-      body,
-      emoji: "\u274C",
-      key: `league_outcome:${viewerId}:${leagueId}:eliminated:${eliminationRound.round_number}`,
-      stats: [
-        { label: "League", value: league.name },
-        { label: "Eliminated in", value: `Round ${eliminationRound.round_number}` },
-      ],
-      ctas: [
-        { label: "View standings", to: "/leaderboard" },
-        { label: "Dismiss", action: "close" as const },
-      ],
-    };
-  }
-
-  return null;
+  const outcome = getLeagueOutcomeForPlayer(viewerId, leagueId, state);
+  return buildOutcomePayloadFromLeagueOutcome(viewerId, outcome);
 }
 
 export function LeagueStatusBanner({ leagueId: leagueIdProp }: { leagueId?: string }) {

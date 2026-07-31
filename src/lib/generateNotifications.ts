@@ -1,6 +1,6 @@
 import { appendNotification } from "./notifyFeed";
 import { postJsonWithAuth } from "./apiAuth";
-import { getMemberElimination } from "./leagueRoundState";
+import { getLeagueOutcomeForPlayer } from "./leagueOutcome";
 
 const MEMBERS_SNAPSHOT_KEY = "lms_notification_members_v1";
 
@@ -72,45 +72,49 @@ export async function syncLeagueNotifications(playerId: string, leagueId: string
     }
   }
 
+  const playerOutcome = getLeagueOutcomeForPlayer(playerId, leagueId, {
+    league,
+    rounds: safeRounds,
+    teams,
+    memberships: members,
+    allLeaguePicks: picks,
+    winnerPlayerId: null,
+  });
+
+  if (playerOutcome?.type === "winner") {
+    appendNotification(playerId, {
+      key: `league:${leagueId}:winner:${playerOutcome.roundNumber}`,
+      type: "winner",
+      title: `You won ${league.name}`,
+      body: `You were the last player standing after Round ${playerOutcome.roundNumber}.`,
+      cta: { label: "View League", to: "/league" },
+    });
+  } else if (playerOutcome?.type === "eliminated") {
+    appendNotification(playerId, {
+      key: `league:${leagueId}:eliminated:${playerOutcome.roundNumber}:${playerId}`,
+      type: "eliminated",
+      title: "You were eliminated",
+      body: `${playerOutcome.teamName ?? "Your team"} did not win in Round ${playerOutcome.roundNumber}.`,
+      cta: { label: "View Leaderboard", to: "/leaderboard" },
+    });
+  } else if (playerOutcome?.type === "no-pick") {
+    appendNotification(playerId, {
+      key: `league:${leagueId}:no-pick:${playerOutcome.roundNumber}:${playerId}`,
+      type: "eliminated",
+      title: "You were eliminated",
+      body: `No pick was submitted before the Round ${playerOutcome.roundNumber} deadline.`,
+      cta: { label: "View Leaderboard", to: "/leaderboard" },
+    });
+  }
+
   if (league.status === "completed" && latestCompletedRound) {
     const finalRoundPicks = picks.filter((pick: any) => pick.round_id === latestCompletedRound.id);
-    const myMembership =
-      members.find((member: any) => String(member.player_id) === String(playerId)) ?? null;
-    const myElimination = myMembership
-      ? getMemberElimination(myMembership, safeRounds, picks, leagueId)
-      : null;
     const through = finalRoundPicks.filter((pick: any) => pick.status === "through");
     const winner = through.length === 1 ? through[0] : null;
 
-    if (winner?.player_id === playerId) {
-      appendNotification(playerId, {
-        key: `league:${leagueId}:winner:${latestCompletedRound.round_number}`,
-        type: "winner",
-        title: `You won ${league.name}`,
-        body: `You were the last player standing after Round ${latestCompletedRound.round_number}.`,
-        cta: { label: "View League", to: "/league" },
-      });
-    } else if (myElimination?.pick?.status === "eliminated") {
-      const teamName =
-        myElimination.pick?.team_id
-          ? teamById.get(String(myElimination.pick.team_id)) ?? "Your team"
-          : "Your team";
-        appendNotification(playerId, {
-          key: `league:${leagueId}:eliminated:${myElimination.round.round_number}:${playerId}`,
-          type: "eliminated",
-          title: "You were eliminated",
-          body: `${teamName} did not win in Round ${myElimination.round.round_number}.`,
-          cta: { label: "View Leaderboard", to: "/leaderboard" },
-        });
-      } else if (myElimination?.pick?.status === "no-pick") {
-        appendNotification(playerId, {
-          key: `league:${leagueId}:no-pick:${myElimination.round.round_number}:${playerId}`,
-          type: "eliminated",
-          title: "You were eliminated",
-          body: `No pick was submitted before the Round ${myElimination.round.round_number} deadline.`,
-          cta: { label: "View Leaderboard", to: "/leaderboard" },
-        });
-      }
+    if (!winner || winner?.player_id !== playerId) {
+      return;
+    }
   } else {
     const previousRound =
       currentRound && currentRound.round_number > 1
