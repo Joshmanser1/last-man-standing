@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getEffectiveUserId } from "../lib/auth";
 import { getMemberElimination, loadLeagueRoundState } from "../lib/leagueRoundState";
-import { useNotifications } from "./Notifications";
 
 export function buildOutcomePayload(state: any, leagueId: string) {
   const league = state.league;
@@ -84,7 +83,6 @@ export function buildOutcomePayload(state: any, leagueId: string) {
 
 export function LeagueStatusBanner({ leagueId: leagueIdProp }: { leagueId?: string }) {
   const navigate = useNavigate();
-  const { showOutcome } = useNotifications();
   const [state, setState] = useState<any>(null);
 
   const leagueId = leagueIdProp || localStorage.getItem("active_league_id") || "";
@@ -111,12 +109,6 @@ export function LeagueStatusBanner({ leagueId: leagueIdProp }: { leagueId?: stri
       });
     })();
   }, [leagueId]);
-
-  useEffect(() => {
-    if (!state) return;
-    const payload = buildOutcomePayload(state, leagueId);
-    if (payload) showOutcome(payload);
-  }, [leagueId, showOutcome, state]);
 
   const pickOpen = useMemo(() => {
     const activeRound = state?.currentLeagueRound ?? state?.round;

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { OutcomeModal } from "./OutcomeModal";
 import { DeadlineBanner } from "./DeadlineBanner";
 import { deadlineShownKey, formatCountdown, getDeadlineLevel } from "../lib/deadline";
@@ -66,7 +66,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     };
   }, []);
 
-  function showOutcome(p: OutcomePayload) {
+  const showOutcome = useCallback((p: OutcomePayload) => {
     if (isOutcomeDismissed(p.key)) return;
     if (playerId) {
       appendNotification(playerId, {
@@ -78,21 +78,23 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       });
     }
     setPayload(p);
-  }
+  }, [playerId]);
 
-  function close() {
-    if (payload?.key) {
-      localStorage.setItem(payload.key, "1");
-      localStorage.setItem(outcomeDismissedKey(payload.key), "1");
-    }
-    setPayload(null);
-  }
+  const close = useCallback(() => {
+    setPayload((current) => {
+      if (current?.key) {
+        localStorage.setItem(current.key, "1");
+        localStorage.setItem(outcomeDismissedKey(current.key), "1");
+      }
+      return null;
+    });
+  }, []);
 
-  async function showDeadlineReminder(args: {
+  const showDeadlineReminder = useCallback(async (args: {
     leagueId: string;
     roundId: string;
     deadlineISO: string;
-  }) {
+  }) => {
     const { leagueId, roundId, deadlineISO } = args;
     const currentPlayerId = (await getEffectiveUserId()) || "";
     if (!currentPlayerId) return;
@@ -116,14 +118,19 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       level,
       countdown: formatCountdown(deadlineISO, Date.now()),
     });
-  }
+  }, []);
 
   function dismissDeadline() {
     setDeadlineState(null);
   }
 
+  const ctxValue = useMemo(
+    () => ({ showOutcome, showDeadlineReminder }),
+    [showOutcome, showDeadlineReminder]
+  );
+
   return (
-    <NotificationsCtx.Provider value={{ showOutcome, showDeadlineReminder }}>
+    <NotificationsCtx.Provider value={ctxValue}>
       {children}
       {deadlineState && (
         <DeadlineBanner
