@@ -51,7 +51,12 @@ function OutcomeDebugPanel() {
   return (
     <div className="fixed inset-x-3 bottom-3 z-[120] rounded-xl border border-emerald-500/30 bg-slate-950/95 p-3 text-[11px] text-slate-100 shadow-[0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur md:left-auto md:right-3 md:w-[360px]">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <div className="font-semibold text-emerald-300">Outcome debug</div>
+        <div>
+          <div className="font-semibold text-emerald-300">Outcome debug</div>
+          <div className="text-[10px] text-slate-400">
+            Outcome debug build: {debug.buildMarker}
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -87,6 +92,32 @@ function OutcomeDebugPanel() {
         <div>{debug.visibleLeagueCount ?? "—"}</div>
         <div>Current league</div>
         <div className="truncate">{debug.currentLeagueId || "—"}</div>
+        <div>State league</div>
+        <div className="truncate">{debug.syncLeagueName || "—"}</div>
+        <div>State viewerId</div>
+        <div className="truncate">{debug.syncViewerId || "—"}</div>
+        <div>Requested playerId</div>
+        <div className="truncate">{debug.syncRequestedPlayerId || "—"}</div>
+        <div>Viewer IDs match</div>
+        <div>{debug.syncViewerIdsMatch == null ? "—" : debug.syncViewerIdsMatch ? "yes" : "no"}</div>
+        <div>viewerMembership found</div>
+        <div>{debug.syncViewerMembershipFound ? "yes" : "no"}</div>
+        <div>viewerMembership is_active</div>
+        <div>{debug.syncViewerMembershipIsActive || "—"}</div>
+        <div>viewerElimination found</div>
+        <div>{debug.syncViewerEliminationFound ? "yes" : "no"}</div>
+        <div>viewerElimination round</div>
+        <div>{debug.syncViewerEliminationRound ?? "—"}</div>
+        <div>viewerElimination pick status</div>
+        <div>{debug.syncViewerEliminationPickStatus || "—"}</div>
+        <div>viewerElimination pick player_id</div>
+        <div className="truncate">{debug.syncViewerEliminationPickPlayerId || "—"}</div>
+        <div>allLeaguePicks count</div>
+        <div>{debug.syncAllLeaguePicksCount ?? "—"}</div>
+        <div>Matching player picks</div>
+        <div>{debug.syncMatchingPlayerPicksCount ?? "—"}</div>
+        <div>Player pick history</div>
+        <div className="break-words">{debug.syncMatchingPlayerPickStatuses || "—"}</div>
         <div>Sync returned outcome</div>
         <div>{debug.syncReturnedOutcome ? "yes" : "no"}</div>
         <div>Outcome type</div>
@@ -266,4 +297,5 @@ export function useNotifications() {
   if (!ctx) throw new Error("useNotifications must be used inside provider");
   return ctx;
 }
+
 

@@ -2,10 +2,24 @@ import { useSyncExternalStore } from "react";
 
 export type OutcomeDebugSnapshot = {
   enabled: boolean;
+  buildMarker: string;
   bellSyncMounted: boolean;
   playerIdResolved: boolean;
   visibleLeagueCount: number | null;
   currentLeagueId: string;
+  syncLeagueName: string;
+  syncViewerId: string;
+  syncRequestedPlayerId: string;
+  syncViewerIdsMatch: boolean | null;
+  syncViewerMembershipFound: boolean;
+  syncViewerMembershipIsActive: string;
+  syncViewerEliminationFound: boolean;
+  syncViewerEliminationRound: number | null;
+  syncViewerEliminationPickStatus: string;
+  syncViewerEliminationPickPlayerId: string;
+  syncAllLeaguePicksCount: number | null;
+  syncMatchingPlayerPicksCount: number | null;
+  syncMatchingPlayerPickStatuses: string;
   syncReturnedOutcome: boolean;
   returnedOutcomeType: string;
   returnedOutcomeKey: string;
@@ -28,10 +42,24 @@ const DEBUG_KEY = "lms_debug_outcome";
 
 const initialState: OutcomeDebugSnapshot = {
   enabled: false,
+  buildMarker: "canonical-state-v2",
   bellSyncMounted: false,
   playerIdResolved: false,
   visibleLeagueCount: null,
   currentLeagueId: "",
+  syncLeagueName: "",
+  syncViewerId: "",
+  syncRequestedPlayerId: "",
+  syncViewerIdsMatch: null,
+  syncViewerMembershipFound: false,
+  syncViewerMembershipIsActive: "",
+  syncViewerEliminationFound: false,
+  syncViewerEliminationRound: null,
+  syncViewerEliminationPickStatus: "",
+  syncViewerEliminationPickPlayerId: "",
+  syncAllLeaguePicksCount: null,
+  syncMatchingPlayerPicksCount: null,
+  syncMatchingPlayerPickStatuses: "",
   syncReturnedOutcome: false,
   returnedOutcomeType: "",
   returnedOutcomeKey: "",
