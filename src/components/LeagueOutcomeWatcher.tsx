@@ -54,7 +54,7 @@ export function LeagueOutcomeWatcher() {
           },
           String(league.id)
         );
-        if (payload && !localStorage.getItem(payload.key)) {
+        if (payload) {
           showOutcome(payload);
           return;
         }

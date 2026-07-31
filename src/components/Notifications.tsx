@@ -26,6 +26,15 @@ type Ctx = {
 };
 
 const NotificationsCtx = createContext<Ctx | null>(null);
+const OUTCOME_DISMISSED_PREFIX = "league_outcome_dismissed:";
+
+function outcomeDismissedKey(outcomeKey: string) {
+  return `${OUTCOME_DISMISSED_PREFIX}${outcomeKey}`;
+}
+
+export function isOutcomeDismissed(outcomeKey: string) {
+  return localStorage.getItem(outcomeDismissedKey(outcomeKey)) === "1";
+}
 
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
   const [playerId, setPlayerId] = useState("");
@@ -58,8 +67,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, []);
 
   function showOutcome(p: OutcomePayload) {
-    const shown = localStorage.getItem(p.key);
-    if (shown) return;
+    if (isOutcomeDismissed(p.key)) return;
     if (playerId) {
       appendNotification(playerId, {
         key: p.key,
@@ -75,6 +83,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   function close() {
     if (payload?.key) {
       localStorage.setItem(payload.key, "1");
+      localStorage.setItem(outcomeDismissedKey(payload.key), "1");
     }
     setPayload(null);
   }
