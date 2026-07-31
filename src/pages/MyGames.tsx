@@ -6,6 +6,8 @@ import { supa } from "../lib/supabaseClient";
 import { useToast } from "../components/Toast";
 import { getEffectiveUserId } from "../lib/auth";
 import { loadLeagueRoundState } from "../lib/leagueRoundState";
+import { getLeagueOutcomeForPlayer } from "../lib/leagueOutcome";
+import { isOutcomeDebugEnabled, updateOutcomeDebug } from "../lib/outcomeDebug";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -97,25 +99,7 @@ export function MyGames() {
             const viewerMembership =
               (state.memberships ?? []).find((member: any) => String(member.player_id) === String(state.viewerId)) ??
               null;
-            const eliminationEntry =
-              viewerMembership?.is_active === false
-                ? (state.rounds || [])
-                    .sort((a: any, b: any) => (a.round_number ?? 0) - (b.round_number ?? 0))
-                    .map((entry: any) => ({
-                      round: entry,
-                      pick:
-                        (state.allLeaguePicks || []).find(
-                          (pick: any) =>
-                            String(pick.round_id) === String(entry.id) &&
-                            String(pick.player_id) === String(state.viewerId)
-                        ) ?? null,
-                    }))
-                    .find(
-                      (entry: any) =>
-                        entry.pick &&
-                        (entry.pick.status === "eliminated" || entry.pick.status === "no-pick")
-                    ) ?? null
-                : null;
+            const viewerOutcome = getLeagueOutcomeForPlayer(state.viewerId, String(league.id), state);
             const pickedTeamName =
               state.viewerPick?.team_id && Array.isArray(state.teams)
                 ? (state.teams.find((team: any) => String(team.id) === String(state.viewerPick.team_id))?.name as string | undefined)
@@ -131,18 +115,32 @@ export function MyGames() {
               deadlineUtc: (state.round?.pick_deadline_utc as string) ?? undefined,
               hasViewerPick,
               viewerActive: viewerMembership?.is_active !== false,
-              eliminationRound: eliminationEntry?.round?.round_number ?? undefined,
+              eliminationRound: viewerOutcome?.eliminationRound ?? undefined,
               pickedTeamName,
               winnerName: state.winnerName ?? undefined,
             } as DashboardLeague;
           })
         );
         setLeagues(rows);
+        if (isOutcomeDebugEnabled()) {
+          const debugLeague =
+            rows.find((league) => league.id === activeLeagueId) ??
+            rows.find((league) => typeof league.eliminationRound === "number") ??
+            rows[0];
+          if (debugLeague) {
+            const debugState = await loadLeagueRoundState(debugLeague.id);
+            const debugOutcome = getLeagueOutcomeForPlayer(debugState.viewerId, debugLeague.id, debugState);
+            updateOutcomeDebug({
+              myGamesOutcomeStatus: debugOutcome?.status ?? "",
+              myGamesEliminationRound: debugOutcome?.eliminationRound ?? null,
+            });
+          }
+        }
       } finally {
         setLoading(false);
       }
     })();
-  }, [hydrated]);
+  }, [activeLeagueId, hydrated]);
 
   function setActive(id: string) {
     localStorage.setItem("active_league_id", id);
@@ -386,5 +384,6 @@ export function MyGames() {
     </div>
   );
 }
+
 
 

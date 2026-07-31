@@ -175,7 +175,9 @@ export function NotificationBell() {
             const { outcome } = await syncLeagueNotifications(playerId, String(league.id));
             updateOutcomeDebug({
               syncReturnedOutcome: !!outcome,
-              returnedOutcomeType: outcome?.type ?? "",
+              returnedOutcomeType: outcome?.status ?? "",
+              notificationOutcomeStatus: outcome?.status ?? "",
+              notificationEliminationRound: outcome?.eliminationRound ?? null,
             });
             const payload = buildOutcomePayloadFromLeagueOutcome(playerId, outcome);
             updateOutcomeDebug({

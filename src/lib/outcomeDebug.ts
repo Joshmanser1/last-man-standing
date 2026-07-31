@@ -9,6 +9,10 @@ export type OutcomeDebugSnapshot = {
   syncReturnedOutcome: boolean;
   returnedOutcomeType: string;
   returnedOutcomeKey: string;
+  myGamesOutcomeStatus: string;
+  myGamesEliminationRound: number | null;
+  notificationOutcomeStatus: string;
+  notificationEliminationRound: number | null;
   modalPayloadBuilt: boolean;
   showOutcomeCalled: boolean;
   providerReceivedPayload: boolean;
@@ -31,6 +35,10 @@ const initialState: OutcomeDebugSnapshot = {
   syncReturnedOutcome: false,
   returnedOutcomeType: "",
   returnedOutcomeKey: "",
+  myGamesOutcomeStatus: "",
+  myGamesEliminationRound: null,
+  notificationOutcomeStatus: "",
+  notificationEliminationRound: null,
   modalPayloadBuilt: false,
   showOutcomeCalled: false,
   providerReceivedPayload: false,

@@ -93,6 +93,14 @@ function OutcomeDebugPanel() {
         <div>{debug.returnedOutcomeType || "—"}</div>
         <div>Outcome key</div>
         <div className="truncate">{debug.returnedOutcomeKey || "—"}</div>
+        <div>My Games outcome</div>
+        <div>{debug.myGamesOutcomeStatus || "—"}</div>
+        <div>My Games elim round</div>
+        <div>{debug.myGamesEliminationRound ?? "—"}</div>
+        <div>Notification outcome</div>
+        <div>{debug.notificationOutcomeStatus || "—"}</div>
+        <div>Notification elim round</div>
+        <div>{debug.notificationEliminationRound ?? "—"}</div>
         <div>Payload built</div>
         <div>{debug.modalPayloadBuilt ? "yes" : "no"}</div>
         <div>showOutcome called</div>
@@ -258,3 +266,4 @@ export function useNotifications() {
   if (!ctx) throw new Error("useNotifications must be used inside provider");
   return ctx;
 }
+

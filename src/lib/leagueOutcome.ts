@@ -10,28 +10,20 @@ export type LeagueOutcomeSource = {
   winnerPlayerId?: string | null;
 };
 
-export type LeaguePlayerOutcome =
-  | {
-      type: "winner";
-      leagueId: string;
-      leagueName: string;
-      roundNumber: number;
-      roundId: string;
-    }
-  | {
-      type: "eliminated" | "no-pick";
-      leagueId: string;
-      leagueName: string;
-      roundNumber: number;
-      roundId: string;
-      teamName: string | null;
-    };
+export type CanonicalLeagueOutcome = {
+  leagueId: string;
+  leagueName: string;
+  status: "alive" | "eliminated" | "winner";
+  eliminationRound: number | null;
+  eliminatedByTeam: { id: string; name: string } | null;
+  winningPlayerId: string | null;
+};
 
 export function getLeagueOutcomeForPlayer(
   playerId: string,
   leagueId: string,
   source: LeagueOutcomeSource
-): LeaguePlayerOutcome | null {
+): CanonicalLeagueOutcome | null {
   const league = source.league;
   if (!playerId || !leagueId || !league) return null;
 
@@ -43,63 +35,66 @@ export function getLeagueOutcomeForPlayer(
     memberships.find((member: any) => String(member.player_id) === String(playerId)) ?? null;
   if (!viewerMembership) return null;
 
-  const completedRound =
-    [...rounds]
-      .filter((entry: any) => entry?.status === "completed")
-      .sort((a: any, b: any) => (b.round_number ?? 0) - (a.round_number ?? 0))[0] ?? null;
-
   if (
-    league.status === "completed" &&
-    completedRound &&
     source.winnerPlayerId &&
     String(source.winnerPlayerId) === String(playerId)
   ) {
     return {
-      type: "winner",
       leagueId,
       leagueName: league.name,
-      roundNumber: completedRound.round_number,
-      roundId: String(completedRound.id),
+      status: "winner",
+      eliminationRound: null,
+      eliminatedByTeam: null,
+      winningPlayerId: String(source.winnerPlayerId),
     };
   }
 
   const elimination = getMemberElimination(viewerMembership, rounds, allLeaguePicks, leagueId);
-  if (!elimination?.round || !elimination?.pick) return null;
-
-  if (elimination.pick.status === "eliminated" || elimination.pick.status === "no-pick") {
-    const teamName =
+  if (elimination?.round && elimination?.pick) {
+    const eliminatedByTeam =
       elimination.pick.status === "no-pick"
         ? null
-        : teams.find((team: any) => String(team.id) === String(elimination.pick.team_id))?.name ?? null;
+        : (() => {
+            const team =
+              teams.find((entry: any) => String(entry.id) === String(elimination.pick.team_id)) ?? null;
+            return team ? { id: String(team.id), name: String(team.name ?? "") } : null;
+          })();
     return {
-      type: elimination.pick.status,
       leagueId,
       leagueName: league.name,
-      roundNumber: elimination.round.round_number,
-      roundId: String(elimination.round.id),
-      teamName,
+      status: "eliminated",
+      eliminationRound: elimination.round.round_number ?? null,
+      eliminatedByTeam,
+      winningPlayerId: source.winnerPlayerId ? String(source.winnerPlayerId) : null,
     };
   }
 
-  return null;
+  return {
+    leagueId,
+    leagueName: league.name,
+    status: "alive",
+    eliminationRound: null,
+    eliminatedByTeam: null,
+    winningPlayerId: source.winnerPlayerId ? String(source.winnerPlayerId) : null,
+  };
 }
 
 export function buildOutcomePayloadFromLeagueOutcome(
   playerId: string,
-  outcome: LeaguePlayerOutcome | null
+  outcome: CanonicalLeagueOutcome | null
 ): OutcomePayload | null {
   if (!playerId || !outcome) return null;
 
-  if (outcome.type === "winner") {
+  if (outcome.status === "winner") {
     return {
       type: "winner",
       title: "You won!",
       body: `${outcome.leagueName}. You were the last player standing.`,
       emoji: "\uD83C\uDFC6",
-      key: `league_outcome:${playerId}:${outcome.leagueId}:winner:${outcome.roundNumber}`,
+      key: `league_outcome:${playerId}:${outcome.leagueId}:winner`,
       stats: [
         { label: "League", value: outcome.leagueName },
-        { label: "Round", value: String(outcome.roundNumber) },
+        { label: "Winner", value: "Final standings" },
       ],
       ctas: [
         { label: "View final standings", to: "/leaderboard" },
@@ -108,22 +103,22 @@ export function buildOutcomePayloadFromLeagueOutcome(
     };
   }
 
+  if (outcome.status !== "eliminated" || !outcome.eliminationRound) return null;
+
   const body =
-    outcome.type === "no-pick"
-      ? `You were eliminated in Round ${outcome.roundNumber}. Your run in ${outcome.leagueName} is over.`
-      : outcome.teamName
-      ? `Your ${outcome.teamName} pick did not win in Round ${outcome.roundNumber}. Your run in ${outcome.leagueName} is over.`
-      : `You were eliminated in Round ${outcome.roundNumber}. Your run in ${outcome.leagueName} is over.`;
+    outcome.eliminatedByTeam?.name
+      ? `Your ${outcome.eliminatedByTeam.name} pick did not win in Round ${outcome.eliminationRound}. Your run in ${outcome.leagueName} is over.`
+      : `You were eliminated in Round ${outcome.eliminationRound}. Your run in ${outcome.leagueName} is over.`;
 
   return {
     type: "eliminated",
     title: "You've been eliminated",
     body,
     emoji: "\u274C",
-    key: `league_outcome:${playerId}:${outcome.leagueId}:eliminated:${outcome.roundNumber}`,
+    key: `league_outcome:${playerId}:${outcome.leagueId}:eliminated:${outcome.eliminationRound}`,
     stats: [
       { label: "League", value: outcome.leagueName },
-      { label: "Eliminated in", value: `Round ${outcome.roundNumber}` },
+      { label: "Eliminated in", value: `Round ${outcome.eliminationRound}` },
     ],
     ctas: [
       { label: "View standings", to: "/leaderboard" },

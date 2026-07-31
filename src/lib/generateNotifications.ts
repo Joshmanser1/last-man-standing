@@ -107,28 +107,22 @@ export async function syncLeagueNotifications(
     winnerPlayerId,
   });
 
-  if (playerOutcome?.type === "winner") {
+  if (playerOutcome?.status === "winner") {
     appendNotification(playerId, {
-      key: `league:${leagueId}:winner:${playerOutcome.roundNumber}`,
+      key: `league:${leagueId}:winner:${playerOutcome.winningPlayerId ?? playerId}`,
       type: "winner",
       title: `You won ${league.name}`,
-      body: `You were the last player standing after Round ${playerOutcome.roundNumber}.`,
+      body: `You were the last player standing in ${league.name}.`,
       cta: { label: "View League", to: "/league" },
     });
-  } else if (playerOutcome?.type === "eliminated") {
+  } else if (playerOutcome?.status === "eliminated" && playerOutcome.eliminationRound) {
     appendNotification(playerId, {
-      key: `league:${leagueId}:eliminated:${playerOutcome.roundNumber}:${playerId}`,
+      key: `league:${leagueId}:eliminated:${playerOutcome.eliminationRound}:${playerId}`,
       type: "eliminated",
       title: "You were eliminated",
-      body: `${playerOutcome.teamName ?? "Your team"} did not win in Round ${playerOutcome.roundNumber}.`,
-      cta: { label: "View Leaderboard", to: "/leaderboard" },
-    });
-  } else if (playerOutcome?.type === "no-pick") {
-    appendNotification(playerId, {
-      key: `league:${leagueId}:no-pick:${playerOutcome.roundNumber}:${playerId}`,
-      type: "eliminated",
-      title: "You were eliminated",
-      body: `No pick was submitted before the Round ${playerOutcome.roundNumber} deadline.`,
+      body: playerOutcome.eliminatedByTeam?.name
+        ? `${playerOutcome.eliminatedByTeam.name} did not win in Round ${playerOutcome.eliminationRound}.`
+        : `You were eliminated in Round ${playerOutcome.eliminationRound}.`,
       cta: { label: "View Leaderboard", to: "/leaderboard" },
     });
   }
@@ -149,14 +143,6 @@ export async function syncLeagueNotifications(
           title: `You survived Round ${previousRound.round_number}`,
           body: `Round ${currentRound?.round_number ?? previousRound.round_number + 1} is now open.`,
           cta: { label: "Make Pick", to: "/make-pick" },
-        });
-      } else if (myPrevPick?.status === "eliminated" || myPrevPick?.status === "no-pick") {
-        appendNotification(playerId, {
-          key: `league:${leagueId}:eliminated:${previousRound.round_number}`,
-          type: "eliminated",
-          title: `You were eliminated in Round ${previousRound.round_number}`,
-          body: "Results are available in your league pages.",
-          cta: { label: "View Leaderboard", to: "/leaderboard" },
         });
       }
     }
