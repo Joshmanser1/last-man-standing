@@ -7,6 +7,8 @@ export type LeagueOutcomeSource = {
   teams: any[];
   memberships: any[];
   allLeaguePicks: any[];
+  viewerMembership?: any | null;
+  viewerElimination?: { round: any; pick: any } | null;
   winnerPlayerId?: string | null;
 };
 
@@ -32,7 +34,9 @@ export function getLeagueOutcomeForPlayer(
   const teams = source.teams ?? [];
   const allLeaguePicks = source.allLeaguePicks ?? [];
   const viewerMembership =
-    memberships.find((member: any) => String(member.player_id) === String(playerId)) ?? null;
+    source.viewerMembership ??
+    memberships.find((member: any) => String(member.player_id) === String(playerId)) ??
+    null;
   if (!viewerMembership) return null;
 
   if (
@@ -49,7 +53,10 @@ export function getLeagueOutcomeForPlayer(
     };
   }
 
-  const elimination = getMemberElimination(viewerMembership, rounds, allLeaguePicks, leagueId);
+  const elimination =
+    source.viewerElimination && source.viewerElimination.round && source.viewerElimination.pick
+      ? source.viewerElimination
+      : getMemberElimination(viewerMembership, rounds, allLeaguePicks, leagueId);
   if (elimination?.round && elimination?.pick) {
     const eliminatedByTeam =
       elimination.pick.status === "no-pick"
