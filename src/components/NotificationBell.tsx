@@ -14,7 +14,6 @@ import { getEffectiveUserId } from "../lib/auth";
 import { supa } from "../lib/supabaseClient";
 import { useNotifications } from "./Notifications";
 import { buildOutcomePayloadFromLeagueOutcome } from "../lib/leagueOutcome";
-import { pushOutcomeDebugError, updateOutcomeDebug } from "../lib/outcomeDebug";
 
 function timeAgo(ts: number) {
   const diff = Date.now() - ts;
@@ -114,14 +113,12 @@ export function NotificationBell() {
 
   useEffect(() => {
     let mounted = true;
-    updateOutcomeDebug({ bellSyncMounted: true });
 
     const refreshUserId = async () => {
       const nextUserId = (await getEffectiveUserId()) || "";
       if (!mounted) return;
       setPlayerId(nextUserId);
       refreshFeed(nextUserId);
-      updateOutcomeDebug({ playerIdResolved: !!nextUserId });
     };
 
     void refreshUserId();
@@ -156,48 +153,21 @@ export function NotificationBell() {
     let disposed = false;
 
     const run = async () => {
-      try {
-        const visibleResp = await fetch("/api/user-leagues", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: playerId }),
-        });
-        if (!visibleResp.ok) {
-          pushOutcomeDebugError("/api/user-leagues", `HTTP ${visibleResp.status}`);
-          return;
+      const visibleResp = await fetch("/api/user-leagues", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: playerId }),
+      });
+      if (!visibleResp.ok) return;
+      const visibleLeagues = (await visibleResp.json()) as Array<any>;
+      for (const league of visibleLeagues ?? []) {
+        if (!league?.id) continue;
+        const { outcome } = await syncLeagueNotifications(playerId, String(league.id));
+        const payload = buildOutcomePayloadFromLeagueOutcome(playerId, outcome);
+        if (payload) {
+          showOutcome(payload);
+          break;
         }
-        const visibleLeagues = (await visibleResp.json()) as Array<any>;
-        updateOutcomeDebug({ visibleLeagueCount: visibleLeagues?.length ?? 0 });
-        for (const league of visibleLeagues ?? []) {
-          if (!league?.id) continue;
-          updateOutcomeDebug({ currentLeagueId: String(league.id) });
-          try {
-            const { outcome } = await syncLeagueNotifications(playerId, String(league.id));
-            updateOutcomeDebug({
-              syncReturnedOutcome: !!outcome,
-              returnedOutcomeType: outcome?.status ?? "",
-              notificationOutcomeStatus: outcome?.status ?? "",
-              notificationEliminationRound: outcome?.eliminationRound ?? null,
-            });
-            const payload = buildOutcomePayloadFromLeagueOutcome(playerId, outcome);
-            updateOutcomeDebug({
-              modalPayloadBuilt: !!payload,
-              returnedOutcomeKey: payload?.key ?? "",
-            });
-            if (payload) {
-              updateOutcomeDebug({ showOutcomeCalled: true });
-              showOutcome(payload);
-              break;
-            }
-          } catch (err: any) {
-            pushOutcomeDebugError(
-              "syncLeagueNotifications",
-              err?.message ?? "Unknown sync failure"
-            );
-          }
-        }
-      } catch (err: any) {
-        pushOutcomeDebugError("/api/user-leagues", err?.message ?? "Request failed");
       }
       if (!disposed) refreshFeed(playerId);
     };
@@ -369,3 +339,4 @@ export function NotificationBell() {
     </div>
   );
 }
+

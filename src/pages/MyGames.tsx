@@ -7,7 +7,6 @@ import { useToast } from "../components/Toast";
 import { getEffectiveUserId } from "../lib/auth";
 import { loadLeagueRoundState } from "../lib/leagueRoundState";
 import { getLeagueOutcomeForPlayer } from "../lib/leagueOutcome";
-import { isOutcomeDebugEnabled, updateOutcomeDebug } from "../lib/outcomeDebug";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -122,20 +121,6 @@ export function MyGames() {
           })
         );
         setLeagues(rows);
-        if (isOutcomeDebugEnabled()) {
-          const debugLeague =
-            rows.find((league) => league.id === activeLeagueId) ??
-            rows.find((league) => typeof league.eliminationRound === "number") ??
-            rows[0];
-          if (debugLeague) {
-            const debugState = await loadLeagueRoundState(debugLeague.id);
-            const debugOutcome = getLeagueOutcomeForPlayer(debugState.viewerId, debugLeague.id, debugState);
-            updateOutcomeDebug({
-              myGamesOutcomeStatus: debugOutcome?.status ?? "",
-              myGamesEliminationRound: debugOutcome?.eliminationRound ?? null,
-            });
-          }
-        }
       } finally {
         setLoading(false);
       }
@@ -384,6 +369,7 @@ export function MyGames() {
     </div>
   );
 }
+
 
 
 

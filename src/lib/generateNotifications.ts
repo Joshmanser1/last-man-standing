@@ -1,8 +1,6 @@
 import { appendNotification } from "./notifyFeed";
-import { postJsonWithAuth } from "./apiAuth";
 import { getLeagueOutcomeForPlayer } from "./leagueOutcome";
 import { loadLeagueRoundState } from "./leagueRoundState";
-import { pushOutcomeDebugError, updateOutcomeDebug } from "./outcomeDebug";
 
 const MEMBERS_SNAPSHOT_KEY = "lms_notification_members_v1";
 
@@ -19,8 +17,7 @@ export async function syncLeagueNotifications(
   let state;
   try {
     state = await loadLeagueRoundState(leagueId);
-  } catch (err: any) {
-    pushOutcomeDebugError("loadLeagueRoundState", err?.message ?? "Failed to load league state");
+  } catch {
     return { outcome: null };
   }
   const league = state.league;
@@ -30,38 +27,6 @@ export async function syncLeagueNotifications(
   const picks = state.allLeaguePicks ?? [];
   const members = state.memberships ?? [];
   const currentRound = state.currentLeagueRound ?? safeRounds[safeRounds.length - 1] ?? null;
-  const matchingPlayerPicks = picks
-    .filter((pick: any) => String(pick.player_id) === String(playerId))
-    .map((pick: any) => {
-      const round = safeRounds.find((entry: any) => String(entry.id) === String(pick.round_id));
-      return {
-        roundNumber: round?.round_number ?? null,
-        status: String(pick.status ?? ""),
-      };
-    })
-    .sort((a: any, b: any) => (a.roundNumber ?? 0) - (b.roundNumber ?? 0));
-
-  updateOutcomeDebug({
-    syncLeagueName: String(league.name ?? ""),
-    syncViewerId: String(state.viewerId ?? ""),
-    syncRequestedPlayerId: String(playerId ?? ""),
-    syncViewerIdsMatch:
-      state.viewerId || playerId ? String(state.viewerId ?? "") === String(playerId ?? "") : null,
-    syncViewerMembershipFound: !!state.viewerMembership,
-    syncViewerMembershipIsActive:
-      typeof state.viewerMembership?.is_active === "boolean"
-        ? String(state.viewerMembership.is_active)
-        : "unknown",
-    syncViewerEliminationFound: !!state.viewerElimination,
-    syncViewerEliminationRound: state.viewerElimination?.round?.round_number ?? null,
-    syncViewerEliminationPickStatus: String(state.viewerElimination?.pick?.status ?? ""),
-    syncViewerEliminationPickPlayerId: String(state.viewerElimination?.pick?.player_id ?? ""),
-    syncAllLeaguePicksCount: picks.length,
-    syncMatchingPlayerPicksCount: matchingPlayerPicks.length,
-    syncMatchingPlayerPickStatuses: matchingPlayerPicks
-      .map((pick: any) => `R${pick.roundNumber ?? "?"}:${pick.status}`)
-      .join(", "),
-  });
 
   const currentRoundOpen =
     league.status !== "completed" &&
@@ -169,3 +134,4 @@ export async function syncLeagueNotifications(
   localStorage.setItem(snapshotKey, JSON.stringify(currentMemberIds));
   return { outcome: playerOutcome };
 }
+

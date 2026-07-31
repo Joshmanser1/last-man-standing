@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { WinnerConfetti } from "./WinnerConfetti";
-import { updateOutcomeDebug } from "../lib/outcomeDebug";
 
 type Payload = {
   type: "progressed" | "eliminated" | "winner";
@@ -22,14 +21,9 @@ export function OutcomeModal({ payload, onClose }: { payload: Payload; onClose: 
   const hasCloseCta = ctas.some((cta) => cta.action === "close");
 
   useEffect(() => {
-    updateOutcomeDebug({ modalMounted: true });
     const t = setTimeout(() => setOpen(true), 10);
     return () => clearTimeout(t);
   }, []);
-
-  useEffect(() => {
-    updateOutcomeDebug({ modalOpen: open });
-  }, [open]);
 
   const accent =
     payload.type === "winner"
