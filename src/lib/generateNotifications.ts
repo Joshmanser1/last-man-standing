@@ -1,6 +1,7 @@
 import { appendNotification } from "./notifyFeed";
 import { postJsonWithAuth } from "./apiAuth";
 import { getLeagueOutcomeForPlayer } from "./leagueOutcome";
+import { pushOutcomeDebugError } from "./outcomeDebug";
 
 const MEMBERS_SNAPSHOT_KEY = "lms_notification_members_v1";
 
@@ -15,14 +16,20 @@ export async function syncLeagueNotifications(
   if (!playerId || !leagueId) return { outcome: null };
 
   const stateResp = await postJsonWithAuth("/api/league-state", { league_id: leagueId });
-  if (!stateResp.ok) return { outcome: null };
+  if (!stateResp.ok) {
+    pushOutcomeDebugError("/api/league-state", `HTTP ${stateResp.status}`);
+    return { outcome: null };
+  }
   const state = (await stateResp.json()) as {
     league?: any;
     rounds?: any[];
     teams?: any[];
   };
   const league = state.league;
-  if (!league) return { outcome: null };
+  if (!league) {
+    pushOutcomeDebugError("/api/league-state", "Missing league");
+    return { outcome: null };
+  }
   const safeRounds = state.rounds ?? [];
   const teams = state.teams ?? [];
 
@@ -30,7 +37,13 @@ export async function syncLeagueNotifications(
     postJsonWithAuth("/api/league-picks", { league_id: leagueId }),
     postJsonWithAuth("/api/league-members", { league_id: leagueId }),
   ]);
-  if (!picksResp.ok || !membersResp.ok) return { outcome: null };
+  if (!picksResp.ok || !membersResp.ok) {
+    pushOutcomeDebugError(
+      "league-members/picks",
+      `members=${membersResp.status} picks=${picksResp.status}`
+    );
+    return { outcome: null };
+  }
 
   const picks = (await picksResp.json()) as Array<any>;
   const members = (await membersResp.json()) as Array<any>;

@@ -23,6 +23,7 @@ import PrivateLeagueJoin from "./pages/PrivateLeagueJoin";
 
 // Dev-only switcher
 import { DevUserSwitcher } from "./components/DevUserSwitcher";
+import { enableOutcomeDebug } from "./lib/outcomeDebug";
 
 // Env flag still supported
 const DEV_FLAG =
@@ -47,6 +48,14 @@ function AppInner() {
       }
     }
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const search = new URLSearchParams(location.search);
+    if (search.get("debugOutcome") === "1") {
+      enableOutcomeDebug();
+    }
+  }, [location.search]);
 
   // Switcher is enabled if env OR local toggle is set
   const SWITCHER_ENABLED = useMemo(() => {
