@@ -51,12 +51,16 @@ export function wasMemberEligibleForRound(
   allLeaguePicks: any[]
 ): boolean {
   if (!member?.player_id || !round?.id) return false;
-  if (!joinedBeforeRoundDeadline(member, round)) return false;
 
   const byRoundPlayer = new Map<string, any>();
   for (const pick of allLeaguePicks || []) {
     byRoundPlayer.set(pickKey(String(pick.round_id), String(pick.player_id)), pick);
   }
+
+  const currentRoundPick = byRoundPlayer.get(
+    pickKey(String(round.id), String(member.player_id))
+  );
+  if (!currentRoundPick && !joinedBeforeRoundDeadline(member, round)) return false;
 
   const priorRounds = [...(rounds || [])]
     .filter((candidate: any) => (candidate?.round_number ?? 0) < (round?.round_number ?? 0))
