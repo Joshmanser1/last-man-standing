@@ -1,6 +1,7 @@
 import { appendNotification } from "./notifyFeed";
 import { postJsonWithAuth } from "./apiAuth";
 import { getLeagueOutcomeForPlayer } from "./leagueOutcome";
+import { loadLeagueRoundState } from "./leagueRoundState";
 import { pushOutcomeDebugError } from "./outcomeDebug";
 
 const MEMBERS_SNAPSHOT_KEY = "lms_notification_members_v1";
@@ -15,45 +16,20 @@ export async function syncLeagueNotifications(
 ): Promise<LeagueNotificationSyncResult> {
   if (!playerId || !leagueId) return { outcome: null };
 
-  const stateResp = await postJsonWithAuth("/api/league-state", { league_id: leagueId });
-  if (!stateResp.ok) {
-    pushOutcomeDebugError("/api/league-state", `HTTP ${stateResp.status}`);
+  let state;
+  try {
+    state = await loadLeagueRoundState(leagueId);
+  } catch (err: any) {
+    pushOutcomeDebugError("loadLeagueRoundState", err?.message ?? "Failed to load league state");
     return { outcome: null };
   }
-  const state = (await stateResp.json()) as {
-    league?: any;
-    rounds?: any[];
-    teams?: any[];
-  };
   const league = state.league;
-  if (!league) {
-    pushOutcomeDebugError("/api/league-state", "Missing league");
-    return { outcome: null };
-  }
+  if (!league) return { outcome: null };
   const safeRounds = state.rounds ?? [];
   const teams = state.teams ?? [];
-
-  const [picksResp, membersResp] = await Promise.all([
-    postJsonWithAuth("/api/league-picks", { league_id: leagueId }),
-    postJsonWithAuth("/api/league-members", { league_id: leagueId }),
-  ]);
-  if (!picksResp.ok || !membersResp.ok) {
-    pushOutcomeDebugError(
-      "league-members/picks",
-      `members=${membersResp.status} picks=${picksResp.status}`
-    );
-    return { outcome: null };
-  }
-
-  const picks = (await picksResp.json()) as Array<any>;
-  const members = (await membersResp.json()) as Array<any>;
-  const currentRound =
-    safeRounds.find((round: any) => round.round_number === league.current_round) ||
-    safeRounds[safeRounds.length - 1];
-  const latestCompletedRound =
-    [...safeRounds]
-      .filter((round: any) => round.status === "completed")
-      .sort((a: any, b: any) => (b.round_number ?? 0) - (a.round_number ?? 0))[0] ?? null;
+  const picks = state.allLeaguePicks ?? [];
+  const members = state.memberships ?? [];
+  const currentRound = state.currentLeagueRound ?? safeRounds[safeRounds.length - 1] ?? null;
 
   const currentRoundOpen =
     league.status !== "completed" &&
@@ -89,22 +65,13 @@ export async function syncLeagueNotifications(
     }
   }
 
-  const winnerPlayerId =
-    league.status === "completed" && latestCompletedRound
-      ? (() => {
-          const finalRoundPicks = picks.filter((pick: any) => pick.round_id === latestCompletedRound.id);
-          const through = finalRoundPicks.filter((pick: any) => pick.status === "through");
-          return through.length === 1 ? String(through[0].player_id) : null;
-        })()
-      : null;
-
   const playerOutcome = getLeagueOutcomeForPlayer(playerId, leagueId, {
+    ...state,
     league,
     rounds: safeRounds,
     teams,
     memberships: members,
     allLeaguePicks: picks,
-    winnerPlayerId,
   });
 
   if (playerOutcome?.status === "winner") {
