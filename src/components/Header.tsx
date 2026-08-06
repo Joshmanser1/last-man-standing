@@ -6,7 +6,7 @@ import { GameSelector } from "./GameSelector";
 import { subscribeStore } from "../data/service";
 import { getEffectiveUserId, isAdminNow } from "../lib/auth";
 import { NotificationBell } from "./NotificationBell";
-import { isMarketingDemoActive } from "../demo/runtime";
+import { isMarketingDemoActive, isMarketingDemoRecordingMode } from "../demo/runtime";
 
 const linkCls = ({ isActive }: { isActive: boolean }) =>
   `nav-link ${isActive ? "nav-link-active" : ""}`;
@@ -34,6 +34,7 @@ export function Header() {
   const playerName = localStorage.getItem("player_name") || "";
   const navigate = useNavigate();
   const marketingDemo = isMarketingDemoActive();
+  const recordingMode = isMarketingDemoRecordingMode();
 
   const syncLeagueAccess = useCallback(async (isAuthed: boolean) => {
     const storedId = localStorage.getItem("active_league_id");
@@ -217,7 +218,7 @@ export function Header() {
         {/* Right side */}
         <div className="flex shrink-0 items-center gap-2">
           {authed && <NotificationBell />}
-          {marketingDemo && (
+          {marketingDemo && !recordingMode && (
             <span className="rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-semibold text-slate-900">
               Demo
             </span>

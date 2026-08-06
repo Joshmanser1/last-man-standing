@@ -31,6 +31,7 @@ type DemoState = {
   activeLeagueId: string;
   scenario: MarketingDemoScenario;
   createdLeague: DemoLeague | null;
+  recordingMode: boolean;
 };
 
 type DemoSnapshot = {
@@ -83,6 +84,7 @@ function defaultState(): DemoState {
     activeLeagueId: DEMO_LEAGUE_ID,
     scenario: "active",
     createdLeague: null,
+    recordingMode: false,
   };
 }
 
@@ -141,10 +143,27 @@ export function getMarketingDemoScenario(): MarketingDemoScenario {
   return readState().scenario;
 }
 
+export function isMarketingDemoRecordingMode() {
+  return readState().recordingMode === true;
+}
+
 export function setMarketingDemoScenario(scenario: MarketingDemoScenario) {
   const next = readState();
   next.scenario = scenario;
   writeState(next);
+}
+
+export function setMarketingDemoRecordingMode(recordingMode: boolean) {
+  const next = readState();
+  next.recordingMode = recordingMode;
+  writeState(next);
+}
+
+export function toggleMarketingDemoRecordingMode() {
+  const next = readState();
+  next.recordingMode = !next.recordingMode;
+  writeState(next);
+  return next.recordingMode;
 }
 
 export function rememberCreatedDemoLeague(leagueName: string) {
@@ -642,4 +661,3 @@ export function getMarketingDemoStartPath() {
 export function getMarketingDemoJoinCode() {
   return DEMO_JOIN_CODE;
 }
-
