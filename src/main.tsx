@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import { NotificationsProvider } from "./components/Notifications";
+import { installMarketingDemoFetchInterceptor } from "./demo/fetchInterceptor";
 
 // === Sentry (v8) setup — only needs @sentry/react ===
 import * as Sentry from "@sentry/react";
@@ -22,6 +23,7 @@ if (import.meta.env.PROD && SENTRY_DSN) {
 }
 
 const rootElement = document.getElementById("root") as HTMLElement;
+installMarketingDemoFetchInterceptor();
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>

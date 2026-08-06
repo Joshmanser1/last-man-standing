@@ -4,16 +4,28 @@ import { Navigate, useLocation } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
 import { devOn, localAuthed } from "../lib/auth";
 import { rememberPendingAuthRedirect } from "../lib/authRedirect";
+import { ensureMarketingDemoForLocation, isMarketingDemoActive } from "../demo/runtime";
 
 type RequireAuthProps = { children: React.ReactElement };
 
 export function RequireAuth({ children }: RequireAuthProps) {
   const loc = useLocation();
-  const [authed, setAuthed] = useState<boolean>(devOn() && localAuthed());
+  ensureMarketingDemoForLocation(loc.pathname, loc.search);
+  const [authed, setAuthed] = useState<boolean>(
+    isMarketingDemoActive() || (devOn() && localAuthed())
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
+
+    if (isMarketingDemoActive()) {
+      setAuthed(true);
+      setLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
 
     supa.auth.getSession().then(({ data }) => {
       if (!mounted) return;

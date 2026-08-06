@@ -7,6 +7,7 @@ import { useToast } from "../components/Toast";
 import { getEffectiveUserId } from "../lib/auth";
 import { loadLeagueRoundState } from "../lib/leagueRoundState";
 import { getLeagueOutcomeForPlayer } from "../lib/leagueOutcome";
+import { isMarketingDemoActive } from "../demo/runtime";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -39,6 +40,10 @@ export function MyGames() {
   useEffect(() => {
     (async () => {
       try {
+        if (isMarketingDemoActive()) {
+          setHydrated(true);
+          return;
+        }
         if (localStorage.getItem("player_id")) {
           setHydrated(true);
           return;

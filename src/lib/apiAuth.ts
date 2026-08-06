@@ -1,10 +1,12 @@
 import { supa } from "./supabaseClient";
+import { isMarketingDemoActive } from "../demo/runtime";
 
 export async function getApiHeaders(extra?: Record<string, string>) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(extra ?? {}),
   };
+  if (isMarketingDemoActive()) return headers;
   const { data } = await supa.auth.getSession();
   const token = data.session?.access_token;
   if (token) headers.Authorization = `Bearer ${token}`;

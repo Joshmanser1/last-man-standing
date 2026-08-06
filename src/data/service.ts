@@ -10,6 +10,8 @@ import type {
 } from "./types";
 import mockService from "./mock";
 import { supabaseService } from "./supabaseService";
+import marketingDemoService from "../demo/service";
+import { isMarketingDemoActive } from "../demo/runtime";
 
 /* -----------------------------------------------------------------------------
    Public service interface
@@ -91,9 +93,13 @@ export function subscribeStore(cb: () => void) {
    Backend selection
 ----------------------------------------------------------------------------- */
 const USE_SUPABASE_BACKEND = true;
-const base = (USE_SUPABASE_BACKEND
-  ? supabaseService
-  : (mockService as unknown)) as IDataService;
+
+function getBaseService(): IDataService {
+  if (isMarketingDemoActive()) return marketingDemoService;
+  return (USE_SUPABASE_BACKEND
+    ? supabaseService
+    : (mockService as unknown)) as IDataService;
+}
 
 /* -----------------------------------------------------------------------------
    Helpers
@@ -104,6 +110,25 @@ function withNotify<TArgs extends any[], TReturn>(
   return async (...args: TArgs) => {
     const result = await fn(...args);
     window.dispatchEvent(new Event(STORE_EVENT));
+    return result;
+  };
+}
+
+function withDynamicNotify<TArgs extends any[], TReturn>(
+  pick: (svc: IDataService) => (...args: TArgs) => Promise<TReturn>
+) {
+  return async (...args: TArgs) => {
+    const result = await pick(getBaseService())(...args);
+    window.dispatchEvent(new Event(STORE_EVENT));
+    return result;
+  };
+}
+
+function withDynamicRead<TArgs extends any[], TReturn>(
+  pick: (svc: IDataService) => (...args: TArgs) => Promise<TReturn>
+) {
+  return async (...args: TArgs) => {
+    const result = await pick(getBaseService())(...args);
     return result;
   };
 }
@@ -167,24 +192,25 @@ async function localUpdateLeague(leagueId: ID, patch: Partial<League>) {
 export const dataService: IDataService = {
   // Reads
   listLeagues: async (...a) => {
+    const base = getBaseService();
     const rows = await base.listLeagues(...a);
     return (rows || []).filter((l: any) => !l?.deleted_at);
   },
-  getLeagueByName: (...a) => base.getLeagueByName(...a),
-  getCurrentRound: (...a) => base.getCurrentRound(...a),
-  listTeams: (...a) => base.listTeams(...a),
-  listPicks: (...a) => base.listPicks(...a),
-  listUsedTeamIds: (...a) => base.listUsedTeamIds(...a),
+  getLeagueByName: withDynamicRead((svc) => svc.getLeagueByName.bind(svc)),
+  getCurrentRound: withDynamicRead((svc) => svc.getCurrentRound.bind(svc)),
+  listTeams: withDynamicRead((svc) => svc.listTeams.bind(svc)),
+  listPicks: withDynamicRead((svc) => svc.listPicks.bind(svc)),
+  listUsedTeamIds: withDynamicRead((svc) => svc.listUsedTeamIds.bind(svc)),
 
   // Mutations (proxy + notify)
-  seed: withNotify(base.seed.bind(base)),
-  upsertPlayer: withNotify(base.upsertPlayer.bind(base)),
-  ensureMembership: withNotify(base.ensureMembership.bind(base)),
-  upsertPick: withNotify(base.upsertPick.bind(base)),
-  createNextRound: withNotify(base.createNextRound.bind(base)),
-  lockRound: withNotify(base.lockRound.bind(base)),
-  evaluateRound: withNotify(base.evaluateRound.bind(base)),
-  advanceRound: withNotify(base.advanceRound.bind(base)),
+  seed: withDynamicNotify((svc) => svc.seed.bind(svc)),
+  upsertPlayer: withDynamicNotify((svc) => svc.upsertPlayer.bind(svc)),
+  ensureMembership: withDynamicNotify((svc) => svc.ensureMembership.bind(svc)),
+  upsertPick: withDynamicNotify((svc) => svc.upsertPick.bind(svc)),
+  createNextRound: withDynamicNotify((svc) => svc.createNextRound.bind(svc)),
+  lockRound: withDynamicNotify((svc) => svc.lockRound.bind(svc)),
+  evaluateRound: withDynamicNotify((svc) => svc.evaluateRound.bind(svc)),
+  advanceRound: withDynamicNotify((svc) => svc.advanceRound.bind(svc)),
 
   // Create game, then (if private) guarantee a join code
   createGame: withNotify(async (
@@ -192,6 +218,7 @@ export const dataService: IDataService = {
     startISO: string,
     options?: { fplStartEvent?: number; joinCode?: string; isTest?: boolean }
   ) => {
+    const base = getBaseService();
     const created = await base.createGame(name, startISO, options);
     // If backend didn’t set code and league is private, create a local one
     const s = readStore<any>();
@@ -203,13 +230,14 @@ export const dataService: IDataService = {
     return created;
   }),
 
-  importFixturesForCurrentRound: withNotify(
-    base.importFixturesForCurrentRound.bind(base)
+  importFixturesForCurrentRound: withDynamicNotify(
+    (svc) => svc.importFixturesForCurrentRound.bind(svc)
   ),
-  evaluateFromFixtures: withNotify(base.evaluateFromFixtures.bind(base)),
+  evaluateFromFixtures: withDynamicNotify((svc) => svc.evaluateFromFixtures.bind(svc)),
 
   // Visibility: when switching to private, ensure a join code exists
   setLeagueVisibility: withNotify(async (leagueId: ID, isPublic: boolean) => {
+    const base = getBaseService();
     if (base.setLeagueVisibility) {
       await base.setLeagueVisibility(leagueId, isPublic);
     } else if (base.updateLeague) {
@@ -221,6 +249,7 @@ export const dataService: IDataService = {
   }),
 
   updateLeague: withNotify(async (leagueId: ID, patch: Partial<League>) => {
+    const base = getBaseService();
     if (base.updateLeague) {
       await base.updateLeague(leagueId, patch);
     } else {
@@ -231,6 +260,7 @@ export const dataService: IDataService = {
   }),
 
   deleteLeague: withNotify(async (leagueId: ID) => {
+    const base = getBaseService();
     if (base.deleteLeague) {
       return base.deleteLeague(leagueId);
     }

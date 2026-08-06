@@ -1,5 +1,10 @@
 // src/lib/auth.ts
 import { supa } from "../lib/supabaseClient";
+import {
+  ensureMarketingDemoForLocation,
+  getMarketingDemoUser,
+  isMarketingDemoActive,
+} from "../demo/runtime";
 
 export const hasTestUserOverride = () =>
   typeof window !== "undefined" && !!localStorage.getItem("test_user_override");
@@ -13,12 +18,20 @@ export const getEffectiveUserIdNow = () =>
 export const devOn = () =>
   typeof window !== "undefined" && localStorage.getItem("dev_switcher") === "1";
 
+export const marketingDemoOn = () => {
+  if (typeof window === "undefined") return false;
+  ensureMarketingDemoForLocation(window.location.pathname, window.location.search);
+  return isMarketingDemoActive();
+};
+
 export const localAuthed = () =>
   typeof window !== "undefined" &&
   (!!localStorage.getItem("test_user_override") ||
-    (devOn() && !!localStorage.getItem("player_id")));
+    (devOn() && !!localStorage.getItem("player_id")) ||
+    marketingDemoOn());
 
 export async function getEffectiveUserId(): Promise<string | null> {
+  if (marketingDemoOn()) return getMarketingDemoUser().id;
   if (typeof window !== "undefined") {
     const override = localStorage.getItem("test_user_override");
     if (override) return override;
@@ -45,7 +58,7 @@ export async function isAuthedAsync(): Promise<boolean> {
 
 export function isAuthedNow(): boolean {
   // Synchronous check for client-side UI decisions
-  return (devOn() && localAuthed());
+  return marketingDemoOn() || (devOn() && localAuthed());
 }
 
 /** DEV: treat local is_admin=1 as admin; also used as a fast synchronous check */

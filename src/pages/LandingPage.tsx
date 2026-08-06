@@ -2,11 +2,17 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
+import { ensureMarketingDemoForLocation, isMarketingDemoActive } from "../demo/runtime";
 
 export default function LandingPage() {
-  const [authed, setAuthed] = useState(false);
+  ensureMarketingDemoForLocation(window.location.pathname, window.location.search);
+  const [authed, setAuthed] = useState(isMarketingDemoActive());
 
   useEffect(() => {
+    if (isMarketingDemoActive()) {
+      setAuthed(true);
+      return;
+    }
     supa.auth.getSession().then(({ data }) => setAuthed(!!data.session?.user?.id));
     const { data: sub } = supa.auth.onAuthStateChange((_e, session) =>
       setAuthed(!!session?.user?.id)

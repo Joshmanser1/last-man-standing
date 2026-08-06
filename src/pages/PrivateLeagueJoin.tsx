@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import { supa } from "../lib/supabaseClient";
 import { dataService } from "../data/service";
+import { getEffectiveUserId } from "../lib/auth";
+import { isMarketingDemoActive } from "../demo/runtime";
 
 type LeaguePreview = {
   id: string;
@@ -95,9 +97,10 @@ export function PrivateLeagueJoin() {
 
     try {
       setJoining(true);
-      const { data } = await supa.auth.getUser();
-      const user = data.user;
-      if (!user?.id) {
+      const userId = isMarketingDemoActive()
+        ? await getEffectiveUserId()
+        : (await supa.auth.getUser()).data.user?.id;
+      if (!userId) {
         setError("You must be logged in to join this league.");
         return;
       }
@@ -107,7 +110,7 @@ export function PrivateLeagueJoin() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           join_code: trimmed,
-          player_id: user.id,
+          player_id: userId,
           role: "player",
         }),
       });
@@ -130,7 +133,7 @@ export function PrivateLeagueJoin() {
       }
 
       toast(`Joined ${preview.name}`, { variant: "success" });
-      navigate("/private/create", { replace: true });
+      navigate("/my-games", { replace: true });
     } catch (err: any) {
       setError(err?.message || "Failed to join league.");
     } finally {

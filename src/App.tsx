@@ -5,6 +5,7 @@ import { Header } from "./components/Header";
 import { ToastProvider } from "./components/Toast";
 import { RequireAuth } from "./components/RequireAuth";
 import { RequireAdmin } from "./components/RequireAdmin";
+import { MarketingDemoControls } from "./components/MarketingDemoControls";
 
 // Pages
 import LandingPage from "./pages/LandingPage";
@@ -23,6 +24,13 @@ import PrivateLeagueJoin from "./pages/PrivateLeagueJoin";
 
 // Dev-only switcher
 import { DevUserSwitcher } from "./components/DevUserSwitcher";
+import {
+  activateMarketingDemo,
+  ensureMarketingDemoForLocation,
+  getMarketingDemoStartPath,
+  isMarketingDemoActive,
+  isMarketingDemoEnabled,
+} from "./demo/runtime";
 
 // Env flag still supported
 const DEV_FLAG =
@@ -30,9 +38,14 @@ const DEV_FLAG =
 
 function AppInner() {
   const location = useLocation();
+  ensureMarketingDemoForLocation(location.pathname, location.search);
+  const marketingDemo = isMarketingDemoActive();
 
   // One-time: allow ?dev=1 to enable switcher for this browser and clean URL
   useEffect(() => {
+    if (location.pathname === "/demo") {
+      if (isMarketingDemoEnabled()) activateMarketingDemo();
+    }
     if (typeof window === "undefined") return;
     const search = new URLSearchParams(location.search);
     if (search.get("dev") === "1") {
@@ -68,11 +81,22 @@ function AppInner() {
     <>
       {/* Header everywhere except no-chrome routes */}
       {!isNoChrome && <Header />}
+      {marketingDemo && <MarketingDemoControls />}
 
       <main className={isFullBleed ? "" : "container-page py-4"}>
         <Routes>
           {/* Public */}
           <Route path="/" element={<LandingPage />} />
+          <Route
+            path="/demo"
+            element={
+              isMarketingDemoEnabled() ? (
+                <Navigate to={getMarketingDemoStartPath()} replace />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
           <Route path="/home" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/public" element={<LiveGames />} />

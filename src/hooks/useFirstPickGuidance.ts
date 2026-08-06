@@ -3,6 +3,8 @@ import { dataService } from "../data/service";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
 import { postJsonWithAuth } from "../lib/apiAuth";
+import { getMarketingDemoPicks } from "../demo/service";
+import { isMarketingDemoActive } from "../demo/runtime";
 
 export function useFirstPickGuidance(leagueId?: string) {
   const [state, setState] = useState<{
@@ -44,15 +46,23 @@ export function useFirstPickGuidance(leagueId?: string) {
 
         const league = (leagues || []).find((item: any) => item.id === leagueId) || null;
         const round = await dataService.getCurrentRound(leagueId);
-        const [{ data: pickRow }, memberResp] = await Promise.all([
-          supa
-            .from("picks")
-            .select("id")
-            .eq("round_id", round.id)
-            .eq("player_id", uid)
-            .maybeSingle(),
+        const [pickRowResult, memberResp] = await Promise.all([
+          isMarketingDemoActive()
+            ? Promise.resolve({
+                data:
+                  getMarketingDemoPicks(leagueId).find(
+                    (pick: any) => pick.round_id === round.id && pick.player_id === uid
+                  ) ?? null,
+              })
+            : supa
+                .from("picks")
+                .select("id")
+                .eq("round_id", round.id)
+                .eq("player_id", uid)
+                .maybeSingle(),
           postJsonWithAuth("/api/league-members", { league_id: leagueId }),
         ]);
+        const pickRow = pickRowResult?.data ?? null;
 
         let isPrivileged = league?.created_by === uid;
         let mine: any = null;

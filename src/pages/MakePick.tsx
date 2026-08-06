@@ -8,6 +8,12 @@ import { useToast } from "../components/Toast";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
 import { getMemberElimination, loadLeagueRoundState } from "../lib/leagueRoundState";
+import {
+  getMarketingDemoFixtures,
+  getMarketingDemoRoundRows,
+  getMarketingDemoSnapshot,
+  isMarketingDemoActive,
+} from "../demo/runtime";
 
 type OpponentMap = Record<string, string>;
 
@@ -139,14 +145,26 @@ export function MakePick() {
         setCurrentPick(roundState.viewerPick ?? null);
 
         try {
-          const [{ data: myPicks }, { data: roundRows }] = await Promise.all([
-            supa
-              .from("picks")
-              .select("team_id, round_id")
-              .eq("league_id", leagueId)
-              .eq("player_id", playerId),
-            supa.from("rounds").select("id, round_number").eq("league_id", leagueId),
-          ]);
+          const [myPicks, roundRows] = isMarketingDemoActive()
+            ? [
+                getMarketingDemoSnapshot().picks.filter(
+                  (entry) => entry.league_id === leagueId && entry.player_id === playerId
+                ),
+                getMarketingDemoRoundRows(leagueId),
+              ]
+            : await Promise.all([
+                supa
+                  .from("picks")
+                  .select("team_id, round_id")
+                  .eq("league_id", leagueId)
+                  .eq("player_id", playerId)
+                  .then((result) => result.data ?? []),
+                supa
+                  .from("rounds")
+                  .select("id, round_number")
+                  .eq("league_id", leagueId)
+                  .then((result) => result.data ?? []),
+              ]);
 
           const roundById = new Map<string, number>(
             (roundRows ?? []).map((rr: any) => [String(rr.id), rr.round_number as number])
@@ -167,10 +185,14 @@ export function MakePick() {
           const byTeamId = new Map<string, any>(
             (leagueTeams ?? []).map((team: any) => [String(team.id), team])
           );
-          const { data: roundFixtures } = await supa
-            .from("fixtures")
-            .select("*")
-            .eq("round_id", currentRound.id);
+          const roundFixtures = isMarketingDemoActive()
+            ? getMarketingDemoFixtures(currentRound.id)
+            : (
+                await supa
+                  .from("fixtures")
+                  .select("*")
+                  .eq("round_id", currentRound.id)
+              ).data ?? [];
           const opp: OpponentMap = {};
           for (const f of roundFixtures ?? []) {
             const homeTeam = byTeamId.get(String(f.home_team_id));

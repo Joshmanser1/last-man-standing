@@ -7,6 +7,7 @@ import { dataService } from "../data/service";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
 import { postJsonWithAuth } from "../lib/apiAuth";
+import { isMarketingDemoActive } from "../demo/runtime";
 
 type PrivateLeague = {
   id: string;
@@ -224,11 +225,13 @@ export function PrivateLeagueCreate() {
       const startISO = startDeadlineISO ?? now;
       const created = await (dataService as any).createGame(name.trim(), startISO);
       await (dataService as any).upsertPlayer(playerName || "You");
-      // owner membership is created server-side during league creation
-      await supa
-        .from("leagues")
-        .update({ is_public: false, join_code: code })
-        .eq("id", created.id);
+      if (!isMarketingDemoActive()) {
+        // owner membership is created server-side during league creation
+        await supa
+          .from("leagues")
+          .update({ is_public: false, join_code: code })
+          .eq("id", created.id);
+      }
 
       setName("");
       setStartEventId(null);

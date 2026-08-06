@@ -7,6 +7,7 @@ import {
   getNextParamRedirect,
   rememberPendingAuthRedirect,
 } from "../lib/authRedirect";
+import { isMarketingDemoActive } from "../demo/runtime";
 
 type Notice = {
   tone: "error" | "info";
@@ -96,6 +97,10 @@ export function Login() {
     };
 
     const redirectIfAuthed = async () => {
+      if (isMarketingDemoActive()) {
+        redirectOnce();
+        return;
+      }
       const { data } = await supa.auth.getSession();
       if (!mounted) return;
       if (data.session?.user?.id) {

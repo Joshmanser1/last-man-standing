@@ -1,19 +1,16 @@
-// src/pages/EliminationHistory.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { dataService } from "../data/service";
 import { GameSelector } from "../components/GameSelector";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
-import { supa } from "../lib/supabaseClient";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
-import { postJsonWithAuth } from "../lib/apiAuth";
+import { loadLeagueRoundState } from "../lib/leagueRoundState";
 
 type Row = {
   roundNumber: number;
   playerName: string;
   teamName: string;
   reason: string;
-  when: string; // ISO of round lock, for context
+  when: string;
 };
 
 export function EliminationHistory() {
@@ -24,7 +21,6 @@ export function EliminationHistory() {
   const [rounds, setRounds] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [picks, setPicks] = useState<any[]>([]);
-  const [memberships, setMemberships] = useState<any[]>([]);
   const [playersById, setPlayersById] = useState<Record<string, any>>({});
   const [roundFilter, setRoundFilter] = useState<number | "all">("all");
   const [q, setQ] = useState("");
@@ -36,88 +32,58 @@ export function EliminationHistory() {
       setRounds([]);
       setTeams([]);
       setPicks([]);
-      setMemberships([]);
       setPlayersById({});
       return;
     }
 
     (async () => {
-      const { data: rs } = await supa
-        .from("rounds")
-        .select("*")
-        .eq("league_id", leagueId)
-        .order("round_number", { ascending: true });
-      setRounds(rs || []);
-
-      const ts = await dataService.listTeams(leagueId);
-      setTeams(ts || []);
-
-      const { data: pickRows } = await supa
-        .from("picks")
-        .select("*")
-        .eq("league_id", leagueId);
-      setPicks(pickRows || []);
-
-      const memberResp = await postJsonWithAuth("/api/league-members", {
-        league_id: leagueId,
-      });
-      if (!memberResp.ok) throw new Error("Failed to load league members");
-      const memberRows = (await memberResp.json()) as Array<any>;
-      setMemberships(memberRows || []);
-      const pb: Record<string, any> = {};
-      (memberRows || []).forEach((m: any) => {
-        if (typeof m.player_id === "string") {
-          pb[m.player_id] = { id: m.player_id, display_name: m.display_name ?? null };
-        }
-      });
-      setPlayersById(pb);
+      const state = await loadLeagueRoundState(leagueId);
+      setRounds(state.rounds || []);
+      setTeams(state.teams || []);
+      setPicks(state.allLeaguePicks || []);
+      setPlayersById(state.playersById || {});
     })();
   }, [leagueId, reloadTick]);
 
   const rows = useMemo(() => {
     if (!leagueId) return [];
-    const byRound = new Map<string, any>(rounds.map((r) => [r.id, r]));
-    const teamName = (id: string) => teams.find((t) => t.id === id)?.name ?? "—";
+    const byRound = new Map<string, any>(rounds.map((round) => [round.id, round]));
+    const byTeam = new Map<string, string>(teams.map((team) => [team.id, team.name]));
 
-    const eliminated = (picks || [])
-      .filter((p: any) => p.league_id === leagueId)
-      .filter((p) => p.status === "eliminated" || p.status === "no-pick")
-      .map((p) => {
-        const r = byRound.get(p.round_id);
+    return (picks || [])
+      .filter((pick: any) => pick.league_id === leagueId)
+      .filter((pick: any) => pick.status === "eliminated" || pick.status === "no-pick")
+      .map((pick: any) => {
+        const round = byRound.get(pick.round_id);
         return {
-          roundNumber: r?.round_number ?? 0,
-          playerName:
-            playersById[p.player_id]?.display_name ?? p.player_id.slice(0, 6),
-          teamName: teamName(p.team_id),
-          reason: p.reason ?? (p.status === "no-pick" ? "no-pick" : "loss"),
-          when: r?.pick_deadline_utc ?? "",
+          roundNumber: round?.round_number ?? 0,
+          playerName: playersById[pick.player_id]?.display_name ?? pick.player_id.slice(0, 6),
+          teamName: byTeam.get(pick.team_id) ?? "—",
+          reason: pick.reason ?? (pick.status === "no-pick" ? "no-pick" : "loss"),
+          when: round?.pick_deadline_utc ?? "",
         } as Row;
       });
-
-    return eliminated;
-  }, [leagueId, rounds, teams, playersById, picks, memberships]);
+  }, [leagueId, picks, playersById, rounds, teams]);
 
   const filtered = useMemo(() => {
-    let arr = [...rows];
+    let next = [...rows];
     if (roundFilter !== "all") {
-      arr = arr.filter((r) => r.roundNumber === roundFilter);
+      next = next.filter((row) => row.roundNumber === roundFilter);
     }
     if (q.trim()) {
       const needle = q.toLowerCase();
-      arr = arr.filter(
-        (r) =>
-          r.playerName.toLowerCase().includes(needle) ||
-          r.teamName.toLowerCase().includes(needle) ||
-          r.reason.toLowerCase().includes(needle)
+      next = next.filter(
+        (row) =>
+          row.playerName.toLowerCase().includes(needle) ||
+          row.teamName.toLowerCase().includes(needle) ||
+          row.reason.toLowerCase().includes(needle)
       );
     }
-    arr.sort(
-      (a, b) =>
-        b.roundNumber - a.roundNumber ||
-        a.playerName.localeCompare(b.playerName)
+    next.sort(
+      (a, b) => b.roundNumber - a.roundNumber || a.playerName.localeCompare(b.playerName)
     );
-    return arr;
-  }, [rows, roundFilter, q]);
+    return next;
+  }, [q, roundFilter, rows]);
 
   if (!leagueId) {
     return (
@@ -128,7 +94,7 @@ export function EliminationHistory() {
             label="Viewing game"
             onChange={(id) => {
               setLeagueId(id);
-              setReloadTick((x) => x + 1);
+              setReloadTick((value) => value + 1);
             }}
           />
         </div>
@@ -150,7 +116,7 @@ export function EliminationHistory() {
           label="Viewing game"
           onChange={(id) => {
             setLeagueId(id);
-            setReloadTick((x) => x + 1);
+            setReloadTick((value) => value + 1);
           }}
         />
       </div>
@@ -159,27 +125,27 @@ export function EliminationHistory() {
         <select
           className="border rounded px-2 py-1"
           value={String(roundFilter)}
-          onChange={(e) => {
-            const v = e.target.value;
-            setRoundFilter(v === "all" ? "all" : Number(v));
+          onChange={(event) => {
+            const value = event.target.value;
+            setRoundFilter(value === "all" ? "all" : Number(value));
           }}
         >
           <option value="all">All rounds</option>
           {rounds
             .slice()
             .sort((a, b) => a.round_number - b.round_number)
-            .map((r) => (
-              <option key={r.id} value={r.round_number}>
-                Round {r.round_number}
+            .map((round) => (
+              <option key={round.id} value={round.round_number}>
+                Round {round.round_number}
               </option>
             ))}
         </select>
 
         <input
           className="border rounded px-2 py-1"
-          placeholder="Search player/team/reason…"
+          placeholder="Search player/team/reason..."
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(event) => setQ(event.target.value)}
         />
       </div>
 
@@ -210,16 +176,16 @@ export function EliminationHistory() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r, i) => (
-                <tr key={i} className="border-t">
-                  <td className="px-3 py-2">R{r.roundNumber}</td>
-                  <td className="px-3 py-2">{r.playerName}</td>
-                  <td className="px-3 py-2">{r.teamName}</td>
+              {filtered.map((row, index) => (
+                <tr key={`${row.playerName}-${row.roundNumber}-${index}`} className="border-t">
+                  <td className="px-3 py-2">R{row.roundNumber}</td>
+                  <td className="px-3 py-2">{row.playerName}</td>
+                  <td className="px-3 py-2">{row.teamName}</td>
                   <td className="px-3 py-2 capitalize">
-                    {r.reason === "no-pick" ? "No Pick" : r.reason}
+                    {row.reason === "no-pick" ? "No Pick" : row.reason}
                   </td>
                   <td className="px-3 py-2">
-                    {r.when ? new Date(r.when).toLocaleString() : "—"}
+                    {row.when ? new Date(row.when).toLocaleString() : "—"}
                   </td>
                 </tr>
               ))}

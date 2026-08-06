@@ -6,6 +6,7 @@ import { GameSelector } from "./GameSelector";
 import { subscribeStore } from "../data/service";
 import { getEffectiveUserId, isAdminNow } from "../lib/auth";
 import { NotificationBell } from "./NotificationBell";
+import { isMarketingDemoActive } from "../demo/runtime";
 
 const linkCls = ({ isActive }: { isActive: boolean }) =>
   `nav-link ${isActive ? "nav-link-active" : ""}`;
@@ -32,6 +33,7 @@ export function Header() {
   const [admin, setAdmin] = useState<boolean>(isAdminNow());
   const playerName = localStorage.getItem("player_name") || "";
   const navigate = useNavigate();
+  const marketingDemo = isMarketingDemoActive();
 
   const syncLeagueAccess = useCallback(async (isAuthed: boolean) => {
     const storedId = localStorage.getItem("active_league_id");
@@ -87,7 +89,7 @@ export function Header() {
   const recomputeAuth = useCallback(async () => {
     const { data } = await supa.auth.getSession();
     const supaAuthed = !!data.session?.user?.id;
-    const localAuthed = devOn && !!localStorage.getItem("player_id");
+    const localAuthed = (devOn && !!localStorage.getItem("player_id")) || marketingDemo;
     const isAuthed = supaAuthed || localAuthed;
     setAuthed(isAuthed);
     setAdmin(isAdminNow());
@@ -101,7 +103,7 @@ export function Header() {
     // keep in sync with Supabase login state
     const { data: sub } = supa.auth.onAuthStateChange((_e, session) => {
       const supaAuthed = !!session?.user?.id;
-      const localAuthed = devOn && !!localStorage.getItem("player_id");
+      const localAuthed = (devOn && !!localStorage.getItem("player_id")) || marketingDemo;
       const isAuthed = supaAuthed || localAuthed;
       setAuthed(isAuthed);
       setAdmin(isAdminNow());
@@ -215,6 +217,11 @@ export function Header() {
         {/* Right side */}
         <div className="flex shrink-0 items-center gap-2">
           {authed && <NotificationBell />}
+          {marketingDemo && (
+            <span className="rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-semibold text-slate-900">
+              Demo
+            </span>
+          )}
           {/* Game selector */}
           {authed && hasLeague && (
             <div className="hidden items-center gap-2 sm:flex">
