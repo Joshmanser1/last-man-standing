@@ -11,6 +11,7 @@ import {
   consumeMarketingDemoPendingPath,
   isMarketingDemoActive,
   isMarketingDemoAuthenticated,
+  isMarketingDemoRecordingMode,
   loginMarketingDemoUser,
   logoutMarketingDemoUser,
   rememberMarketingDemoPendingPath,
@@ -293,6 +294,8 @@ export function Login() {
   }
 
   if (isMarketingDemoActive() && !isMarketingDemoAuthenticated()) {
+    const recordingMode = isMarketingDemoRecordingMode();
+
     return (
       <div className="min-h-screen bg-[radial-gradient(120%_120%_at_50%_-20%,#072a25,#0b1f20_50%,#0a0e12_90%)] flex items-start sm:items-center justify-center p-6">
         <div className="fixed top-0 left-0 right-0 px-4 py-3 flex items-center justify-between text-slate-200/90">
@@ -322,7 +325,9 @@ export function Login() {
 
           <h1 className="text-3xl font-bold text-center mb-2">Sign in</h1>
           <p className="text-sm text-slate-300/80 text-center mb-6">
-            Continue locally as Alex Morgan to record the invite and join journey.
+            {recordingMode
+              ? "Continue as Alex Morgan."
+              : "Continue locally as Alex Morgan to record the invite and join journey."}
           </p>
 
           <button
@@ -333,9 +338,11 @@ export function Login() {
             Continue as Alex Morgan
           </button>
 
-          <p className="mt-3 text-[11px] text-slate-300/70 text-center">
-            Demo sign-in is local only and does not use production authentication.
-          </p>
+          {!recordingMode && (
+            <p className="mt-3 text-[11px] text-slate-300/70 text-center">
+              Demo sign-in is local only and does not use production authentication.
+            </p>
+          )}
         </div>
       </div>
     );
