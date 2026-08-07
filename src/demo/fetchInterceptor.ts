@@ -2,6 +2,7 @@ import {
   getMarketingDemoJoinCode,
   isMarketingDemoActive,
   joinMarketingDemoLeague,
+  prepareMarketingDemoJoinFlow,
   submitMarketingDemoPick,
 } from "./runtime";
 import {
@@ -42,7 +43,10 @@ async function handleDemoApi(pathname: string, init?: RequestInit) {
   const body = await bodyOf(init);
 
   if (pathname === "/api/user-leagues") {
-    return jsonResponse(200, getMarketingDemoSnapshot().leagues);
+    return jsonResponse(
+      200,
+      getMarketingDemoSnapshot().leagues.filter((league) => league.viewer_has_membership)
+    );
   }
 
   if (pathname === "/api/league-by-code") {

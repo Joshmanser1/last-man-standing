@@ -5,6 +5,7 @@ import {
   getMarketingDemoScenario,
   isMarketingDemoActive,
   isMarketingDemoRecordingMode,
+  prepareMarketingDemoJoinFlow,
   resetMarketingDemo,
   setMarketingDemoScenario,
   toggleMarketingDemoRecordingMode,
@@ -122,9 +123,7 @@ export function MarketingDemoControls() {
               <button
                 type="button"
                 className="btn btn-ghost text-xs"
-                onClick={() =>
-                  navigate("/private/join?code=FCC123", { replace: location.pathname === "/demo" })
-                }
+                onClick={() => navigate(prepareMarketingDemoJoinFlow(), { replace: true })}
               >
                 Join flow
               </button>

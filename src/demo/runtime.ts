@@ -45,6 +45,7 @@ type DemoSnapshot = {
 
 const DEMO_ACTIVE_KEY = "fcc_marketing_demo_active_v1";
 const DEMO_STATE_KEY = "fcc_marketing_demo_state_v1";
+const DEMO_HOST_ID = "demo-host-001";
 const DEMO_PLAYER_ID = "demo-user-001";
 const DEMO_PLAYER_NAME = "Alex Morgan";
 const DEMO_PLAYER_EMAIL = "alex@fantasycommandcentre.co.uk";
@@ -129,6 +130,22 @@ export function resetMarketingDemo() {
   window.localStorage.setItem("active_league_id", DEMO_LEAGUE_ID);
   window.localStorage.setItem("player_id", DEMO_PLAYER_ID);
   window.localStorage.setItem("player_name", DEMO_PLAYER_NAME);
+}
+
+export function prepareMarketingDemoJoinFlow() {
+  if (typeof window === "undefined") return `/private/join?code=${DEMO_JOIN_CODE}`;
+  const next = {
+    ...defaultState(),
+    joinedLeagueIds: [],
+    activeLeagueId: "",
+  };
+  writeState(next);
+  window.localStorage.removeItem("active_league_id");
+  window.localStorage.setItem("player_id", DEMO_PLAYER_ID);
+  window.localStorage.setItem("player_name", DEMO_PLAYER_NAME);
+  window.localStorage.removeItem("fcc_demo_outcome_seen_v1");
+  window.localStorage.removeItem("fcc_demo_popup_seen_v1");
+  return `/private/join?code=${DEMO_JOIN_CODE}`;
 }
 
 export function getMarketingDemoUser() {
@@ -222,7 +239,7 @@ function leagueBase(): DemoLeague {
     current_round: 3,
     is_public: false,
     join_code: DEMO_JOIN_CODE,
-    created_by: DEMO_PLAYER_ID,
+    created_by: DEMO_HOST_ID,
     is_test: true,
     created_at: DEFAULT_CREATED_AT,
     start_date_utc: "2026-08-23T11:30:00.000Z",
@@ -578,15 +595,26 @@ export function getMarketingDemoSnapshot(): DemoSnapshot {
     seeded.fixtures.push(...created.fixtures);
   }
 
+  if (!state.joinedLeagueIds.includes(DEMO_LEAGUE_ID)) {
+    seeded.memberships = seeded.memberships.filter(
+      (entry) =>
+        !(entry.league_id === DEMO_LEAGUE_ID && entry.player_id === DEMO_PLAYER_ID)
+    );
+    seeded.picks = seeded.picks.filter(
+      (entry) =>
+        !(entry.league_id === DEMO_LEAGUE_ID && entry.player_id === DEMO_PLAYER_ID)
+    );
+  }
+
   seeded.leagues = seeded.leagues.map((league) => ({
     ...league,
     viewer_has_membership: state.joinedLeagueIds.includes(league.id),
     viewer_is_owner: league.created_by === DEMO_PLAYER_ID,
-    viewer_role: league.created_by === DEMO_PLAYER_ID ? "owner" : "player",
-    viewer_is_active:
-      findMembership(league.id, DEMO_PLAYER_ID, seeded)?.is_active !== false,
-    viewer_joined_at:
-      findMembership(league.id, DEMO_PLAYER_ID, seeded)?.joined_at ?? DEFAULT_CREATED_AT,
+    viewer_role: findMembership(league.id, DEMO_PLAYER_ID, seeded)?.role ?? null,
+    viewer_is_active: !!findMembership(league.id, DEMO_PLAYER_ID, seeded)
+      ? findMembership(league.id, DEMO_PLAYER_ID, seeded)?.is_active !== false
+      : false,
+    viewer_joined_at: findMembership(league.id, DEMO_PLAYER_ID, seeded)?.joined_at ?? null,
   }));
 
   return seeded;
