@@ -219,6 +219,44 @@ export function LeagueSummary() {
     ).length;
     const noPick = roundPicks.filter((p: any) => p.status === "no-pick").length;
 
+    const isDemoJoinFlowPreKickoff =
+      isMarketingDemoActive() &&
+      league?.id === "demo-league-founding-host" &&
+      league?.current_round === 1 &&
+      round?.round_number === 1 &&
+      round?.status === "upcoming";
+
+    if (isDemoJoinFlowPreKickoff) {
+      return {
+        entrants,
+        picksSubmitted,
+        noPick: 0,
+        through: 0,
+        eliminated: 0,
+        pending: Math.max(entrants - picksSubmitted, 0),
+        uniqueTeamCount: new Set(roundPicks.filter((p: any) => p.team_id).map((p: any) => p.team_id)).size,
+        mostPicked:
+          picksSubmitted > 0
+            ? (() => {
+                const pickCounts = new Map<string, number>();
+                for (const p of roundPicks) {
+                  if (!p.team_id) continue;
+                  pickCounts.set(p.team_id, (pickCounts.get(p.team_id) || 0) + 1);
+                }
+                const maxPickCount = Math.max(0, ...Array.from(pickCounts.values()));
+                return maxPickCount > 0
+                  ? Array.from(pickCounts.entries())
+                      .filter(([, count]) => count === maxPickCount)
+                      .map(([tid, count]) => ({
+                        teamName: byTeamId.get(tid)?.name ?? "—",
+                        count,
+                      }))
+                  : [];
+              })()
+            : [],
+      };
+    }
+
     const through = memberships.filter((m: any) => m.is_active !== false).length;
     const eliminated = memberships.filter((m: any) => m.is_active === false).length;
     const activePlayers = memberships.filter((m: any) => m.is_active !== false);
