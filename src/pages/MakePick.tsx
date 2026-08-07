@@ -490,9 +490,11 @@ export function MakePick() {
                     <span className="font-medium">{t.name}</span>
                   </button>
 
-                  <span className="text-xs px-3 py-1 rounded-full border bg-slate-50 text-slate-700">
-                    {opp ?? `Fixture unavailable for Round ${round.round_number}`}
-                  </span>
+                  {(opp || !hideAdminUi) && (
+                    <span className="text-xs px-3 py-1 rounded-full border bg-slate-50 text-slate-700">
+                      {opp ?? `Fixture unavailable for Round ${round.round_number}`}
+                    </span>
+                  )}
 
                   {alreadyUsed && (
                     <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">

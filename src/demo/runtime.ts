@@ -529,6 +529,24 @@ function demoFixtures(): Array<Fixture & { league_id: string }> {
       kickoff_utc: "2026-09-13T15:30:00.000Z",
       result: "not_set",
     },
+    {
+      id: "fx-r3-7",
+      league_id: DEMO_LEAGUE_ID,
+      round_id: DEMO_ROUND_3_ID,
+      home_team_id: "team-avl",
+      away_team_id: "team-whu",
+      kickoff_utc: "2026-09-13T15:30:00.000Z",
+      result: "not_set",
+    },
+    {
+      id: "fx-r3-8",
+      league_id: DEMO_LEAGUE_ID,
+      round_id: DEMO_ROUND_3_ID,
+      home_team_id: "team-mun",
+      away_team_id: "team-cry",
+      kickoff_utc: "2026-09-13T18:00:00.000Z",
+      result: "not_set",
+    },
   ];
 }
 
