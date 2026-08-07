@@ -1,6 +1,7 @@
 // src/pages/Stats.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchFplTeams, fetchFplFixtures } from "../lib/fpl";
+import { isMarketingDemoActive } from "../demo/runtime";
 
 type FplTeam = {
   id: number;
@@ -41,6 +42,30 @@ type TableRow = {
   }[];
 };
 
+const DEMO_LAST_UPDATED = "6 Aug 2026, 10:00";
+const DEMO_STATS_ROWS: TableRow[] = [
+  { teamId: 1, name: "Liverpool", shortName: "LIV", played: 3, won: 3, drawn: 0, lost: 0, gf: 8, ga: 2, gd: 6, points: 9, form: ["W", "W", "W"], nextFixtures: [{ event: 4, oppShort: "BOU", home: true, kickoff: "2026-09-12T14:00:00Z" }, { event: 5, oppShort: "NEW", home: false, kickoff: "2026-09-19T14:00:00Z" }, { event: 6, oppShort: "FUL", home: true, kickoff: "2026-09-26T14:00:00Z" }] },
+  { teamId: 2, name: "Manchester City", shortName: "MCI", played: 3, won: 2, drawn: 1, lost: 0, gf: 7, ga: 2, gd: 5, points: 7, form: ["W", "D", "W"], nextFixtures: [{ event: 4, oppShort: "WOL", home: true, kickoff: "2026-09-12T16:30:00Z" }, { event: 5, oppShort: "AVL", home: false, kickoff: "2026-09-20T16:30:00Z" }, { event: 6, oppShort: "CRY", home: true, kickoff: "2026-09-27T14:00:00Z" }] },
+  { teamId: 3, name: "Arsenal", shortName: "ARS", played: 3, won: 2, drawn: 1, lost: 0, gf: 6, ga: 2, gd: 4, points: 7, form: ["D", "W", "W"], nextFixtures: [{ event: 4, oppShort: "EVE", home: true, kickoff: "2026-09-12T11:30:00Z" }, { event: 5, oppShort: "BRE", home: false, kickoff: "2026-09-19T11:30:00Z" }, { event: 6, oppShort: "WHU", home: true, kickoff: "2026-09-26T16:30:00Z" }] },
+  { teamId: 4, name: "Chelsea", shortName: "CHE", played: 3, won: 2, drawn: 0, lost: 1, gf: 5, ga: 3, gd: 2, points: 6, form: ["L", "W", "W"], nextFixtures: [{ event: 4, oppShort: "FUL", home: true, kickoff: "2026-09-12T14:00:00Z" }, { event: 5, oppShort: "MUN", home: false, kickoff: "2026-09-20T14:00:00Z" }, { event: 6, oppShort: "BOU", home: true, kickoff: "2026-09-27T11:30:00Z" }] },
+  { teamId: 5, name: "Newcastle", shortName: "NEW", played: 3, won: 2, drawn: 0, lost: 1, gf: 4, ga: 3, gd: 1, points: 6, form: ["W", "L", "W"], nextFixtures: [{ event: 4, oppShort: "BHA", home: true, kickoff: "2026-09-13T13:00:00Z" }, { event: 5, oppShort: "LIV", home: true, kickoff: "2026-09-19T14:00:00Z" }, { event: 6, oppShort: "TOT", home: false, kickoff: "2026-09-26T14:00:00Z" }] },
+  { teamId: 6, name: "Tottenham", shortName: "TOT", played: 3, won: 2, drawn: 0, lost: 1, gf: 6, ga: 5, gd: 1, points: 6, form: ["W", "W", "L"], nextFixtures: [{ event: 4, oppShort: "BRE", home: true, kickoff: "2026-09-13T15:30:00Z" }, { event: 5, oppShort: "EVE", home: false, kickoff: "2026-09-20T11:30:00Z" }, { event: 6, oppShort: "NEW", home: true, kickoff: "2026-09-26T14:00:00Z" }] },
+  { teamId: 7, name: "Brighton", shortName: "BHA", played: 3, won: 1, drawn: 2, lost: 0, gf: 5, ga: 4, gd: 1, points: 5, form: ["D", "W", "D"], nextFixtures: [{ event: 4, oppShort: "NEW", home: false, kickoff: "2026-09-13T13:00:00Z" }, { event: 5, oppShort: "FUL", home: true, kickoff: "2026-09-19T19:00:00Z" }, { event: 6, oppShort: "MCI", home: false, kickoff: "2026-09-27T14:00:00Z" }] },
+  { teamId: 8, name: "Aston Villa", shortName: "AVL", played: 3, won: 1, drawn: 1, lost: 1, gf: 4, ga: 4, gd: 0, points: 4, form: ["W", "L", "D"], nextFixtures: [{ event: 4, oppShort: "CRY", home: true, kickoff: "2026-09-12T14:00:00Z" }, { event: 5, oppShort: "MCI", home: true, kickoff: "2026-09-20T16:30:00Z" }, { event: 6, oppShort: "WOL", home: false, kickoff: "2026-09-26T11:30:00Z" }] },
+  { teamId: 9, name: "Brentford", shortName: "BRE", played: 3, won: 1, drawn: 1, lost: 1, gf: 3, ga: 3, gd: 0, points: 4, form: ["D", "W", "L"], nextFixtures: [{ event: 4, oppShort: "TOT", home: false, kickoff: "2026-09-13T15:30:00Z" }, { event: 5, oppShort: "ARS", home: true, kickoff: "2026-09-19T11:30:00Z" }, { event: 6, oppShort: "IPS", home: false, kickoff: "2026-09-27T11:30:00Z" }] },
+  { teamId: 10, name: "Fulham", shortName: "FUL", played: 3, won: 1, drawn: 1, lost: 1, gf: 4, ga: 5, gd: -1, points: 4, form: ["L", "D", "W"], nextFixtures: [{ event: 4, oppShort: "CHE", home: false, kickoff: "2026-09-12T14:00:00Z" }, { event: 5, oppShort: "BHA", home: false, kickoff: "2026-09-19T19:00:00Z" }, { event: 6, oppShort: "LIV", home: false, kickoff: "2026-09-26T14:00:00Z" }] },
+  { teamId: 11, name: "Manchester United", shortName: "MUN", played: 3, won: 1, drawn: 0, lost: 2, gf: 3, ga: 5, gd: -2, points: 3, form: ["L", "W", "L"], nextFixtures: [{ event: 4, oppShort: "WHU", home: true, kickoff: "2026-09-13T14:00:00Z" }, { event: 5, oppShort: "CHE", home: true, kickoff: "2026-09-20T14:00:00Z" }, { event: 6, oppShort: "BOU", home: false, kickoff: "2026-09-26T16:30:00Z" }] },
+  { teamId: 12, name: "Bournemouth", shortName: "BOU", played: 3, won: 1, drawn: 0, lost: 2, gf: 3, ga: 6, gd: -3, points: 3, form: ["W", "L", "L"], nextFixtures: [{ event: 4, oppShort: "LIV", home: false, kickoff: "2026-09-12T14:00:00Z" }, { event: 5, oppShort: "IPS", home: true, kickoff: "2026-09-19T14:00:00Z" }, { event: 6, oppShort: "CHE", home: false, kickoff: "2026-09-27T11:30:00Z" }] },
+  { teamId: 13, name: "Everton", shortName: "EVE", played: 3, won: 0, drawn: 2, lost: 1, gf: 2, ga: 4, gd: -2, points: 2, form: ["D", "L", "D"], nextFixtures: [{ event: 4, oppShort: "ARS", home: false, kickoff: "2026-09-12T11:30:00Z" }, { event: 5, oppShort: "TOT", home: true, kickoff: "2026-09-20T11:30:00Z" }, { event: 6, oppShort: "LEI", home: false, kickoff: "2026-09-27T14:00:00Z" }] },
+  { teamId: 14, name: "West Ham", shortName: "WHU", played: 3, won: 0, drawn: 2, lost: 1, gf: 3, ga: 5, gd: -2, points: 2, form: ["D", "D", "L"], nextFixtures: [{ event: 4, oppShort: "MUN", home: false, kickoff: "2026-09-13T14:00:00Z" }, { event: 5, oppShort: "CRY", home: true, kickoff: "2026-09-20T14:00:00Z" }, { event: 6, oppShort: "ARS", home: false, kickoff: "2026-09-26T16:30:00Z" }] },
+  { teamId: 15, name: "Wolves", shortName: "WOL", played: 3, won: 0, drawn: 1, lost: 2, gf: 2, ga: 5, gd: -3, points: 1, form: ["L", "D", "L"], nextFixtures: [{ event: 4, oppShort: "MCI", home: false, kickoff: "2026-09-12T16:30:00Z" }, { event: 5, oppShort: "SOU", home: true, kickoff: "2026-09-19T16:30:00Z" }, { event: 6, oppShort: "AVL", home: true, kickoff: "2026-09-26T11:30:00Z" }] },
+  { teamId: 16, name: "Crystal Palace", shortName: "CRY", played: 3, won: 0, drawn: 1, lost: 2, gf: 2, ga: 6, gd: -4, points: 1, form: ["L", "L", "D"], nextFixtures: [{ event: 4, oppShort: "AVL", home: false, kickoff: "2026-09-12T14:00:00Z" }, { event: 5, oppShort: "WHU", home: false, kickoff: "2026-09-20T14:00:00Z" }, { event: 6, oppShort: "MCI", home: false, kickoff: "2026-09-27T14:00:00Z" }] },
+  { teamId: 17, name: "Ipswich Town", shortName: "IPS", played: 3, won: 0, drawn: 1, lost: 2, gf: 2, ga: 5, gd: -3, points: 1, form: ["L", "D", "L"], nextFixtures: [{ event: 4, oppShort: "LEI", home: true, kickoff: "2026-09-13T11:30:00Z" }, { event: 5, oppShort: "BOU", home: false, kickoff: "2026-09-19T14:00:00Z" }, { event: 6, oppShort: "BRE", home: true, kickoff: "2026-09-27T11:30:00Z" }] },
+  { teamId: 18, name: "Leicester City", shortName: "LEI", played: 3, won: 0, drawn: 1, lost: 2, gf: 1, ga: 4, gd: -3, points: 1, form: ["D", "L", "L"], nextFixtures: [{ event: 4, oppShort: "IPS", home: false, kickoff: "2026-09-13T11:30:00Z" }, { event: 5, oppShort: "SOU", home: true, kickoff: "2026-09-20T11:30:00Z" }, { event: 6, oppShort: "EVE", home: true, kickoff: "2026-09-27T14:00:00Z" }] },
+  { teamId: 19, name: "Southampton", shortName: "SOU", played: 3, won: 0, drawn: 1, lost: 2, gf: 2, ga: 7, gd: -5, points: 1, form: ["L", "L", "D"], nextFixtures: [{ event: 4, oppShort: "NFO", home: false, kickoff: "2026-09-13T16:30:00Z" }, { event: 5, oppShort: "WOL", home: false, kickoff: "2026-09-19T16:30:00Z" }, { event: 6, oppShort: "LEI", home: false, kickoff: "2026-09-27T11:30:00Z" }] },
+  { teamId: 20, name: "Nottingham Forest", shortName: "NFO", played: 3, won: 0, drawn: 1, lost: 2, gf: 1, ga: 5, gd: -4, points: 1, form: ["D", "L", "L"], nextFixtures: [{ event: 4, oppShort: "SOU", home: true, kickoff: "2026-09-13T16:30:00Z" }, { event: 5, oppShort: "MUN", home: false, kickoff: "2026-09-19T19:00:00Z" }, { event: 6, oppShort: "NEW", home: true, kickoff: "2026-09-27T16:30:00Z" }] },
+];
+
 export function Stats() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +76,11 @@ export function Stats() {
     setLoading(true);
     setError(null);
     try {
+      if (isMarketingDemoActive()) {
+        setRows(DEMO_STATS_ROWS);
+        setLastUpdated(DEMO_LAST_UPDATED);
+        return;
+      }
       const [teams, fixtures] = await Promise.all([
         fetchFplTeams(),
         fetchFplFixtures(),
@@ -97,7 +127,7 @@ export function Stats() {
     return (
       <div className="min-h-screen grid place-items-center">
         <div className="text-slate-500 animate-pulse">
-          Loading live Premier League table…
+          Loading stats...
         </div>
       </div>
     );
@@ -136,14 +166,15 @@ export function Stats() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-black/15 px-3 py-1 text-xs font-medium mb-2">
               <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              Live Premier League Stats
+              {isMarketingDemoActive() ? "Premier League Snapshot" : "Live Premier League Stats"}
             </div>
             <h1 className="text-2xl md:text-3xl font-bold leading-tight drop-shadow-sm">
               Premier League Table
             </h1>
             <p className="mt-1 text-sm text-white/85">
-              Auto-computed from FPL fixtures — updates as soon as results are
-              final, not just when LMS rounds change.
+              {isMarketingDemoActive()
+                ? "Form, table position, and upcoming fixtures for the next round of picks."
+                : "Auto-computed from FPL fixtures — updates as soon as results are final, not just when LMS rounds change."}
             </p>
             {currentGw && (
               <p className="mt-1 text-xs text-white/80">
@@ -152,11 +183,13 @@ export function Stats() {
             )}
           </div>
           <div className="flex flex-col items-start md:items-end gap-2">
-            <button onClick={load} className="btn btn-primary text-sm">
-              Refresh from FPL
-            </button>
+            {!isMarketingDemoActive() && (
+              <button onClick={load} className="btn btn-primary text-sm">
+                Refresh from FPL
+              </button>
+            )}
             <p className="text-[11px] text-white/80">
-              Last updated: {lastUpdated ?? "—"}
+              Updated: {lastUpdated ?? "—"}
             </p>
             <div className="flex items-center gap-2 text-[11px] text-white/80">
               <span className="inline-flex items-center gap-1">

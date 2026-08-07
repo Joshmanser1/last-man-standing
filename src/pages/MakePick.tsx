@@ -13,6 +13,7 @@ import {
   getMarketingDemoRoundRows,
   getMarketingDemoSnapshot,
   isMarketingDemoActive,
+  isMarketingDemoRecordingMode,
 } from "../demo/runtime";
 
 type OpponentMap = Record<string, string>;
@@ -38,6 +39,7 @@ export function MakePick() {
 
   const navigate = useNavigate();
   const toast = useToast();
+  const hideAdminUi = isMarketingDemoActive() && isMarketingDemoRecordingMode();
 
   const playerId = authUserId;
 
@@ -309,13 +311,15 @@ export function MakePick() {
             >
               My Games
             </button>
-            <button
-              className="btn btn-ghost"
-              type="button"
-              onClick={() => navigate("/admin")}
-            >
-              Admin
-            </button>
+            {!hideAdminUi && (
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => navigate("/admin")}
+              >
+                Admin
+              </button>
+            )}
           </div>
         </div>
       </div>

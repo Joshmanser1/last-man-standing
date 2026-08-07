@@ -2,6 +2,7 @@ import type { Fixture, League, Membership, Pick, Round, Team } from "../data/typ
 
 export type MarketingDemoScenario =
   | "active"
+  | "join_flow"
   | "pick_submitted"
   | "survived"
   | "eliminated"
@@ -45,10 +46,13 @@ type DemoSnapshot = {
 
 const DEMO_ACTIVE_KEY = "fcc_marketing_demo_active_v1";
 const DEMO_STATE_KEY = "fcc_marketing_demo_state_v1";
+const DEMO_AUTH_KEY = "fcc_demo_auth_v1";
+const DEMO_PENDING_PATH_KEY = "fcc_demo_pending_path_v1";
 const DEMO_HOST_ID = "demo-host-001";
 const DEMO_PLAYER_ID = "demo-user-001";
 const DEMO_PLAYER_NAME = "Alex Morgan";
 const DEMO_PLAYER_EMAIL = "alex@fantasycommandcentre.co.uk";
+const DEMO_HOST_NAME = "Jamie Taylor";
 const DEMO_LEAGUE_ID = "demo-league-founding-host";
 const DEMO_JOIN_CODE = "FCC123";
 const DEMO_ROUND_1_ID = "demo-round-1";
@@ -106,12 +110,57 @@ function writeState(next: DemoState) {
   window.dispatchEvent(new Event("lms:store-updated"));
 }
 
+function syncMarketingDemoSession(next = readState()) {
+  if (typeof window === "undefined") return;
+  if (isMarketingDemoAuthenticated()) {
+    window.localStorage.setItem("player_id", DEMO_PLAYER_ID);
+    window.localStorage.setItem("player_name", DEMO_PLAYER_NAME);
+    if (next.activeLeagueId) {
+      window.localStorage.setItem("active_league_id", next.activeLeagueId);
+    } else {
+      window.localStorage.removeItem("active_league_id");
+    }
+  } else {
+    window.localStorage.removeItem("player_id");
+    window.localStorage.removeItem("player_name");
+    window.localStorage.removeItem("active_league_id");
+  }
+}
+
+export function isMarketingDemoAuthenticated() {
+  return (
+    typeof window !== "undefined" &&
+    isMarketingDemoActive() &&
+    window.localStorage.getItem(DEMO_AUTH_KEY) === "true"
+  );
+}
+
+export function setMarketingDemoAuthenticated(value: boolean) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(DEMO_AUTH_KEY, value ? "true" : "false");
+  syncMarketingDemoSession();
+  window.dispatchEvent(new Event("lms:store-updated"));
+}
+
+export function rememberMarketingDemoPendingPath(path: string) {
+  if (typeof window === "undefined" || !path.startsWith("/")) return;
+  window.sessionStorage.setItem(DEMO_PENDING_PATH_KEY, path);
+}
+
+export function consumeMarketingDemoPendingPath() {
+  if (typeof window === "undefined") return null;
+  const stored = window.sessionStorage.getItem(DEMO_PENDING_PATH_KEY);
+  window.sessionStorage.removeItem(DEMO_PENDING_PATH_KEY);
+  return stored && stored.startsWith("/") ? stored : null;
+}
+
 export function activateMarketingDemo() {
   if (typeof window === "undefined" || !isMarketingDemoEnabled()) return false;
   window.sessionStorage.setItem(DEMO_ACTIVE_KEY, "1");
-  window.localStorage.setItem("player_id", DEMO_PLAYER_ID);
-  window.localStorage.setItem("player_name", DEMO_PLAYER_NAME);
-  window.localStorage.setItem("active_league_id", readState().activeLeagueId);
+  if (window.localStorage.getItem(DEMO_AUTH_KEY) == null) {
+    window.localStorage.setItem(DEMO_AUTH_KEY, "true");
+  }
+  syncMarketingDemoSession();
   window.dispatchEvent(new Event("lms:store-updated"));
   return true;
 }
@@ -125,27 +174,42 @@ export function ensureMarketingDemoForLocation(pathname: string, search: string)
 export function resetMarketingDemo() {
   if (typeof window === "undefined") return;
   writeState(defaultState());
+  window.localStorage.setItem(DEMO_AUTH_KEY, "true");
   window.localStorage.removeItem("fcc_demo_outcome_seen_v1");
   window.localStorage.removeItem("fcc_demo_popup_seen_v1");
-  window.localStorage.setItem("active_league_id", DEMO_LEAGUE_ID);
-  window.localStorage.setItem("player_id", DEMO_PLAYER_ID);
-  window.localStorage.setItem("player_name", DEMO_PLAYER_NAME);
+  window.sessionStorage.removeItem(DEMO_PENDING_PATH_KEY);
+  syncMarketingDemoSession(defaultState());
 }
 
 export function prepareMarketingDemoJoinFlow() {
-  if (typeof window === "undefined") return `/private/join?code=${DEMO_JOIN_CODE}`;
+  if (typeof window === "undefined") return "/login";
   const next = {
     ...defaultState(),
+    scenario: "join_flow" as MarketingDemoScenario,
     joinedLeagueIds: [],
     activeLeagueId: "",
   };
   writeState(next);
-  window.localStorage.removeItem("active_league_id");
-  window.localStorage.setItem("player_id", DEMO_PLAYER_ID);
-  window.localStorage.setItem("player_name", DEMO_PLAYER_NAME);
+  window.localStorage.setItem(DEMO_AUTH_KEY, "false");
   window.localStorage.removeItem("fcc_demo_outcome_seen_v1");
   window.localStorage.removeItem("fcc_demo_popup_seen_v1");
-  return `/private/join?code=${DEMO_JOIN_CODE}`;
+  rememberMarketingDemoPendingPath(`/private/join?code=${DEMO_JOIN_CODE}`);
+  syncMarketingDemoSession(next);
+  return "/login";
+}
+
+export function loginMarketingDemoUser() {
+  setMarketingDemoAuthenticated(true);
+  const next = readState();
+  syncMarketingDemoSession(next);
+  return getMarketingDemoUser();
+}
+
+export function logoutMarketingDemoUser() {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(DEMO_AUTH_KEY, "false");
+  syncMarketingDemoSession();
+  window.dispatchEvent(new Event("lms:store-updated"));
 }
 
 export function getMarketingDemoUser() {
@@ -246,8 +310,17 @@ function leagueBase(): DemoLeague {
     description:
       "Welcome to the Founding Host Demo League. Pick one Premier League team to win each round. Lose or draw and you are eliminated.",
     prize: "£100 winner's prize",
-    host_name: DEMO_PLAYER_NAME,
+    host_name: DEMO_HOST_NAME,
     competition_name: "Premier League Last Man Standing",
+  };
+}
+
+function joinFlowLeagueBase(): DemoLeague {
+  return {
+    ...leagueBase(),
+    status: "upcoming",
+    current_round: 1,
+    start_date_utc: "2026-08-14T11:30:00.000Z",
   };
 }
 
@@ -321,16 +394,27 @@ function member(
 
 function demoMembers(): DemoMember[] {
   return [
-    member(DEMO_PLAYER_ID, "Alex Morgan", true, "owner"),
-    member("demo-user-002", "Jamie Taylor", true, "player"),
-    member("demo-user-003", "Sarah Wilson", true, "player"),
-    member("demo-user-004", "Daniel Green", false, "player"),
-    member("demo-user-005", "Emma Roberts", false, "player"),
-    member("demo-user-006", "Ben Walker", false, "player"),
-    member("demo-user-007", "Chloe Evans", true, "player"),
-    member("demo-user-008", "Ryan Hughes", false, "player"),
-    member("demo-user-009", "Sophie Clarke", true, "player"),
-    member("demo-user-010", "Tom Bennett", true, "player"),
+    member(DEMO_HOST_ID, DEMO_HOST_NAME, true, "owner"),
+    member(DEMO_PLAYER_ID, "Alex Morgan", true, "player"),
+    member("demo-user-002", "Sarah Wilson", true, "player"),
+    member("demo-user-003", "Daniel Green", true, "player"),
+    member("demo-user-004", "Emma Roberts", false, "player"),
+    member("demo-user-005", "Ben Walker", false, "player"),
+    member("demo-user-006", "Chloe Evans", true, "player"),
+    member("demo-user-007", "Ryan Hughes", false, "player"),
+    member("demo-user-008", "Sophie Clarke", true, "player"),
+    member("demo-user-009", "Tom Bennett", true, "player"),
+  ];
+}
+
+function joinFlowMembers(): DemoMember[] {
+  return [
+    member(DEMO_HOST_ID, DEMO_HOST_NAME, true, "owner"),
+    member("demo-user-002", "Sarah Wilson", true, "player"),
+    member("demo-user-003", "Daniel Green", true, "player"),
+    member("demo-user-004", "Emma Roberts", true, "player"),
+    member("demo-user-005", "Ben Walker", true, "player"),
+    member("demo-user-008", "Sophie Clarke", true, "player"),
   ];
 }
 
@@ -357,29 +441,29 @@ function pick(
 function basePicks(): Pick[] {
   return [
     pick("pick-r1-alex", DEMO_ROUND_1_ID, DEMO_PLAYER_ID, "team-ars", "through"),
-    pick("pick-r1-jamie", DEMO_ROUND_1_ID, "demo-user-002", "team-liv", "through"),
-    pick("pick-r1-sarah", DEMO_ROUND_1_ID, "demo-user-003", "team-mci", "through"),
-    pick("pick-r1-daniel", DEMO_ROUND_1_ID, "demo-user-004", "team-avl", "through"),
-    pick("pick-r1-emma", DEMO_ROUND_1_ID, "demo-user-005", "team-mun", "no-pick", "no-pick"),
-    pick("pick-r1-ben", DEMO_ROUND_1_ID, "demo-user-006", "team-che", "eliminated", "draw"),
-    pick("pick-r1-chloe", DEMO_ROUND_1_ID, "demo-user-007", "team-new", "through"),
-    pick("pick-r1-ryan", DEMO_ROUND_1_ID, "demo-user-008", "team-tot", "through"),
-    pick("pick-r1-sophie", DEMO_ROUND_1_ID, "demo-user-009", "team-whu", "through"),
-    pick("pick-r1-tom", DEMO_ROUND_1_ID, "demo-user-010", "team-bha", "through"),
+    pick("pick-r1-host", DEMO_ROUND_1_ID, DEMO_HOST_ID, "team-liv", "through"),
+    pick("pick-r1-sarah", DEMO_ROUND_1_ID, "demo-user-002", "team-mci", "through"),
+    pick("pick-r1-daniel", DEMO_ROUND_1_ID, "demo-user-003", "team-avl", "through"),
+    pick("pick-r1-emma", DEMO_ROUND_1_ID, "demo-user-004", "team-mun", "no-pick", "no-pick"),
+    pick("pick-r1-ben", DEMO_ROUND_1_ID, "demo-user-005", "team-che", "eliminated", "draw"),
+    pick("pick-r1-chloe", DEMO_ROUND_1_ID, "demo-user-006", "team-new", "through"),
+    pick("pick-r1-ryan", DEMO_ROUND_1_ID, "demo-user-007", "team-tot", "through"),
+    pick("pick-r1-sophie", DEMO_ROUND_1_ID, "demo-user-008", "team-whu", "through"),
+    pick("pick-r1-tom", DEMO_ROUND_1_ID, "demo-user-009", "team-bha", "through"),
 
     pick("pick-r2-alex", DEMO_ROUND_2_ID, DEMO_PLAYER_ID, "team-che", "through"),
-    pick("pick-r2-jamie", DEMO_ROUND_2_ID, "demo-user-002", "team-new", "through"),
-    pick("pick-r2-sarah", DEMO_ROUND_2_ID, "demo-user-003", "team-tot", "through"),
-    pick("pick-r2-daniel", DEMO_ROUND_2_ID, "demo-user-004", "team-bha", "eliminated", "loss"),
-    pick("pick-r2-chloe", DEMO_ROUND_2_ID, "demo-user-007", "team-ful", "through"),
-    pick("pick-r2-ryan", DEMO_ROUND_2_ID, "demo-user-008", "team-mci", "eliminated", "draw"),
-    pick("pick-r2-sophie", DEMO_ROUND_2_ID, "demo-user-009", "team-ars", "through"),
-    pick("pick-r2-tom", DEMO_ROUND_2_ID, "demo-user-010", "team-liv", "through"),
+    pick("pick-r2-host", DEMO_ROUND_2_ID, DEMO_HOST_ID, "team-new", "through"),
+    pick("pick-r2-sarah", DEMO_ROUND_2_ID, "demo-user-002", "team-tot", "through"),
+    pick("pick-r2-daniel", DEMO_ROUND_2_ID, "demo-user-003", "team-bha", "eliminated", "loss"),
+    pick("pick-r2-chloe", DEMO_ROUND_2_ID, "demo-user-006", "team-ful", "through"),
+    pick("pick-r2-ryan", DEMO_ROUND_2_ID, "demo-user-007", "team-mci", "eliminated", "draw"),
+    pick("pick-r2-sophie", DEMO_ROUND_2_ID, "demo-user-008", "team-ars", "through"),
+    pick("pick-r2-tom", DEMO_ROUND_2_ID, "demo-user-009", "team-liv", "through"),
 
-    pick("pick-r3-jamie", DEMO_ROUND_3_ID, "demo-user-002", "team-mci", "pending"),
-    pick("pick-r3-sarah", DEMO_ROUND_3_ID, "demo-user-003", "team-new", "pending"),
-    pick("pick-r3-chloe", DEMO_ROUND_3_ID, "demo-user-007", "team-ars", "pending"),
-    pick("pick-r3-tom", DEMO_ROUND_3_ID, "demo-user-010", "team-che", "pending"),
+    pick("pick-r3-host", DEMO_ROUND_3_ID, DEMO_HOST_ID, "team-mci", "pending"),
+    pick("pick-r3-sarah", DEMO_ROUND_3_ID, "demo-user-002", "team-new", "pending"),
+    pick("pick-r3-chloe", DEMO_ROUND_3_ID, "demo-user-006", "team-ars", "pending"),
+    pick("pick-r3-tom", DEMO_ROUND_3_ID, "demo-user-009", "team-che", "pending"),
   ];
 }
 
@@ -440,6 +524,34 @@ function demoFixtures(): Array<Fixture & { league_id: string }> {
       result: "not_set",
     },
   ];
+}
+
+function joinFlowSnapshot(state: DemoState): DemoSnapshot {
+  const round1: Round = {
+    id: DEMO_ROUND_1_ID,
+    league_id: DEMO_LEAGUE_ID,
+    round_number: 1,
+    name: "Round 1",
+    pick_deadline_utc: "2026-08-14T11:30:00.000Z",
+    status: "upcoming",
+  };
+
+  const memberships = [...joinFlowMembers()];
+  if (state.joinedLeagueIds.includes(DEMO_LEAGUE_ID)) {
+    memberships.push(member(DEMO_PLAYER_ID, DEMO_PLAYER_NAME, true, "player"));
+  }
+
+  return {
+    leagues: [joinFlowLeagueBase()],
+    rounds: [round1],
+    teams: demoTeams(),
+    memberships,
+    picks: [],
+    fixtures: demoFixtures().map((fixture) => ({
+      ...fixture,
+      round_id: DEMO_ROUND_1_ID,
+    })),
+  };
 }
 
 function createdLeagueSnapshot(createdLeague: DemoLeague): DemoSnapshot {
@@ -575,14 +687,17 @@ function withScenario(snapshot: DemoSnapshot, scenario: MarketingDemoScenario): 
 
 export function getMarketingDemoSnapshot(): DemoSnapshot {
   const state = readState();
-  const base: DemoSnapshot = {
-    leagues: [leagueBase()],
-    rounds: demoRounds(),
-    teams: demoTeams(),
-    memberships: demoMembers(),
-    picks: basePicks(),
-    fixtures: demoFixtures(),
-  };
+  const base: DemoSnapshot =
+    state.scenario === "join_flow"
+      ? joinFlowSnapshot(state)
+      : {
+          leagues: [leagueBase()],
+          rounds: demoRounds(),
+          teams: demoTeams(),
+          memberships: demoMembers(),
+          picks: basePicks(),
+          fixtures: demoFixtures(),
+        };
   const seeded = withScenario(base, state.scenario);
 
   if (state.createdLeague) {
@@ -595,7 +710,7 @@ export function getMarketingDemoSnapshot(): DemoSnapshot {
     seeded.fixtures.push(...created.fixtures);
   }
 
-  if (!state.joinedLeagueIds.includes(DEMO_LEAGUE_ID)) {
+  if (state.scenario !== "join_flow" && !state.joinedLeagueIds.includes(DEMO_LEAGUE_ID)) {
     seeded.memberships = seeded.memberships.filter(
       (entry) =>
         !(entry.league_id === DEMO_LEAGUE_ID && entry.player_id === DEMO_PLAYER_ID)

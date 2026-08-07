@@ -7,7 +7,14 @@ import {
   getNextParamRedirect,
   rememberPendingAuthRedirect,
 } from "../lib/authRedirect";
-import { isMarketingDemoActive } from "../demo/runtime";
+import {
+  consumeMarketingDemoPendingPath,
+  isMarketingDemoActive,
+  isMarketingDemoAuthenticated,
+  loginMarketingDemoUser,
+  logoutMarketingDemoUser,
+  rememberMarketingDemoPendingPath,
+} from "../demo/runtime";
 
 type Notice = {
   tone: "error" | "info";
@@ -16,6 +23,10 @@ type Notice = {
 
 function getRedirectTarget(search: string) {
   return consumePendingAuthRedirect() || getNextParamRedirect(search) || "/my-games";
+}
+
+function getDemoRedirectTarget(search: string) {
+  return consumeMarketingDemoPendingPath() || getNextParamRedirect(search) || "/my-games";
 }
 
 function normalizeOtp(value: string) {
@@ -74,8 +85,13 @@ export function Login() {
   }, [cooldown]);
 
   useEffect(() => {
-    clearLegacyPendingAuthRedirect();
     const next = getNextParamRedirect(location.search);
+    if (isMarketingDemoActive()) {
+      if (next) rememberMarketingDemoPendingPath(next);
+      return;
+    }
+
+    clearLegacyPendingAuthRedirect();
     if (next) {
       rememberPendingAuthRedirect(next);
     }
@@ -93,12 +109,19 @@ export function Login() {
     const redirectOnce = () => {
       if (!mounted || didPostAuthNavigate.current) return;
       didPostAuthNavigate.current = true;
-      navigate(getRedirectTarget(location.search), { replace: true });
+      navigate(
+        isMarketingDemoActive()
+          ? getDemoRedirectTarget(location.search)
+          : getRedirectTarget(location.search),
+        { replace: true }
+      );
     };
 
     const redirectIfAuthed = async () => {
       if (isMarketingDemoActive()) {
-        redirectOnce();
+        if (isMarketingDemoAuthenticated()) {
+          redirectOnce();
+        }
         return;
       }
       const { data } = await supa.auth.getSession();
@@ -240,6 +263,12 @@ export function Login() {
   }
 
   async function signOutEverywhere() {
+    if (isMarketingDemoActive()) {
+      logoutMarketingDemoUser();
+      navigate("/login", { replace: true });
+      return;
+    }
+
     try {
       await supa.auth.signOut();
     } catch {}
@@ -257,6 +286,60 @@ export function Login() {
     triedAlt.current = true;
     if (imgRef.current) imgRef.current.src = "/logo-shield.png";
   };
+
+  async function signInToDemo() {
+    loginMarketingDemoUser();
+    navigate(getDemoRedirectTarget(location.search), { replace: true });
+  }
+
+  if (isMarketingDemoActive() && !isMarketingDemoAuthenticated()) {
+    return (
+      <div className="min-h-screen bg-[radial-gradient(120%_120%_at_50%_-20%,#072a25,#0b1f20_50%,#0a0e12_90%)] flex items-start sm:items-center justify-center p-6">
+        <div className="fixed top-0 left-0 right-0 px-4 py-3 flex items-center justify-between text-slate-200/90">
+          <Link to="/" className="text-sm hover:underline">Back to landing</Link>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-emerald-400/15 text-emerald-300 px-3 py-1 text-xs font-semibold">
+              Fantasy Command Centre
+            </span>
+          </div>
+        </div>
+
+        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-xl p-6 sm:p-8 text-slate-100">
+          <div className="mx-auto w-fit mb-5 flex items-center gap-2">
+            <img
+              ref={imgRef}
+              src="/fcc-shield.png"
+              width={28}
+              height={28}
+              alt="FCC"
+              className="rounded-md"
+              onError={onLogoError}
+            />
+            <span className="rounded-full bg-emerald-400/15 text-emerald-300 px-3 py-1 text-xs font-semibold">
+              Fantasy Command Centre
+            </span>
+          </div>
+
+          <h1 className="text-3xl font-bold text-center mb-2">Sign in</h1>
+          <p className="text-sm text-slate-300/80 text-center mb-6">
+            Continue locally as Alex Morgan to record the invite and join journey.
+          </p>
+
+          <button
+            type="button"
+            className="btn w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold border-0"
+            onClick={() => void signInToDemo()}
+          >
+            Continue as Alex Morgan
+          </button>
+
+          <p className="mt-3 text-[11px] text-slate-300/70 text-center">
+            Demo sign-in is local only and does not use production authentication.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[radial-gradient(120%_120%_at_50%_-20%,#072a25,#0b1f20_50%,#0a0e12_90%)] flex items-start sm:items-center justify-center p-6">

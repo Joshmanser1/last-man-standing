@@ -4,6 +4,7 @@ import {
   ensureMarketingDemoForLocation,
   getMarketingDemoUser,
   isMarketingDemoActive,
+  isMarketingDemoAuthenticated,
 } from "../demo/runtime";
 
 export const hasTestUserOverride = () =>
@@ -27,11 +28,10 @@ export const marketingDemoOn = () => {
 export const localAuthed = () =>
   typeof window !== "undefined" &&
   (!!localStorage.getItem("test_user_override") ||
-    (devOn() && !!localStorage.getItem("player_id")) ||
-    marketingDemoOn());
+    (devOn() && !!localStorage.getItem("player_id")));
 
 export async function getEffectiveUserId(): Promise<string | null> {
-  if (marketingDemoOn()) return getMarketingDemoUser().id;
+  if (marketingDemoOn() && isMarketingDemoAuthenticated()) return getMarketingDemoUser().id;
   if (typeof window !== "undefined") {
     const override = localStorage.getItem("test_user_override");
     if (override) return override;
@@ -58,7 +58,7 @@ export async function isAuthedAsync(): Promise<boolean> {
 
 export function isAuthedNow(): boolean {
   // Synchronous check for client-side UI decisions
-  return marketingDemoOn() || (devOn() && localAuthed());
+  return (marketingDemoOn() && isMarketingDemoAuthenticated()) || localAuthed();
 }
 
 /** DEV: treat local is_admin=1 as admin; also used as a fast synchronous check */

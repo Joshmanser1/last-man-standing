@@ -13,7 +13,7 @@ import {
 } from "../demo/runtime";
 
 const POPUP_COPY: Record<
-  Exclude<MarketingDemoScenario, "active" | "pick_submitted">,
+  Exclude<MarketingDemoScenario, "active" | "pick_submitted" | "join_flow">,
   {
     type: "progressed" | "eliminated" | "winner";
     title: string;
@@ -60,7 +60,7 @@ export function MarketingDemoControls() {
 
   useEffect(() => {
     if (!active) return;
-    if (scenario === "active" || scenario === "pick_submitted") return;
+    if (scenario === "active" || scenario === "pick_submitted" || scenario === "join_flow") return;
     const seenKey = `fcc_demo_popup_seen_v1:${scenario}`;
     if (window.localStorage.getItem(seenKey) === "1") return;
     const copy = POPUP_COPY[scenario];
@@ -107,7 +107,7 @@ export function MarketingDemoControls() {
               <select
                 id="demo-scenario"
                 className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs"
-                value={scenario}
+                value={scenario === "join_flow" ? "active" : scenario}
                 onChange={(event) => {
                   const next = event.target.value as MarketingDemoScenario;
                   window.localStorage.removeItem(`fcc_demo_popup_seen_v1:${next}`);

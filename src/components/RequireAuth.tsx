@@ -4,7 +4,12 @@ import { Navigate, useLocation } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
 import { devOn, localAuthed } from "../lib/auth";
 import { rememberPendingAuthRedirect } from "../lib/authRedirect";
-import { ensureMarketingDemoForLocation, isMarketingDemoActive } from "../demo/runtime";
+import {
+  ensureMarketingDemoForLocation,
+  isMarketingDemoActive,
+  isMarketingDemoAuthenticated,
+  rememberMarketingDemoPendingPath,
+} from "../demo/runtime";
 
 type RequireAuthProps = { children: React.ReactElement };
 
@@ -12,7 +17,7 @@ export function RequireAuth({ children }: RequireAuthProps) {
   const loc = useLocation();
   ensureMarketingDemoForLocation(loc.pathname, loc.search);
   const [authed, setAuthed] = useState<boolean>(
-    isMarketingDemoActive() || (devOn() && localAuthed())
+    (isMarketingDemoActive() && isMarketingDemoAuthenticated()) || (devOn() && localAuthed())
   );
   const [loading, setLoading] = useState(true);
 
@@ -20,10 +25,20 @@ export function RequireAuth({ children }: RequireAuthProps) {
     let mounted = true;
 
     if (isMarketingDemoActive()) {
-      setAuthed(true);
-      setLoading(false);
+      const syncDemoAuth = () => {
+        if (!mounted) return;
+        setAuthed(isMarketingDemoAuthenticated());
+        setLoading(false);
+      };
+
+      syncDemoAuth();
+      window.addEventListener("lms:store-updated", syncDemoAuth as EventListener);
+      window.addEventListener("focus", syncDemoAuth);
+
       return () => {
         mounted = false;
+        window.removeEventListener("lms:store-updated", syncDemoAuth as EventListener);
+        window.removeEventListener("focus", syncDemoAuth);
       };
     }
 
@@ -59,6 +74,10 @@ export function RequireAuth({ children }: RequireAuthProps) {
   if (authed) return children;
 
   const next = `${loc.pathname}${loc.search}${loc.hash}`;
-  rememberPendingAuthRedirect(next);
+  if (isMarketingDemoActive()) {
+    rememberMarketingDemoPendingPath(next);
+  } else {
+    rememberPendingAuthRedirect(next);
+  }
   return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
 }

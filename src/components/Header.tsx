@@ -6,7 +6,12 @@ import { GameSelector } from "./GameSelector";
 import { subscribeStore } from "../data/service";
 import { getEffectiveUserId, isAdminNow } from "../lib/auth";
 import { NotificationBell } from "./NotificationBell";
-import { isMarketingDemoActive, isMarketingDemoRecordingMode } from "../demo/runtime";
+import {
+  isMarketingDemoActive,
+  isMarketingDemoAuthenticated,
+  isMarketingDemoRecordingMode,
+  logoutMarketingDemoUser,
+} from "../demo/runtime";
 
 const linkCls = ({ isActive }: { isActive: boolean }) =>
   `nav-link ${isActive ? "nav-link-active" : ""}`;
@@ -19,7 +24,8 @@ export function Header() {
 
   const [authed, setAuthed] = useState<boolean>(() => {
     const supaAuthed = false; // will be set in effect
-    const localAuthed = devOn && !!localStorage.getItem("player_id");
+    const localAuthed =
+      (devOn && !!localStorage.getItem("player_id")) || isMarketingDemoAuthenticated();
     return supaAuthed || localAuthed;
   });
 
@@ -35,6 +41,7 @@ export function Header() {
   const navigate = useNavigate();
   const marketingDemo = isMarketingDemoActive();
   const recordingMode = isMarketingDemoRecordingMode();
+  const showAdminUi = admin && !(marketingDemo && recordingMode);
 
   const syncLeagueAccess = useCallback(async (isAuthed: boolean) => {
     const storedId = localStorage.getItem("active_league_id");
@@ -90,7 +97,8 @@ export function Header() {
   const recomputeAuth = useCallback(async () => {
     const { data } = await supa.auth.getSession();
     const supaAuthed = !!data.session?.user?.id;
-    const localAuthed = (devOn && !!localStorage.getItem("player_id")) || marketingDemo;
+    const localAuthed =
+      (devOn && !!localStorage.getItem("player_id")) || isMarketingDemoAuthenticated();
     const isAuthed = supaAuthed || localAuthed;
     setAuthed(isAuthed);
     setAdmin(isAdminNow());
@@ -104,7 +112,8 @@ export function Header() {
     // keep in sync with Supabase login state
     const { data: sub } = supa.auth.onAuthStateChange((_e, session) => {
       const supaAuthed = !!session?.user?.id;
-      const localAuthed = (devOn && !!localStorage.getItem("player_id")) || marketingDemo;
+      const localAuthed =
+        (devOn && !!localStorage.getItem("player_id")) || isMarketingDemoAuthenticated();
       const isAuthed = supaAuthed || localAuthed;
       setAuthed(isAuthed);
       setAdmin(isAdminNow());
@@ -140,6 +149,17 @@ export function Header() {
   }, [authed, location.pathname, location.search, syncLeagueAccess]);
 
   async function logout() {
+    if (marketingDemo) {
+      logoutMarketingDemoUser();
+      localStorage.removeItem("is_admin");
+      setHasLeague(false);
+      setActiveLeagueId(null);
+      setAdmin(false);
+      setAuthed(false);
+      navigate("/login");
+      return;
+    }
+
     try {
       await supa.auth.signOut();
     } finally {
@@ -201,7 +221,7 @@ export function Header() {
               <NavLink to="/private" className={linkCls}>
                 Private
               </NavLink>
-              {admin && (
+              {showAdminUi && (
                 <NavLink to="/admin" className={linkCls}>
                   Admin
                 </NavLink>
@@ -292,7 +312,7 @@ export function Header() {
           <NavLink to="/private" className={linkCls}>
             Private
           </NavLink>
-          {admin && (
+          {showAdminUi && (
             <NavLink to="/admin" className={linkCls}>
               Admin
             </NavLink>

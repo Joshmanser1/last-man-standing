@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import { useNotifications } from "../components/Notifications";
 import { NotificationCentre } from "../components/NotificationCentre";
+import { isMarketingDemoActive, isMarketingDemoRecordingMode } from "../demo/runtime";
 
 const STORE_KEY = "lms_store_v1";
 const DEFAULT_LEAGUE_NAME = "English Premier League LMS";
@@ -35,6 +36,7 @@ export function Home() {
 
   const navigate = useNavigate();
   const toast = useToast();
+  const hideAdminUi = isMarketingDemoActive() && isMarketingDemoRecordingMode();
 
   async function reloadLeagues() {
     let ls: LeagueLite[] | undefined;
@@ -169,13 +171,15 @@ export function Home() {
               </p>
             </div>
 
-            <Link
-              to="/admin"
-              className="text-xs rounded-lg border px-3 py-1.5 hover:bg-slate-50"
-              title="Open Admin Panel"
-            >
-              Admin Panel
-            </Link>
+            {!hideAdminUi && (
+              <Link
+                to="/admin"
+                className="text-xs rounded-lg border px-3 py-1.5 hover:bg-slate-50"
+                title="Open Admin Panel"
+              >
+                Admin Panel
+              </Link>
+            )}
           </div>
 
           {hasGame && activeLeague && (

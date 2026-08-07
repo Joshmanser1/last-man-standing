@@ -2,7 +2,6 @@ import {
   getMarketingDemoJoinCode,
   isMarketingDemoActive,
   joinMarketingDemoLeague,
-  prepareMarketingDemoJoinFlow,
   submitMarketingDemoPick,
 } from "./runtime";
 import {

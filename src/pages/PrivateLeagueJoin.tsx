@@ -152,9 +152,7 @@ export function PrivateLeagueJoin() {
     <div className="max-w-lg mx-auto p-4 sm:p-6 space-y-4">
       <header>
         <h1 className="text-2xl font-bold mb-2">Join a private league</h1>
-        <p className="text-sm text-slate-600">
-          Confirm before joining. This page will not join the league automatically.
-        </p>
+        <p className="text-sm text-slate-600">Enter your invite code to continue.</p>
       </header>
 
       <form onSubmit={handleSubmit} className="card p-5 space-y-3">
@@ -181,7 +179,7 @@ export function PrivateLeagueJoin() {
           className="btn btn-primary"
           disabled={loadingPreview || joining || !preview}
         >
-          {joining ? "Joining..." : "Confirm & join"}
+          {joining ? "Joining..." : "Join League"}
         </button>
 
         {error && !loadingPreview && (
@@ -193,7 +191,7 @@ export function PrivateLeagueJoin() {
 
       <div className="flex items-center gap-2">
         <button className="btn btn-ghost text-sm" onClick={() => navigate("/private/create")}>
-          Go to Private hub
+          Back
         </button>
       </div>
     </div>

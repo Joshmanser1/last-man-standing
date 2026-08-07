@@ -7,6 +7,7 @@ import { getEffectiveUserId } from "../lib/auth";
 import { loadLeagueRoundState } from "../lib/leagueRoundState";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 import { isRoundRevealable } from "../lib/roundReveal";
+import { isMarketingDemoActive, isMarketingDemoRecordingMode } from "../demo/runtime";
 
 type CardProps = {
   title: string;
@@ -114,6 +115,7 @@ function formatCountdown(targetIso?: string): {
 
 export function LeagueSummary() {
   const navigate = useNavigate();
+  const hideAdminUi = isMarketingDemoActive() && isMarketingDemoRecordingMode();
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [viewerUserId, setViewerUserId] = useState<string | null>(null);
@@ -331,15 +333,9 @@ export function LeagueSummary() {
           </div>
           <h2 className="text-xl font-semibold">No league selected</h2>
           <p className="text-slate-600">
-            Pick a game from the selector or create one in Admin.
+            Pick a game from the selector to continue.
           </p>
           <div className="flex gap-3 justify-center">
-            <button
-              className="rounded-lg border px-4 py-2 hover:bg-slate-50"
-              onClick={() => navigate("/admin")}
-            >
-              Go to Admin
-            </button>
             <button
               className="rounded-lg border px-4 py-2 hover:bg-slate-50"
               onClick={() => navigate("/live")}
@@ -471,7 +467,7 @@ export function LeagueSummary() {
                   Leaderboard
                 </button>
               )}
-              {viewerIsOwner && (
+              {viewerIsOwner && !hideAdminUi && (
                 <button
                   onClick={() => navigate("/admin")}
                   className="rounded-lg bg-white/10 backdrop-blur px-4 py-2 font-medium hover:bg-white/15 transition"
