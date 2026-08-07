@@ -435,7 +435,7 @@ export function MakePick() {
                 : "—"}{" "}
               • <span className="font-mono">{countdownLabel}</span>
             </p>
-            {isTestMode && (
+            {isTestMode && !hideAdminUi && (
               <p className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
                 TEST MODE - deadline bypass active
               </p>

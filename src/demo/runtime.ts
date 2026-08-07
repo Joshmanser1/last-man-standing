@@ -33,6 +33,7 @@ type DemoState = {
   scenario: MarketingDemoScenario;
   createdLeague: DemoLeague | null;
   recordingMode: boolean;
+  joinFlowPickTeamId: string | null;
 };
 
 type DemoSnapshot = {
@@ -90,6 +91,7 @@ function defaultState(): DemoState {
     scenario: "active",
     createdLeague: null,
     recordingMode: false,
+    joinFlowPickTeamId: null,
   };
 }
 
@@ -188,6 +190,7 @@ export function prepareMarketingDemoJoinFlow() {
     scenario: "join_flow" as MarketingDemoScenario,
     joinedLeagueIds: [],
     activeLeagueId: "",
+    joinFlowPickTeamId: null,
   };
   writeState(next);
   window.localStorage.setItem(DEMO_AUTH_KEY, "false");
@@ -231,6 +234,9 @@ export function isMarketingDemoRecordingMode() {
 export function setMarketingDemoScenario(scenario: MarketingDemoScenario) {
   const next = readState();
   next.scenario = scenario;
+  if (scenario !== "join_flow") {
+    next.joinFlowPickTeamId = null;
+  }
   writeState(next);
 }
 
@@ -541,12 +547,25 @@ function joinFlowSnapshot(state: DemoState): DemoSnapshot {
     memberships.push(member(DEMO_PLAYER_ID, DEMO_PLAYER_NAME, true, "player"));
   }
 
+  const picks =
+    state.joinedLeagueIds.includes(DEMO_LEAGUE_ID) && state.joinFlowPickTeamId
+      ? [
+          pick(
+            "pick-r1-alex-join-flow",
+            DEMO_ROUND_1_ID,
+            DEMO_PLAYER_ID,
+            state.joinFlowPickTeamId,
+            "pending"
+          ),
+        ]
+      : [];
+
   return {
     leagues: [joinFlowLeagueBase()],
     rounds: [round1],
     teams: demoTeams(),
     memberships,
-    picks: [],
+    picks,
     fixtures: demoFixtures().map((fixture) => ({
       ...fixture,
       round_id: DEMO_ROUND_1_ID,
@@ -770,7 +789,11 @@ export function getMarketingDemoUsedTeamIds(leagueId: string, playerId: string) 
 
 export function submitMarketingDemoPick(teamId: string) {
   const next = readState();
-  next.scenario = "pick_submitted";
+  if (next.scenario === "join_flow") {
+    next.joinFlowPickTeamId = teamId;
+  } else {
+    next.scenario = "pick_submitted";
+  }
   writeState(next);
   const snapshot = getMarketingDemoSnapshot();
   const currentRound = getMarketingDemoRound(DEMO_LEAGUE_ID);
