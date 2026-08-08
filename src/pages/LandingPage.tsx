@@ -6,6 +6,7 @@ import {
   ensureMarketingDemoForLocation,
   isMarketingDemoActive,
   isMarketingDemoAuthenticated,
+  isMarketingDemoRecordingMode,
 } from "../demo/runtime";
 
 export default function LandingPage() {
@@ -35,6 +36,7 @@ export default function LandingPage() {
   // Require login for both actions when not authed
   const hostHref = authed ? "/private" : "/login";
   const exploreHref = authed ? "/my-games" : "/login";
+  const hideDemoRibbon = isMarketingDemoActive() && isMarketingDemoRecordingMode();
 
   return (
     <main className="min-h-screen text-white bg-[radial-gradient(120%_120%_at_50%_-20%,#072a25,#0b1f20_50%,#0a0e12_90%)]">
@@ -42,9 +44,13 @@ export default function LandingPage() {
       <section className="relative overflow-hidden pt-8 md:pt-12">
         <div className="mx-auto max-w-7xl px-4 py-20 md:py-28">
           <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-emerald-300 text-xs">
-              <span>Beta</span>
-              <span className="opacity-60">Go-live checklist: final polish</span>
+            <div className="inline-flex min-h-[30px] items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-emerald-300 text-xs">
+              {!hideDemoRibbon && (
+                <>
+                  <span>Beta</span>
+                  <span className="opacity-60">Go-live checklist: final polish</span>
+                </>
+              )}
             </div>
 
             <h1 className="mt-6 text-4xl md:text-6xl font-extrabold tracking-tight leading-tight">
