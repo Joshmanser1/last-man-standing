@@ -55,7 +55,7 @@ export default function LandingPage() {
 
             <h1 className="mt-6 text-4xl md:text-6xl font-extrabold tracking-tight leading-tight">
               Last-Man-Standing
-              <span className="block text-emerald-400">Host. Join. Win.</span>
+              <span className="block text-emerald-400">Host. Join. Survive.</span>
             </h1>
 
             <p className="mt-6 text-lg opacity-80">
