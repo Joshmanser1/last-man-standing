@@ -4,17 +4,6 @@ type LeagueLike = League & Record<string, unknown>;
 
 const DEFAULT_TAGLINE = "One team. One win. Survive and go again.";
 
-const CHELS_ZONE_TEST_THEME: ManagedLeagueTheme = {
-  enabled: true,
-  hostName: "Chels Zone",
-  displayName: "Last Man Standing",
-  primaryColour: "#034694",
-  secondaryColour: "#ffffff",
-  managed: true,
-  eyebrow: "Community league",
-  tagline: DEFAULT_TAGLINE,
-};
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -52,18 +41,6 @@ function getThemeFromMetadata(metadata: unknown) {
   );
 }
 
-function getTemporaryTheme(league: LeagueLike): ManagedLeagueTheme | null {
-  const leagueName = String(league.name ?? "").trim().toLowerCase();
-  if (!leagueName) return null;
-
-  // Temporary Stage 1 dev mapping until a real persisted league theme is available.
-  if (leagueName === "chels zone" || leagueName === "chels zone - last man standing") {
-    return CHELS_ZONE_TEST_THEME;
-  }
-
-  return null;
-}
-
 export function resolveManagedLeagueTheme(league: LeagueLike | null | undefined) {
   if (!league) return null;
 
@@ -71,9 +48,8 @@ export function resolveManagedLeagueTheme(league: LeagueLike | null | undefined)
     normalizeTheme(league.managed_theme) ??
     normalizeTheme(league.theme) ??
     normalizeTheme(league.branding) ??
-    getThemeFromMetadata(league.metadata) ??
-    getTemporaryTheme(league)
+    getThemeFromMetadata(league.metadata)
   );
 }
 
-export { CHELS_ZONE_TEST_THEME, DEFAULT_TAGLINE };
+export { DEFAULT_TAGLINE };
