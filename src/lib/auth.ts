@@ -1,5 +1,6 @@
 // src/lib/auth.ts
 import { supa } from "../lib/supabaseClient";
+import { getApiHeaders } from "./apiAuth";
 
 export const hasTestUserOverride = () =>
   typeof window !== "undefined" && !!localStorage.getItem("test_user_override");
@@ -54,12 +55,30 @@ export function isAdminNow(): boolean {
   return typeof window !== "undefined" && localStorage.getItem("is_admin") === "1";
 }
 
-/** Async admin check with Supabase user metadata fallback */
+export async function isCurrentUserSiteAdmin(): Promise<boolean> {
+  if (devOn() && localAuthed()) return true;
+
+  try {
+    const { data } = await supa.auth.getSession();
+    if (!data.session?.user?.id) return false;
+
+    const resp = await fetch("/api/site-admin-status", {
+      method: "GET",
+      headers: await getApiHeaders(),
+    });
+    if (!resp.ok) return false;
+
+    const body = (await resp.json()) as { is_site_admin?: boolean };
+    return body?.is_site_admin === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Async admin check with site_admins as production authority and dev fallback */
 export async function isAdminAsync(): Promise<boolean> {
   try {
-    const { data } = await supa.auth.getUser();
-    const role = (data.user?.user_metadata?.role as string) || "";
-    return role === "admin" || isAdminNow();
+    return await isCurrentUserSiteAdmin();
   } catch {
     return isAdminNow();
   }
