@@ -6,7 +6,6 @@ import { useCountdown } from "../hooks/useCountdown";
 import { GameSelector } from "../components/GameSelector";
 import { useToast } from "../components/Toast";
 import ManagedLeagueHero from "../components/ManagedLeagueHero";
-import { trackFirstPickSubmittedOnce } from "../lib/analytics";
 import { resolveManagedLeagueTheme } from "../lib/leagueTheme";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
@@ -234,7 +233,6 @@ export function MakePick() {
       if (!league || !round || !playerId) return;
       if (locked) return;
       const isUpdatingPick = !!currentPick && currentPick.team_id !== teamId;
-      const isFirstLeaguePick = usedTeamIds.size === 0 && !currentPick;
 
       if (currentPick && currentPick.team_id !== teamId) {
         const ok = confirm("Replace your existing pick with this team?");
@@ -257,14 +255,6 @@ export function MakePick() {
           msg = err?.error ?? msg;
         } catch {}
         throw new Error(msg);
-      }
-      if (isFirstLeaguePick) {
-        trackFirstPickSubmittedOnce(league.id, playerId, {
-          league_id: league.id,
-          is_public: league.is_public === true,
-          round_number: round.round_number,
-          is_test: league.is_test === true,
-        });
       }
       toast(isUpdatingPick ? "Pick updated" : "Pick submitted", { variant: "success" });
       navigate("/leaderboard");
