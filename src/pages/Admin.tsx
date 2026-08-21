@@ -1,8 +1,11 @@
 // src/pages/Admin.tsx
 import { useEffect, useMemo, useState } from "react";
+import ManagedLeagueStrip from "../components/ManagedLeagueStrip";
 import { dataService } from "../data/service";
 import { FplGwSelect } from "../components/FplGwSelect";
+import { postJsonWithAuth } from "../lib/apiAuth";
 import { fetchBootstrap } from "../lib/fpl";
+import type { League, ManagedLeagueTheme } from "../data/types";
 
 const STORE_KEY = "lms_store_v1";
 const SEED_SENTINEL = "lms_seed_done";
@@ -25,6 +28,30 @@ const TEST_USERS = [
   { id: "cdf92fde-fd55-4688-8b8e-2330f6cdca9c", name: "Matthew Nixon" },
 ] as const;
 
+type ManagedThemeDraft = {
+  enabled: boolean;
+  managed: boolean;
+  hostName: string;
+  hostLogoUrl: string;
+  displayName: string;
+  primaryColour: string;
+  secondaryColour: string;
+  eyebrow: string;
+  tagline: string;
+};
+
+const EMPTY_MANAGED_THEME_DRAFT: ManagedThemeDraft = {
+  enabled: false,
+  managed: true,
+  hostName: "",
+  hostLogoUrl: "",
+  displayName: "",
+  primaryColour: "",
+  secondaryColour: "",
+  eyebrow: "",
+  tagline: "",
+};
+
 function generateInviteCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
@@ -32,6 +59,56 @@ function generateInviteCode() {
     code += alphabet[Math.floor(Math.random() * alphabet.length)];
   }
   return code;
+}
+
+function draftFromManagedTheme(theme: unknown): ManagedThemeDraft {
+  if (!theme || typeof theme !== "object" || Array.isArray(theme)) {
+    return { ...EMPTY_MANAGED_THEME_DRAFT };
+  }
+
+  const source = theme as Record<string, unknown>;
+  return {
+    enabled: source.enabled === true,
+    managed: source.managed !== false,
+    hostName: typeof source.hostName === "string" ? source.hostName : "",
+    hostLogoUrl: typeof source.hostLogoUrl === "string" ? source.hostLogoUrl : "",
+    displayName: typeof source.displayName === "string" ? source.displayName : "",
+    primaryColour: typeof source.primaryColour === "string" ? source.primaryColour : "",
+    secondaryColour: typeof source.secondaryColour === "string" ? source.secondaryColour : "",
+    eyebrow: typeof source.eyebrow === "string" ? source.eyebrow : "",
+    tagline: typeof source.tagline === "string" ? source.tagline : "",
+  };
+}
+
+function buildManagedThemePayload(draft: ManagedThemeDraft): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    enabled: draft.enabled,
+    managed: draft.managed,
+  };
+
+  const assignIfPresent = (
+    key:
+      | "hostName"
+      | "hostLogoUrl"
+      | "displayName"
+      | "primaryColour"
+      | "secondaryColour"
+      | "eyebrow"
+      | "tagline"
+  ) => {
+    const value = draft[key].trim();
+    if (value) payload[key] = value;
+  };
+
+  assignIfPresent("hostName");
+  assignIfPresent("hostLogoUrl");
+  assignIfPresent("displayName");
+  assignIfPresent("primaryColour");
+  assignIfPresent("secondaryColour");
+  assignIfPresent("eyebrow");
+  assignIfPresent("tagline");
+
+  return payload;
 }
 
 export function Admin() {
@@ -72,6 +149,14 @@ export function Admin() {
   const [sortAsc, setSortAsc] = useState<boolean>(true);
   const [e2eSeedStatus, setE2eSeedStatus] = useState<string>("");
   const [e2eResolveStatus, setE2eResolveStatus] = useState<string>("");
+  const [siteAdminChecked, setSiteAdminChecked] = useState(false);
+  const [siteAdminAllowed, setSiteAdminAllowed] = useState(false);
+  const [brandingDraft, setBrandingDraft] = useState<ManagedThemeDraft>(
+    EMPTY_MANAGED_THEME_DRAFT
+  );
+  const [brandingLoading, setBrandingLoading] = useState(false);
+  const [brandingNotice, setBrandingNotice] = useState("");
+  const [brandingError, setBrandingError] = useState("");
   const [effectiveTestUserId, setEffectiveTestUserId] = useState<string>(
     () => localStorage.getItem("test_user_override") || localStorage.getItem("player_id") || ""
   );
@@ -208,6 +293,91 @@ export function Admin() {
     if (typeof base !== "number") return null;
     return base + (round.round_number - 1);
   }, [league, round]);
+
+  const selectedLeagueRecord = useMemo(
+    () =>
+      (allLeagues.find((candidate: any) => candidate.id === selectedLeagueId) as League | undefined) ??
+      null,
+    [allLeagues, selectedLeagueId]
+  );
+
+  const brandingPreviewTheme = useMemo(() => {
+    const payload = buildManagedThemePayload(brandingDraft);
+    if (payload.enabled !== true || typeof payload.hostName !== "string") return null;
+    return payload as unknown as ManagedLeagueTheme;
+  }, [brandingDraft]);
+
+  useEffect(() => {
+    if (!selectedLeagueId) {
+      setSiteAdminChecked(false);
+      setSiteAdminAllowed(false);
+      setBrandingDraft(EMPTY_MANAGED_THEME_DRAFT);
+      setBrandingError("");
+      setBrandingNotice("");
+      return;
+    }
+
+    let cancelled = false;
+    setBrandingLoading(true);
+    setBrandingError("");
+    setBrandingNotice("");
+
+    (async () => {
+      const resp = await postJsonWithAuth("/api/admin-managed-theme", {
+        league_id: selectedLeagueId,
+      });
+
+      if (cancelled) return;
+
+      let body: any = null;
+      try {
+        body = await resp.json();
+      } catch {
+        body = null;
+      }
+
+      if (resp.status === 401 || resp.status === 403) {
+        setSiteAdminAllowed(false);
+        setSiteAdminChecked(true);
+        setBrandingDraft(draftFromManagedTheme(selectedLeagueRecord?.managed_theme ?? null));
+        setBrandingLoading(false);
+        return;
+      }
+
+      if (!resp.ok) {
+        setSiteAdminAllowed(false);
+        setSiteAdminChecked(true);
+        setBrandingError(body?.error ?? "Failed to load managed branding.");
+        setBrandingDraft(draftFromManagedTheme(selectedLeagueRecord?.managed_theme ?? null));
+        setBrandingLoading(false);
+        return;
+      }
+
+      const nextTheme = body?.managed_theme ?? null;
+      setSiteAdminAllowed(true);
+      setSiteAdminChecked(true);
+      setBrandingDraft(draftFromManagedTheme(nextTheme));
+      setAllLeagues((prev) =>
+        prev.map((item: any) =>
+          item.id === selectedLeagueId ? { ...item, managed_theme: nextTheme } : item
+        )
+      );
+      if (league?.id === selectedLeagueId) {
+        setLeague((prev: any) => (prev ? { ...prev, managed_theme: nextTheme } : prev));
+      }
+      setBrandingLoading(false);
+    })().catch((err: any) => {
+      if (cancelled) return;
+      setSiteAdminAllowed(false);
+      setSiteAdminChecked(true);
+      setBrandingError(err?.message ?? "Failed to load managed branding.");
+      setBrandingLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedLeagueId]);
 
   // Actions
   function isE2ESwitchOn() {
@@ -430,6 +600,80 @@ export function Admin() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function saveManagedBranding(nextTheme: Record<string, unknown> | null) {
+    if (!selectedLeagueId) return;
+
+    setBrandingLoading(true);
+    setBrandingError("");
+    setBrandingNotice("");
+
+    try {
+      const resp = await postJsonWithAuth("/api/admin-managed-theme", {
+        league_id: selectedLeagueId,
+        managed_theme: nextTheme,
+      });
+
+      let body: any = null;
+      try {
+        body = await resp.json();
+      } catch {
+        body = null;
+      }
+
+      if (resp.status === 401 || resp.status === 403) {
+        setSiteAdminAllowed(false);
+        setSiteAdminChecked(true);
+        setBrandingError(body?.error ?? "You are not allowed to manage league branding.");
+        return;
+      }
+
+      if (!resp.ok) {
+        setBrandingError(body?.error ?? "Failed to save managed branding.");
+        return;
+      }
+
+      const savedTheme = body?.managed_theme ?? null;
+      setSiteAdminAllowed(true);
+      setSiteAdminChecked(true);
+      setBrandingDraft(draftFromManagedTheme(savedTheme));
+      setBrandingNotice(savedTheme ? "Managed branding saved." : "Managed branding cleared.");
+      setAllLeagues((prev) =>
+        prev.map((item: any) =>
+          item.id === selectedLeagueId ? { ...item, managed_theme: savedTheme } : item
+        )
+      );
+      if (league?.id === selectedLeagueId) {
+        setLeague((prev: any) => (prev ? { ...prev, managed_theme: savedTheme } : prev));
+      }
+    } catch (err: any) {
+      setBrandingError(err?.message ?? "Failed to save managed branding.");
+    } finally {
+      setBrandingLoading(false);
+    }
+  }
+
+  function updateBrandingField(
+    key: keyof ManagedThemeDraft,
+    value: string | boolean
+  ) {
+    setBrandingDraft((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  }
+
+  async function handleManagedBrandingSave() {
+    await saveManagedBranding(buildManagedThemePayload(brandingDraft));
+  }
+
+  async function handleManagedBrandingClear() {
+    const ok = window.confirm(
+      `Clear managed branding for "${selectedLeagueRecord?.name ?? league?.name ?? "this league"}"?`
+    );
+    if (!ok) return;
+    await saveManagedBranding(null);
   }
 
   async function handleDeleteLeague() {
@@ -868,6 +1112,198 @@ export function Admin() {
             )}
           </div>
         </div>
+
+        {siteAdminChecked && siteAdminAllowed && (
+          <div className="border-t pt-6 mt-8">
+            <div className="mb-4">
+              <h3 className="font-semibold">Managed Branding</h3>
+              <p className="mt-1 text-xs text-slate-500">
+                FCC site-admin only. Updates only <code>leagues.managed_theme</code>.
+              </p>
+            </div>
+
+            {brandingError && (
+              <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {brandingError}
+              </div>
+            )}
+
+            {brandingNotice && (
+              <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                {brandingNotice}
+              </div>
+            )}
+
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={brandingDraft.enabled}
+                      disabled={brandingLoading}
+                      onChange={(e) => updateBrandingField("enabled", e.target.checked)}
+                    />
+                    Managed branding enabled
+                  </label>
+
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={brandingDraft.managed}
+                      disabled={brandingLoading}
+                      onChange={(e) => updateBrandingField("managed", e.target.checked)}
+                    />
+                    Managed by FCC flag
+                  </label>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Host name
+                    </label>
+                    <input
+                      type="text"
+                      value={brandingDraft.hostName}
+                      disabled={brandingLoading}
+                      onChange={(e) => updateBrandingField("hostName", e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                      placeholder="Chels Zone"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Display / competition name
+                    </label>
+                    <input
+                      type="text"
+                      value={brandingDraft.displayName}
+                      disabled={brandingLoading}
+                      onChange={(e) => updateBrandingField("displayName", e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                      placeholder="Last Man Standing"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Host logo URL
+                    </label>
+                    <input
+                      type="url"
+                      value={brandingDraft.hostLogoUrl}
+                      disabled={brandingLoading}
+                      onChange={(e) => updateBrandingField("hostLogoUrl", e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                      placeholder="https://example.com/logo.png"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Primary colour
+                    </label>
+                    <input
+                      type="text"
+                      value={brandingDraft.primaryColour}
+                      disabled={brandingLoading}
+                      onChange={(e) => updateBrandingField("primaryColour", e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                      placeholder="#034694"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Secondary colour
+                    </label>
+                    <input
+                      type="text"
+                      value={brandingDraft.secondaryColour}
+                      disabled={brandingLoading}
+                      onChange={(e) => updateBrandingField("secondaryColour", e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                      placeholder="#ffffff"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Eyebrow / community label
+                    </label>
+                    <input
+                      type="text"
+                      value={brandingDraft.eyebrow}
+                      disabled={brandingLoading}
+                      onChange={(e) => updateBrandingField("eyebrow", e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                      placeholder="Community league"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Tagline
+                    </label>
+                    <textarea
+                      value={brandingDraft.tagline}
+                      disabled={brandingLoading}
+                      onChange={(e) => updateBrandingField("tagline", e.target.value)}
+                      className="mt-1 min-h-[84px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                      placeholder="One team. One win. Survive and go again."
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    disabled={brandingLoading}
+                    onClick={handleManagedBrandingSave}
+                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+                  >
+                    {brandingLoading ? "Saving..." : "Save managed branding"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={brandingLoading}
+                    onClick={handleManagedBrandingClear}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-white disabled:opacity-60"
+                  >
+                    Clear stored theme
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-800">Preview</h4>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Compact managed identity preview using the current draft.
+                  </p>
+                </div>
+
+                {brandingPreviewTheme ? (
+                  <ManagedLeagueStrip
+                    league={
+                      ({
+                        id: selectedLeagueId,
+                        name: selectedLeagueRecord?.name ?? league?.name ?? "League",
+                        status: league?.status ?? "upcoming",
+                        current_round: league?.current_round ?? 1,
+                      } as League)
+                    }
+                    theme={brandingPreviewTheme}
+                  />
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-5 text-sm text-slate-500">
+                    Enable branding and add a host name to preview the managed identity.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Automation (Dev/Ops) */}
         <div className="border-t pt-6 mt-8">
