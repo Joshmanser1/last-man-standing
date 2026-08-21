@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import * as htmlToImage from "html-to-image";
+import { GameSelector } from "../components/GameSelector";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
 import { useToast } from "../components/Toast";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
@@ -469,6 +470,15 @@ export function Leaderboard() {
 
   return (
     <div className="container-page py-6 space-y-4">
+      <div className="flex justify-end">
+        <GameSelector
+          value={leagueId}
+          label="Viewing game"
+          onChange={(id) => {
+            setLeagueId(id);
+          }}
+        />
+      </div>
       <LeagueStatusBanner leagueId={leagueId} />
       {guidance.shouldGuide ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
