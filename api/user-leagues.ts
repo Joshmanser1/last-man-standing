@@ -62,7 +62,7 @@ export default async function handler(req: Req, res: Res) {
 
     const { data: ownedLeagues, error: ownedError } = await supabase
       .from("leagues")
-      .select("id, name, created_by, created_at, is_public, is_test, join_code, fpl_start_event, start_date_utc, current_round, status")
+      .select("id, name, created_by, created_at, is_public, is_test, join_code, fpl_start_event, start_date_utc, current_round, status, managed_theme")
       .eq("created_by", userId)
       .is("deleted_at", null);
     if (ownedError) {
@@ -92,7 +92,7 @@ export default async function handler(req: Req, res: Res) {
 
     const { data: leagues, error: leaguesError } = await supabase
       .from("leagues")
-      .select("id, name, created_by, created_at, is_public, is_test, join_code, fpl_start_event, start_date_utc, current_round, status")
+      .select("id, name, created_by, created_at, is_public, is_test, join_code, fpl_start_event, start_date_utc, current_round, status, managed_theme")
       .in("id", leagueIds)
       .is("deleted_at", null);
     if (leaguesError) {
