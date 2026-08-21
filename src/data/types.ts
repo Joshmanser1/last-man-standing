@@ -1,6 +1,18 @@
 // src/data/types.ts
 export type ID = string;
 
+export type ManagedLeagueTheme = {
+  enabled: boolean;
+  hostName: string;
+  hostLogoUrl?: string;
+  displayName?: string;
+  primaryColour?: string;
+  secondaryColour?: string;
+  managed?: boolean;
+  eyebrow?: string;
+  tagline?: string;
+};
+
 export type League = {
   id: ID;
   name: string;
@@ -14,6 +26,10 @@ export type League = {
   fpl_start_event?: number | null; // starting FPL event for mapping
   created_by?: string | null; // owner user id
   is_test?: boolean;
+  managed_theme?: ManagedLeagueTheme | null;
+  theme?: ManagedLeagueTheme | null;
+  branding?: ManagedLeagueTheme | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 export type Round = {

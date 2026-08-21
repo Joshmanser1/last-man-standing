@@ -5,6 +5,9 @@ import { dataService } from "../data/service";
 import { useCountdown } from "../hooks/useCountdown";
 import { GameSelector } from "../components/GameSelector";
 import { useToast } from "../components/Toast";
+import ManagedLeagueHero from "../components/ManagedLeagueHero";
+import { trackFirstPickSubmittedOnce } from "../lib/analytics";
+import { resolveManagedLeagueTheme } from "../lib/leagueTheme";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
 import { getMemberElimination, loadLeagueRoundState } from "../lib/leagueRoundState";
@@ -216,6 +219,7 @@ export function MakePick() {
       : hardLocked
       ? "Locked"
       : timeLeft;
+  const managedTheme = useMemo(() => resolveManagedLeagueTheme(league), [league]);
 
   const teamsAZ = useMemo(() => {
     const uniq = new Map<string, any>();
@@ -230,6 +234,7 @@ export function MakePick() {
       if (!league || !round || !playerId) return;
       if (locked) return;
       const isUpdatingPick = !!currentPick && currentPick.team_id !== teamId;
+      const isFirstLeaguePick = usedTeamIds.size === 0 && !currentPick;
 
       if (currentPick && currentPick.team_id !== teamId) {
         const ok = confirm("Replace your existing pick with this team?");
@@ -252,6 +257,14 @@ export function MakePick() {
           msg = err?.error ?? msg;
         } catch {}
         throw new Error(msg);
+      }
+      if (isFirstLeaguePick) {
+        trackFirstPickSubmittedOnce(league.id, playerId, {
+          league_id: league.id,
+          is_public: league.is_public === true,
+          round_number: round.round_number,
+          is_test: league.is_test === true,
+        });
       }
       toast(isUpdatingPick ? "Pick updated" : "Pick submitted", { variant: "success" });
       navigate("/leaderboard");
@@ -325,6 +338,7 @@ export function MakePick() {
   if (league.status === "completed") {
     return (
       <div data-testid="make-pick-page" className="container-page py-6">
+        <ManagedLeagueHero league={league} theme={managedTheme} />
         <div className="mb-4 flex justify-end">
           <GameSelector
             value={leagueId}
@@ -356,6 +370,7 @@ export function MakePick() {
   if (viewerMembership?.is_active === false) {
     return (
       <div data-testid="make-pick-page" className="container-page py-6">
+        <ManagedLeagueHero league={league} theme={managedTheme} />
         <div className="mb-4 flex justify-end">
           <GameSelector
             label="Viewing game"
@@ -385,6 +400,7 @@ export function MakePick() {
 
   return (
     <div data-testid="make-pick-page" className="container-page py-6">
+      <ManagedLeagueHero league={league} theme={managedTheme} />
       <div className="mb-4 flex justify-end">
         <GameSelector
           value={leagueId}
