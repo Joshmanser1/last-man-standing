@@ -90,6 +90,7 @@ export function Leaderboard() {
   const exportRef = useRef<HTMLDivElement>(null);
   const guidance = useFirstPickGuidance(leagueId);
   const managedTheme = useMemo(() => resolveManagedLeagueTheme(league as any), [league]);
+  const isManagedLeague = !!managedTheme?.enabled;
 
   function changeView(next: ViewMode) {
     setView(next);
@@ -491,7 +492,9 @@ export function Leaderboard() {
       ) : (
         <>
           <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">
-            <div className="text-lg font-semibold">{league.name} - Leaderboard</div>
+            <div className="text-lg font-semibold">
+              {isManagedLeague ? "Leaderboard" : `${league.name} - Leaderboard`}
+            </div>
             <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:justify-end">
               <label className="flex items-center gap-2 text-sm">
                 <input

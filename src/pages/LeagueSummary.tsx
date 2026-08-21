@@ -132,6 +132,7 @@ export function LeagueSummary() {
   const [reloadTick, setReloadTick] = useState(0);
   const guidance = useFirstPickGuidance(activeLeagueId);
   const managedTheme = useMemo(() => resolveManagedLeagueTheme(league), [league]);
+  const isManagedLeague = !!managedTheme?.enabled;
 
   // bootstrap from Supabase + dataService fallbacks
   useEffect(() => {
@@ -450,7 +451,7 @@ export function LeagueSummary() {
                 </span>
               </div>
               <h1 className="mt-1 text-2xl md:text-3xl font-bold leading-tight drop-shadow-sm">
-                {league.name}
+                {isManagedLeague ? `Round ${roundNumber}` : league.name}
               </h1>
               <div className="mt-1 text-sm opacity-90">
                 Deadline in:{" "}
