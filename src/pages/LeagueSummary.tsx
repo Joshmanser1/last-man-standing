@@ -3,7 +3,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
 import { GameSelector } from "../components/GameSelector";
+import ManagedLeagueStrip from "../components/ManagedLeagueStrip";
 import { getEffectiveUserId } from "../lib/auth";
+import { resolveManagedLeagueTheme } from "../lib/leagueTheme";
 import { loadLeagueRoundState } from "../lib/leagueRoundState";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 import { isRoundRevealable } from "../lib/roundReveal";
@@ -129,6 +131,7 @@ export function LeagueSummary() {
   );
   const [reloadTick, setReloadTick] = useState(0);
   const guidance = useFirstPickGuidance(activeLeagueId);
+  const managedTheme = useMemo(() => resolveManagedLeagueTheme(league), [league]);
 
   // bootstrap from Supabase + dataService fallbacks
   useEffect(() => {
@@ -376,6 +379,9 @@ export function LeagueSummary() {
           />
         </div>
         <div className="mb-4">
+          <ManagedLeagueStrip league={league} theme={managedTheme} />
+        </div>
+        <div className="mb-4">
           <LeagueStatusBanner leagueId={activeLeagueId} />
         </div>
         <div className="rounded-2xl border bg-white p-4 text-sm text-slate-700">
@@ -418,6 +424,9 @@ export function LeagueSummary() {
             setReloadTick((x) => x + 1);
           }}
         />
+      </div>
+      <div className="mb-4">
+        <ManagedLeagueStrip league={league} theme={managedTheme} />
       </div>
       <div className="mb-4">
         <LeagueStatusBanner leagueId={activeLeagueId} />

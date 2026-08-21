@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import * as htmlToImage from "html-to-image";
 import { GameSelector } from "../components/GameSelector";
+import ManagedLeagueStrip from "../components/ManagedLeagueStrip";
 import { LeagueStatusBanner } from "../components/LeagueStatusBanner";
 import { useToast } from "../components/Toast";
 import { useFirstPickGuidance } from "../hooks/useFirstPickGuidance";
 import { postJsonWithAuth } from "../lib/apiAuth";
 import { getEffectiveUserId } from "../lib/auth";
+import { resolveManagedLeagueTheme } from "../lib/leagueTheme";
 import { isRoundRevealable, shouldHidePickForViewer } from "../lib/roundReveal";
 import { buildRoundEntries } from "../lib/leagueRoundState";
 
@@ -87,6 +89,7 @@ export function Leaderboard() {
 
   const exportRef = useRef<HTMLDivElement>(null);
   const guidance = useFirstPickGuidance(leagueId);
+  const managedTheme = useMemo(() => resolveManagedLeagueTheme(league as any), [league]);
 
   function changeView(next: ViewMode) {
     setView(next);
@@ -479,6 +482,7 @@ export function Leaderboard() {
           }}
         />
       </div>
+      <ManagedLeagueStrip league={league as any} theme={managedTheme} />
       <LeagueStatusBanner leagueId={leagueId} />
       {guidance.shouldGuide ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
