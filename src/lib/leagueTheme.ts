@@ -7,7 +7,7 @@ const DEFAULT_TAGLINE = "One team. One win. Survive and go again.";
 const CHELS_ZONE_TEST_THEME: ManagedLeagueTheme = {
   enabled: true,
   hostName: "Chels Zone",
-  displayName: "Chels Zone - Last Man Standing",
+  displayName: "Last Man Standing",
   primaryColour: "#034694",
   secondaryColour: "#ffffff",
   managed: true,
