@@ -6,6 +6,7 @@ import { FplGwSelect } from "../components/FplGwSelect";
 import { postJsonWithAuth } from "../lib/apiAuth";
 import { fetchBootstrap } from "../lib/fpl";
 import type { League, ManagedLeagueTheme } from "../data/types";
+import { devOn, localAuthed } from "../lib/auth";
 
 const STORE_KEY = "lms_store_v1";
 const SEED_SENTINEL = "lms_seed_done";
@@ -51,6 +52,16 @@ const EMPTY_MANAGED_THEME_DRAFT: ManagedThemeDraft = {
   eyebrow: "",
   tagline: "",
 };
+
+function getUnavailableRound(leagueLike: { current_round?: number | null } | null) {
+  return {
+    id: "",
+    round_number:
+      typeof leagueLike?.current_round === "number" ? leagueLike.current_round : 0,
+    status: "unavailable",
+    pick_deadline_utc: "",
+  };
+}
 
 function generateInviteCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -157,6 +168,7 @@ export function Admin() {
   const [brandingLoading, setBrandingLoading] = useState(false);
   const [brandingNotice, setBrandingNotice] = useState("");
   const [brandingError, setBrandingError] = useState("");
+  const [roundPicks, setRoundPicks] = useState<any[]>([]);
   const [effectiveTestUserId, setEffectiveTestUserId] = useState<string>(
     () => localStorage.getItem("test_user_override") || localStorage.getItem("player_id") || ""
   );
@@ -206,66 +218,154 @@ export function Admin() {
 
   // Load leagues (filter soft-deleted)
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
+      const preferredLeagueId =
+        typeof window !== "undefined" ? localStorage.getItem("active_league_id") || "" : "";
+
+      try {
+        const resp = await postJsonWithAuth("/api/admin-leagues", {});
+        if (resp.ok) {
+          const adminLeagues = (await resp.json()) as Array<any>;
+          const filtered = (adminLeagues || []).filter((l: any) => !l.deleted_at);
+          if (cancelled) return;
+          setAllLeagues(filtered);
+          setSelectedLeagueId((prev) => {
+            if (prev && filtered.some((l: any) => l.id === prev)) return prev;
+            if (preferredLeagueId && filtered.some((l: any) => l.id === preferredLeagueId)) {
+              return preferredLeagueId;
+            }
+            return filtered[0]?.id || "";
+          });
+          return;
+        }
+      } catch {
+        // fall through to existing dev/local fallback
+      }
+
+      if (!(devOn() && localAuthed())) {
+        if (cancelled) return;
+        setAllLeagues([]);
+        setSelectedLeagueId("");
+        return;
+      }
+
       const serverList = await (dataService as any).listLeagues?.();
       if (serverList && Array.isArray(serverList)) {
         const filtered = serverList.filter((l: any) => !l.deleted_at);
+        if (cancelled) return;
         setAllLeagues(filtered);
-        if (filtered.length) {
-          setSelectedLeagueId((prev) => prev || filtered[0].id);
-          return;
-        }
+        setSelectedLeagueId((prev) => {
+          if (prev && filtered.some((l: any) => l.id === prev)) return prev;
+          if (preferredLeagueId && filtered.some((l: any) => l.id === preferredLeagueId)) {
+            return preferredLeagueId;
+          }
+          return filtered[0]?.id || "";
+        });
+        return;
       }
+
       // first run: seed
       if (!localStorage.getItem(SEED_SENTINEL)) {
         await (dataService as any).seed?.();
         localStorage.setItem(SEED_SENTINEL, "1");
         const after = (await (dataService as any).listLeagues?.()) || [];
         const filtered = after.filter((l: any) => !l.deleted_at);
+        if (cancelled) return;
         setAllLeagues(filtered);
-        setSelectedLeagueId(filtered[0]?.id || "");
+        setSelectedLeagueId((prev) => {
+          if (prev && filtered.some((l: any) => l.id === prev)) return prev;
+          if (preferredLeagueId && filtered.some((l: any) => l.id === preferredLeagueId)) {
+            return preferredLeagueId;
+          }
+          return filtered[0]?.id || "";
+        });
       } else {
+        if (cancelled) return;
         setAllLeagues([]);
         setSelectedLeagueId("");
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Load selected league/round
   useEffect(() => {
     if (!selectedLeagueId) return;
+    let cancelled = false;
+
     (async () => {
-      const store = readStore();
-      const l = (store.leagues || []).find((x: any) => x.id === selectedLeagueId);
-      if (!l || l.deleted_at) return;
-      setLeague(l);
+      const selectedFromList = allLeagues.find((x: any) => x.id === selectedLeagueId);
+      if (!selectedFromList || selectedFromList.deleted_at) {
+        if (cancelled) return;
+        setLeague(null);
+        setRound(null);
+        setTeams([]);
+        setRoundPicks([]);
+        return;
+      }
 
-      const r = (store.rounds || []).find(
-        (x: any) => x.league_id === l.id && x.round_number === l.current_round
-      );
-      setRound(r || null);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("active_league_id", selectedLeagueId);
+      }
 
-      const ts = (store.teams || []).filter((t: any) => t.league_id === l.id);
-      setTeams([...ts].sort((a: any, b: any) => a.name.localeCompare(b.name)));
       setFetchSummary("");
       setWinners(new Set());
 
-      // Auto-lock after deadline if still upcoming
-      if (r && r.pick_deadline_utc && r.status === "upcoming") {
-        const deadlineTs = Date.parse(r.pick_deadline_utc);
-        if (!Number.isNaN(deadlineTs) && Date.now() >= deadlineTs) {
-          try {
-            await dataService.lockRound(r.id);
-            toast("Round auto-locked at deadline.");
-            setRefreshTick((x) => x + 1);
-            return;
-          } catch (e: any) {
-            toast(e?.message ?? "Failed to auto-lock round.");
+      try {
+        const resp = await postJsonWithAuth("/api/admin-league-state", {
+          league_id: selectedLeagueId,
+        });
+        if (!resp.ok) {
+          throw new Error("Failed to load admin league state");
+        }
+        const state = (await resp.json()) as {
+          league?: League | null;
+          current_round?: any;
+          teams?: any[];
+          current_round_picks?: any[];
+        };
+        if (cancelled) return;
+
+        const authoritativeLeague = state.league ?? selectedFromList;
+        const currentRound = state.current_round ?? getUnavailableRound(authoritativeLeague);
+        const leagueTeams = state.teams ?? [];
+        const picks = state.current_round_picks ?? [];
+
+        setLeague(authoritativeLeague as any);
+        setRound(currentRound);
+        setTeams([...(leagueTeams || [])].sort((a: any, b: any) => a.name.localeCompare(b.name)));
+        setRoundPicks(picks || []);
+
+        if (currentRound && currentRound.pick_deadline_utc && currentRound.status === "upcoming") {
+          const deadlineTs = Date.parse(currentRound.pick_deadline_utc);
+          if (!Number.isNaN(deadlineTs) && Date.now() >= deadlineTs) {
+            try {
+              await dataService.lockRound(currentRound.id);
+              toast("Round auto-locked at deadline.");
+              setRefreshTick((x) => x + 1);
+              return;
+            } catch (e: any) {
+              toast(e?.message ?? "Failed to auto-lock round.");
+            }
           }
         }
+      } catch {
+        if (cancelled) return;
+        setRound(getUnavailableRound(selectedFromList));
+        setTeams([]);
+        setRoundPicks([]);
       }
     })();
-  }, [selectedLeagueId, refreshTick]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedLeagueId, refreshTick, allLeagues]);
 
   // Derived
   const store: Store | null = useMemo(() => {
@@ -277,18 +377,13 @@ export function Admin() {
     }
   }, [refreshTick]);
 
-  const roundPicks = useMemo(() => {
-    if (!store || !round) return [];
-    return (store.picks || []).filter((p: any) => p.round_id === round.id);
-  }, [store, round]);
-
   const survivors = useMemo(
     () => roundPicks.filter((p: any) => p.status === "through").length,
     [roundPicks]
   );
 
   const mappedFplEvent = useMemo(() => {
-    if (!league || !round) return null;
+    if (!league || !round?.id) return null;
     const base: number | undefined = (league as any).fpl_start_event;
     if (typeof base !== "number") return null;
     return base + (round.round_number - 1);
@@ -454,7 +549,7 @@ export function Admin() {
   }
 
   async function e2eResolveRound() {
-    if (!league || !round) return;
+    if (!league || !round?.id) return;
     setLoading(true);
     setE2eResolveStatus("resolving");
     try {
@@ -525,7 +620,7 @@ export function Admin() {
   }
 
   async function lockNow() {
-    if (!round) return;
+    if (!round?.id) return;
     setLoading(true);
     try {
       await dataService.lockRound(round.id);
@@ -539,7 +634,7 @@ export function Admin() {
   }
 
   async function saveResults() {
-    if (!store || !round) return;
+    if (!store || !round?.id) return;
     if (winners.size === 0) {
       toast("Select at least one winning team.");
       return;
@@ -747,7 +842,7 @@ export function Admin() {
 
   // Fixtures — FPL with local fallback
   async function importFixturesFromLocalBackup() {
-    if (!league || !round) return 0;
+    if (!league || !round?.id) return 0;
     try {
       const res = await fetch("/mock-fixtures.json");
       if (!res.ok) throw new Error("No local backup found");
@@ -850,7 +945,7 @@ export function Admin() {
   }
 
   async function evaluateFromFixtures() {
-    if (!round) return;
+    if (!round?.id) return;
     setLoading(true);
     try {
       await (dataService as any).evaluateFromFixtures(round.id);
@@ -865,7 +960,7 @@ export function Admin() {
 
   // Fixtures table
   const fixturesForRound = useMemo(() => {
-    if (!store || !round) return [];
+    if (!store || !round?.id) return [];
     return (store.fixtures || [])
       .filter((f: any) => f.round_id === round.id)
       .map((f: any) => {
@@ -939,7 +1034,7 @@ export function Admin() {
         }
       : null);
 
-  if (!selectedLeagueId || !league || !round) {
+  if (!selectedLeagueId || !league) {
     return (
       <div data-testid="admin-page" className="min-h-screen grid place-items-center p-6">
         <CreateGamePanel
@@ -1368,21 +1463,21 @@ export function Admin() {
         {/* Admin actions */}
         <div className="flex flex-wrap gap-3 mb-6">
           <button
-            disabled={loading}
+            disabled={loading || !round?.id}
             onClick={lockNow}
             className="rounded-lg border px-4 py-2 hover:bg-slate-50"
           >
             Lock Round
           </button>
           <button
-            disabled={loading}
+            disabled={loading || !round?.id}
             onClick={saveResults}
             className="rounded-lg border px-4 py-2 hover:bg-slate-50"
           >
             Save Results (Manual)
           </button>
           <button
-            disabled={loading}
+            disabled={loading || !round?.id}
             onClick={advanceNow}
             className="rounded-lg border px-4 py-2 hover:bg-slate-50"
           >
@@ -1390,7 +1485,7 @@ export function Admin() {
           </button>
 
           <button
-            disabled={loading}
+            disabled={loading || !round?.id}
             onClick={fetchFixturesFromFpl}
             className="rounded-lg border px-4 py-2 hover:bg-slate-50"
           >
