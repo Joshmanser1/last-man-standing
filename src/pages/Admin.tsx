@@ -225,7 +225,9 @@ export function Admin() {
         typeof window !== "undefined" ? localStorage.getItem("active_league_id") || "" : "";
 
       try {
-        const resp = await postJsonWithAuth("/api/admin-leagues", {});
+        const resp = await postJsonWithAuth("/api/admin", {
+          action: "list-leagues",
+        });
         if (resp.ok) {
           const adminLeagues = (await resp.json()) as Array<any>;
           const filtered = (adminLeagues || []).filter((l: any) => !l.deleted_at);
@@ -317,7 +319,8 @@ export function Admin() {
       setWinners(new Set());
 
       try {
-        const resp = await postJsonWithAuth("/api/admin-league-state", {
+        const resp = await postJsonWithAuth("/api/admin", {
+          action: "league-state",
           league_id: selectedLeagueId,
         });
         if (!resp.ok) {
@@ -418,7 +421,8 @@ export function Admin() {
     setBrandingNotice("");
 
     (async () => {
-      const resp = await postJsonWithAuth("/api/admin-managed-theme", {
+      const resp = await postJsonWithAuth("/api/admin", {
+        action: "get-managed-theme",
         league_id: selectedLeagueId,
       });
 
@@ -705,7 +709,8 @@ export function Admin() {
     setBrandingNotice("");
 
     try {
-      const resp = await postJsonWithAuth("/api/admin-managed-theme", {
+      const resp = await postJsonWithAuth("/api/admin", {
+        action: "save-managed-theme",
         league_id: selectedLeagueId,
         managed_theme: nextTheme,
       });

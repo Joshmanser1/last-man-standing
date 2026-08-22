@@ -62,9 +62,10 @@ export async function isCurrentUserSiteAdmin(): Promise<boolean> {
     const { data } = await supa.auth.getSession();
     if (!data.session?.user?.id) return false;
 
-    const resp = await fetch("/api/site-admin-status", {
-      method: "GET",
+    const resp = await fetch("/api/admin", {
+      method: "POST",
       headers: await getApiHeaders(),
+      body: JSON.stringify({ action: "site-admin-status" }),
     });
     if (!resp.ok) return false;
 
