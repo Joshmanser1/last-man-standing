@@ -1,4 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
+import {
+  createServiceRoleClient,
+  getAuthenticatedUserId,
+  isSiteAdminUser,
+} from "../server/siteAdmin";
 
 const FPL_BASE = "https://fantasy.premierleague.com/api";
 
@@ -67,7 +71,6 @@ export default async function handler(req: Req, res: Res) {
   const fplStartEvent = payload?.fpl_start_event;
   const isPublic = typeof payload?.is_public === "boolean" ? payload.is_public : false;
   const isTest = typeof payload?.is_test === "boolean" ? payload.is_test : false;
-  const createdBy = typeof payload?.created_by === "string" ? payload.created_by : null;
   const joinCode = typeof payload?.join_code === "string" ? payload.join_code.trim() : null;
 
   if (!name || !startDateUtc || typeof fplStartEvent !== "number") {
@@ -76,16 +79,18 @@ export default async function handler(req: Req, res: Res) {
     });
   }
 
-  const supabaseUrl = (process.env.SUPABASE_URL ?? "").trim();
-  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
-  if (!supabaseUrl || !serviceRoleKey) {
-    return sendJson(res, 500, { error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY" });
-  }
-
   try {
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    const supabase = createServiceRoleClient();
+    const authenticatedUserId = await getAuthenticatedUserId(req);
+    const isPrivateUserLeague = !isPublic && !isTest;
+    const isSiteAdmin =
+      authenticatedUserId && isPrivateUserLeague
+        ? await isSiteAdminUser(supabase, authenticatedUserId)
+        : false;
+
+    if (isPrivateUserLeague && !authenticatedUserId) {
+      return sendJson(res, 401, { error: "You must be logged in to create a private league" });
+    }
 
     if (!isPublic && joinCode) {
       const { data: existingJoinCodeLeague, error: existingJoinCodeLeagueError } =
@@ -113,11 +118,11 @@ export default async function handler(req: Req, res: Res) {
       }
     }
 
-    if (createdBy && !isPublic && !isTest) {
+    if (authenticatedUserId && isPrivateUserLeague && !isSiteAdmin) {
       const { data: existingOwnerMemberships, error: existingOwnerMembershipsError } = await supabase
         .from("memberships")
         .select("league_id, leagues!inner(id, is_public, deleted_at)")
-        .eq("player_id", createdBy)
+        .eq("player_id", authenticatedUserId)
         .eq("role", "owner")
         .eq("is_active", true)
         .eq("leagues.is_public", false)
@@ -153,7 +158,7 @@ export default async function handler(req: Req, res: Res) {
         is_public: isPublic,
         is_test: isTest,
         join_code: isPublic ? null : joinCode,
-        ...(createdBy ? { created_by: createdBy } : {}),
+        ...(authenticatedUserId ? { created_by: authenticatedUserId } : {}),
       })
       .select("*")
       .maybeSingle();
@@ -166,10 +171,10 @@ export default async function handler(req: Req, res: Res) {
       });
     }
 
-    if (createdBy) {
+    if (authenticatedUserId) {
       const { error: membershipError } = await supabase.from("memberships").insert({
         league_id: leagueId,
-        player_id: createdBy,
+        player_id: authenticatedUserId,
         role: "owner",
         is_active: true,
       });

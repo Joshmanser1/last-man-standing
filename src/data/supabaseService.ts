@@ -4,6 +4,7 @@ import type { League, Round, Team, Player, Membership, Pick, Fixture, ID } from 
 import type { IDataService } from "./service";
 import { fetchFplFixturesForEvent, getEventForDate, getSmartCurrentEvent } from "../lib/fpl";
 import { getEffectiveUserId } from "../lib/auth";
+import { getApiHeaders } from "../lib/apiAuth";
 
 /** Helpers */
 function must<T>(val: T | null | undefined, msg = "Not found"): T {
@@ -221,12 +222,9 @@ const supabaseService: IDataService = {
       typeof options?.fplStartEvent === "number"
         ? options.fplStartEvent
         : await getEventForDate(startISO);
-    const { data: authData } = await supa.auth.getUser();
-    const created_by = authData?.user?.id ?? null;
-
     const res = await fetch("/api/create-league", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await getApiHeaders(),
       body: JSON.stringify({
         name,
         start_date_utc: startISO,
@@ -234,7 +232,6 @@ const supabaseService: IDataService = {
         join_code: options?.joinCode ?? null,
         is_public: false,
         is_test: options?.isTest === true,
-        created_by,
       }),
     });
     if (!res.ok) {

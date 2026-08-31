@@ -1,4 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
+import {
+  createServiceRoleClient,
+  getAuthenticatedUserId,
+  isSiteAdminUser,
+} from "../server/siteAdmin";
 
 type Req = {
   method?: string;
@@ -36,23 +40,19 @@ export default async function handler(req: Req, res: Res) {
 
   const leagueIdInput = typeof payload?.league_id === "string" ? payload.league_id : "";
   const joinCode = typeof payload?.join_code === "string" ? payload.join_code : "";
-  const playerId = typeof payload?.player_id === "string" ? payload.player_id : "";
   const role = typeof payload?.role === "string" ? payload.role : "player";
 
-  if ((!leagueIdInput && !joinCode) || !playerId) {
-    return sendJson(res, 400, { error: "Missing required fields: league_id or join_code, player_id" });
-  }
-
-  const supabaseUrl = (process.env.SUPABASE_URL ?? "").trim();
-  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
-  if (!supabaseUrl || !serviceRoleKey) {
-    return sendJson(res, 500, { error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY" });
+  if (!leagueIdInput && !joinCode) {
+    return sendJson(res, 400, { error: "Missing required fields: league_id or join_code" });
   }
 
   try {
-    const supabase = createClient<any>(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    const supabase = createServiceRoleClient();
+    const authenticatedUserId = await getAuthenticatedUserId(req);
+    if (!authenticatedUserId) {
+      return sendJson(res, 401, { error: "You must be logged in to join a private league." });
+    }
+    const isSiteAdmin = await isSiteAdminUser(supabase, authenticatedUserId);
 
     let leagueId = leagueIdInput;
     let targetLeague: any = null;
@@ -132,7 +132,7 @@ export default async function handler(req: Req, res: Res) {
       .from("memberships")
       .select("id")
       .eq("league_id", leagueId)
-      .eq("player_id", playerId)
+      .eq("player_id", authenticatedUserId)
       .maybeSingle();
     if (existingErr) {
       return sendJson(res, 502, {
@@ -143,11 +143,11 @@ export default async function handler(req: Req, res: Res) {
       });
     }
 
-    if (!existing && targetLeague?.is_test !== true) {
+    if (!existing && targetLeague?.is_test !== true && !isSiteAdmin) {
       const { data: otherMemberships, error: otherErr } = await supabase
         .from("memberships")
         .select("league_id, role, leagues!inner(is_public)")
-        .eq("player_id", playerId)
+        .eq("player_id", authenticatedUserId)
         .eq("is_active", true);
       if (otherErr) {
         return sendJson(res, 502, {
@@ -175,14 +175,14 @@ export default async function handler(req: Req, res: Res) {
           .from("memberships")
           .update({ is_active: true })
           .eq("league_id", leagueId)
-          .eq("player_id", playerId)
+          .eq("player_id", authenticatedUserId)
           .select("*")
           .maybeSingle()
       : await supabase
           .from("memberships")
           .insert({
             league_id: leagueId,
-            player_id: playerId,
+            player_id: authenticatedUserId,
             role,
             is_active: true,
           })

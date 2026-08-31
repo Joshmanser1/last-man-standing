@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import { supa } from "../lib/supabaseClient";
 import { dataService } from "../data/service";
+import { postJsonWithAuth } from "../lib/apiAuth";
 
 type LeaguePreview = {
   id: string;
@@ -102,14 +103,9 @@ export function PrivateLeagueJoin() {
         return;
       }
 
-      const joinRes = await fetch("/api/join-league", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          join_code: trimmed,
-          player_id: user.id,
-          role: "player",
-        }),
+      const joinRes = await postJsonWithAuth("/api/join-league", {
+        join_code: trimmed,
+        role: "player",
       });
 
       let body: any = null;

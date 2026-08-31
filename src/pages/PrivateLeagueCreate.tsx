@@ -5,7 +5,7 @@ import { FplGwSelect } from "../components/FplGwSelect";
 import { useToast } from "../components/Toast";
 import { dataService } from "../data/service";
 import { supa } from "../lib/supabaseClient";
-import { getEffectiveUserId } from "../lib/auth";
+import { getEffectiveUserId, isCurrentUserSiteAdmin } from "../lib/auth";
 import { postJsonWithAuth } from "../lib/apiAuth";
 
 type PrivateLeague = {
@@ -78,6 +78,7 @@ export function PrivateLeagueCreate() {
   const [activeLeagueId, setActiveLeagueId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string>("");
   const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [isSiteAdmin, setIsSiteAdmin] = useState(false);
   const [myLeagueIds, setMyLeagueIds] = useState<Set<string>>(new Set());
   const [joining, setJoining] = useState(false);
   const [postJoin, setPostJoin] = useState<PostJoinState | null>(null);
@@ -94,6 +95,7 @@ export function PrivateLeagueCreate() {
   const reloadStore = async () => {
     const uid = (await getEffectiveUserId()) || localStorage.getItem("player_id");
     setAuthUserId(uid);
+    setIsSiteAdmin(await isCurrentUserSiteAdmin());
     if (!uid) {
       setMyLeagueIds(new Set());
       setStore({ leagues: [], memberships: [] });
@@ -211,7 +213,7 @@ export function PrivateLeagueCreate() {
     }
 
     const alreadyOwner = store.leagues.some(l => l.ownerId === playerId);
-    if (alreadyOwner) {
+    if (alreadyOwner && !isSiteAdmin) {
       showFeedback("Youâ€™ve already created a private league. Limit is one owned league per player.", "error");
       return;
     }
@@ -260,7 +262,7 @@ export function PrivateLeagueCreate() {
       const league = store.leagues.find(l => l.id === m.leagueId);
       return league ? league.ownerId !== authUid : false;
     });
-    if (joinedNonOwned) {
+    if (joinedNonOwned && !isSiteAdmin) {
       showFeedback("Youâ€™ve already joined a private league. Limit is one joined league per player (plus one you own).", "error");
       return;
     }
@@ -296,16 +298,15 @@ export function PrivateLeagueCreate() {
         const league = store.leagues.find(l => l.id === m.leagueId);
         return league ? league.ownerId !== authUid : false;
       });
-      if (joinedNonOwned && targetLeague.is_test !== true) {
+      if (joinedNonOwned && targetLeague.is_test !== true && !isSiteAdmin) {
         showFeedback("You've already joined a private league. Limit is one joined league per player (plus one you own).", "error");
         return;
       }
 
       await (dataService as any).upsertPlayer(playerName || "You");
-      const joinRes = await fetch("/api/join-league", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ join_code: code, player_id: authUid, role: "player" }),
+      const joinRes = await postJsonWithAuth("/api/join-league", {
+        join_code: code,
+        role: "player",
       });
       if (!joinRes.ok) {
         try {
