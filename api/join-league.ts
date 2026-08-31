@@ -1,8 +1,4 @@
-import {
-  createServiceRoleClient,
-  getAuthenticatedUserId,
-  isSiteAdminUser,
-} from "../server/siteAdmin";
+import { createClient } from "@supabase/supabase-js";
 
 type Req = {
   method?: string;
@@ -21,6 +17,71 @@ function sendJson(res: Res, status: number, body: unknown): void {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
   res.end(JSON.stringify(body));
+}
+
+function getBearerToken(req: Req): string | null {
+  const authHeader =
+    req.headers?.authorization ??
+    (req.headers as Record<string, string | string[] | undefined> | undefined)?.Authorization;
+  if (!authHeader || Array.isArray(authHeader)) return null;
+
+  const [scheme, token] = authHeader.split(" ");
+  if (!scheme || !token) return null;
+  if (scheme.toLowerCase() !== "bearer") return null;
+  return token;
+}
+
+function getSupabaseServerEnv() {
+  const supabaseUrl = (process.env.SUPABASE_URL ?? "").trim();
+  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
+  const anonKey = (process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "").trim();
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Server configuration is incomplete.");
+  }
+
+  return { supabaseUrl, serviceRoleKey, anonKey };
+}
+
+function createServiceRoleClient() {
+  const { supabaseUrl, serviceRoleKey } = getSupabaseServerEnv();
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+async function getAuthenticatedUserId(req: Req) {
+  const { supabaseUrl, anonKey } = getSupabaseServerEnv();
+  if (!anonKey) return null;
+
+  const bearerToken = getBearerToken(req);
+  if (!bearerToken) return null;
+
+  const authClient = createClient(supabaseUrl, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const {
+    data: { user },
+    error,
+  } = await authClient.auth.getUser(bearerToken);
+
+  if (error || !user?.id) return null;
+  return user.id;
+}
+
+async function isSiteAdminUser(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  userId: string
+) {
+  const { data, error } = await supabase
+    .from("site_admins")
+    .select("user_id")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return !!data?.user_id;
 }
 
 export default async function handler(req: Req, res: Res) {
