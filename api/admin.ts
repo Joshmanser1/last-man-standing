@@ -34,6 +34,8 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HEX_COLOUR_RE = /^#[0-9a-f]{6}$/i;
 const FPL_BASE = "https://fantasy.premierleague.com/api";
+const INVITE_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const INVITE_CODE_LENGTH = 6;
 
 function sendJson(res: Res, status: number, body: unknown): void {
   res.statusCode = status;
@@ -71,12 +73,86 @@ function validateLeagueId(value: unknown): string | null {
 }
 
 function generateInviteCode() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
-  for (let i = 0; i < 6; i++) {
-    code += alphabet[Math.floor(Math.random() * alphabet.length)];
+  for (let i = 0; i < INVITE_CODE_LENGTH; i++) {
+    code += INVITE_CODE_ALPHABET[Math.floor(Math.random() * INVITE_CODE_ALPHABET.length)];
   }
   return code;
+}
+
+async function findLeagueByJoinCode(
+  supabase: AuthedContext["supabase"],
+  joinCode: string
+) {
+  return await supabase
+    .from("leagues")
+    .select("id")
+    .eq("join_code", joinCode)
+    .is("deleted_at", null)
+    .limit(1)
+    .maybeSingle();
+}
+
+async function resolveFounderJoinCode(
+  supabase: AuthedContext["supabase"],
+  isPublic: boolean,
+  rawJoinCode: unknown
+) {
+  const normalizedJoinCode =
+    typeof rawJoinCode === "string" ? rawJoinCode.trim().toUpperCase() : "";
+  if (isPublic) {
+    return { ok: true as const, joinCode: null };
+  }
+
+  if (normalizedJoinCode) {
+    const { data: existingLeague, error } = await findLeagueByJoinCode(supabase, normalizedJoinCode);
+    if (error) {
+      return {
+        ok: false as const,
+        status: 502,
+        body: {
+          error: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        },
+      };
+    }
+    if (existingLeague) {
+      return {
+        ok: false as const,
+        status: 409,
+        body: { error: "Invite code already exists" },
+      };
+    }
+    return { ok: true as const, joinCode: normalizedJoinCode };
+  }
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const generatedJoinCode = generateInviteCode();
+    const { data: existingLeague, error } = await findLeagueByJoinCode(supabase, generatedJoinCode);
+    if (error) {
+      return {
+        ok: false as const,
+        status: 502,
+        body: {
+          error: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        },
+      };
+    }
+    if (!existingLeague) {
+      return { ok: true as const, joinCode: generatedJoinCode };
+    }
+  }
+
+  return {
+    ok: false as const,
+    status: 500,
+    body: { error: "Failed to generate a unique invite code" },
+  };
 }
 
 async function fetchFplJson<T>(path: string): Promise<T> {
@@ -110,8 +186,6 @@ async function createFounderLeague(ctx: AuthedContext, payload: any, res: Res) {
     typeof payload?.start_date_utc === "string" ? payload.start_date_utc.trim() : "";
   const fplStartEvent = payload?.fpl_start_event;
   const isPublic = payload?.is_public === true;
-  const joinCodeInput =
-    typeof payload?.join_code === "string" ? payload.join_code.trim().toUpperCase() : "";
 
   if (!name || !startDateUtc || typeof fplStartEvent !== "number") {
     return sendJson(res, 400, {
@@ -119,35 +193,16 @@ async function createFounderLeague(ctx: AuthedContext, payload: any, res: Res) {
     });
   }
 
-  const joinCode = isPublic ? null : joinCodeInput || generateInviteCode();
-
-  if (joinCode) {
-    const { data: existingJoinCodeLeague, error: existingJoinCodeLeagueError } = await ctx.supabase
-      .from("leagues")
-      .select("id")
-      .eq("join_code", joinCode)
-      .is("deleted_at", null)
-      .limit(1)
-      .maybeSingle();
-
-    if (existingJoinCodeLeagueError) {
-      return sendJson(res, 502, {
-        error: existingJoinCodeLeagueError.message,
-        code: existingJoinCodeLeagueError.code,
-        details: existingJoinCodeLeagueError.details,
-        hint: existingJoinCodeLeagueError.hint,
-      });
-    }
-
-    if (existingJoinCodeLeague) {
-      return sendJson(res, 409, { error: "Invite code already exists" });
-    }
+  const joinCodeResult = await resolveFounderJoinCode(ctx.supabase, isPublic, payload?.join_code);
+  if (!joinCodeResult.ok) {
+    return sendJson(res, joinCodeResult.status, joinCodeResult.body);
   }
+  const joinCode = joinCodeResult.joinCode;
 
   const leagueId = crypto.randomUUID();
   const round1Id = crypto.randomUUID();
 
-  const { data: league, error: leagueInsertError } = await ctx.supabase
+  const { error: leagueInsertError } = await ctx.supabase
     .from("leagues")
     .insert({
       id: leagueId,
@@ -162,10 +217,6 @@ async function createFounderLeague(ctx: AuthedContext, payload: any, res: Res) {
       created_by: ctx.userId,
       managed_theme: null,
     })
-    .select(
-      "id, name, created_by, created_at, is_public, is_test, join_code, fpl_start_event, start_date_utc, current_round, status, managed_theme, deleted_at"
-    )
-    .maybeSingle();
   if (leagueInsertError) {
     return sendJson(res, 502, {
       error: leagueInsertError.message,
@@ -298,6 +349,22 @@ async function createFounderLeague(ctx: AuthedContext, payload: any, res: Res) {
         hint: fixtureError.hint,
       });
     }
+  }
+
+  const { data: league, error: createdLeagueError } = await ctx.supabase
+    .from("leagues")
+    .select(
+      "id, name, created_by, created_at, is_public, is_test, join_code, fpl_start_event, start_date_utc, current_round, status, managed_theme, deleted_at"
+    )
+    .eq("id", leagueId)
+    .maybeSingle();
+  if (createdLeagueError) {
+    return sendJson(res, 502, {
+      error: createdLeagueError.message,
+      code: createdLeagueError.code,
+      details: createdLeagueError.details,
+      hint: createdLeagueError.hint,
+    });
   }
 
   return sendJson(res, 200, {
