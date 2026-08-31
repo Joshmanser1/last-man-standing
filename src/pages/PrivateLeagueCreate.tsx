@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { FplGwSelect } from "../components/FplGwSelect";
 import { useToast } from "../components/Toast";
 import { dataService } from "../data/service";
-import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId, isCurrentUserSiteAdmin } from "../lib/auth";
 import { postJsonWithAuth } from "../lib/apiAuth";
 
@@ -102,11 +101,7 @@ export function PrivateLeagueCreate() {
       return;
     }
 
-    const leaguesResp = await fetch("/api/user-leagues", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: uid }),
-    });
+    const leaguesResp = await postJsonWithAuth("/api/user-leagues", { user_id: uid });
     if (!leaguesResp.ok) throw new Error("Failed to load visible leagues");
     const leaguesData = (await leaguesResp.json()) as Array<any>;
 
@@ -224,13 +219,10 @@ export function PrivateLeagueCreate() {
 
     try {
       const startISO = startDeadlineISO ?? now;
-      const created = await (dataService as any).createGame(name.trim(), startISO);
+      const created = await (dataService as any).createGame(name.trim(), startISO, {
+        joinCode: code,
+      });
       await (dataService as any).upsertPlayer(playerName || "You");
-      // owner membership is created server-side during league creation
-      await supa
-        .from("leagues")
-        .update({ is_public: false, join_code: code })
-        .eq("id", created.id);
 
       setName("");
       setStartEventId(null);

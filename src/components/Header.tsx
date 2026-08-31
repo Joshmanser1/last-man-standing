@@ -6,6 +6,7 @@ import { GameSelector } from "./GameSelector";
 import { subscribeStore } from "../data/service";
 import { getEffectiveUserId, isAdminNow } from "../lib/auth";
 import { NotificationBell } from "./NotificationBell";
+import { postJsonWithAuth } from "../lib/apiAuth";
 
 const linkCls = ({ isActive }: { isActive: boolean }) =>
   `nav-link ${isActive ? "nav-link-active" : ""}`;
@@ -50,11 +51,7 @@ export function Header() {
     }
 
     try {
-      const resp = await fetch("/api/user-leagues", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: uid }),
-      });
+      const resp = await postJsonWithAuth("/api/user-leagues", { user_id: uid });
       if (!resp.ok) throw new Error("Failed to load user leagues");
 
       const visibleLeagues = (await resp.json()) as Array<any>;

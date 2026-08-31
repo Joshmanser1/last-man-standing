@@ -5,6 +5,7 @@ import type { IDataService } from "./service";
 import { fetchFplFixturesForEvent, getEventForDate, getSmartCurrentEvent } from "../lib/fpl";
 import { getEffectiveUserId } from "../lib/auth";
 import { getApiHeaders } from "../lib/apiAuth";
+import { postJsonWithAuth } from "../lib/apiAuth";
 
 /** Helpers */
 function must<T>(val: T | null | undefined, msg = "Not found"): T {
@@ -33,11 +34,7 @@ const supabaseService: IDataService = {
 
     const uid = await getEffectiveUserId();
     if (!uid) return (publicLeagues ?? []) as League[];
-    const visibleResp = await fetch("/api/user-leagues", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: uid }),
-    });
+    const visibleResp = await postJsonWithAuth("/api/user-leagues", { user_id: uid });
     if (!visibleResp.ok) throw new Error("Failed to load visible leagues");
     const myLeagues = (await visibleResp.json()) as League[];
 

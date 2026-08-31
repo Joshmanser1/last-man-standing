@@ -7,6 +7,7 @@ import { useToast } from "../components/Toast";
 import { getEffectiveUserId } from "../lib/auth";
 import { loadLeagueRoundState } from "../lib/leagueRoundState";
 import { getLeagueOutcomeForPlayer } from "../lib/leagueOutcome";
+import { postJsonWithAuth } from "../lib/apiAuth";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -83,11 +84,7 @@ export function MyGames() {
           return;
         }
 
-        const visibleResp = await fetch("/api/user-leagues", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: pid }),
-        });
+        const visibleResp = await postJsonWithAuth("/api/user-leagues", { user_id: pid });
         if (!visibleResp.ok) throw new Error("Failed to load visible leagues");
         const visibleLeagues = (await visibleResp.json()) as Array<any>;
 

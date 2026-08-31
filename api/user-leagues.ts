@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 type Req = {
   method?: string;
+  headers?: Record<string, string | string[] | undefined>;
   body?: unknown;
 };
 
@@ -16,6 +17,17 @@ function sendJson(res: Res, status: number, body: unknown): void {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
   res.end(JSON.stringify(body));
+}
+
+function getBearerToken(req: Req): string | null {
+  const authHeader =
+    req.headers?.authorization ??
+    (req.headers as Record<string, string | string[] | undefined> | undefined)?.Authorization;
+  if (!authHeader || Array.isArray(authHeader)) return null;
+  const [scheme, token] = authHeader.split(" ");
+  if (!scheme || !token) return null;
+  if (scheme.toLowerCase() !== "bearer") return null;
+  return token;
 }
 
 export default async function handler(req: Req, res: Res) {
@@ -33,11 +45,9 @@ export default async function handler(req: Req, res: Res) {
     }
   }
 
-  const userId = typeof payload?.user_id === "string" ? payload.user_id : "";
-  if (!userId) return sendJson(res, 400, { error: "Missing required field: user_id" });
-
   const supabaseUrl = (process.env.SUPABASE_URL ?? "").trim();
   const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
+  const anonKey = (process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "").trim();
   if (!supabaseUrl || !serviceRoleKey) {
     return sendJson(res, 500, { error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY" });
   }
@@ -46,6 +56,29 @@ export default async function handler(req: Req, res: Res) {
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+
+    let userId = "";
+    const bearerToken = getBearerToken(req);
+    if (bearerToken && anonKey) {
+      const authClient = createClient(supabaseUrl, anonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const {
+        data: { user },
+        error: authError,
+      } = await authClient.auth.getUser(bearerToken);
+      if (authError) {
+        return sendJson(res, 401, { error: "Unauthorized" });
+      }
+      userId = user?.id ?? "";
+    }
+
+    if (!userId) {
+      userId = typeof payload?.user_id === "string" ? payload.user_id : "";
+    }
+    if (!userId) {
+      return sendJson(res, 400, { error: "Missing required field: user_id" });
+    }
 
     const { data: memberships, error: membershipError } = await supabase
       .from("memberships")
