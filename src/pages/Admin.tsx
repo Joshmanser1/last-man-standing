@@ -1,5 +1,5 @@
 // src/pages/Admin.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import ManagedLeagueStrip from "../components/ManagedLeagueStrip";
 import { dataService } from "../data/service";
 import { FplGwSelect } from "../components/FplGwSelect";
@@ -7,6 +7,13 @@ import { postJsonWithAuth } from "../lib/apiAuth";
 import { fetchBootstrap } from "../lib/fpl";
 import type { League, ManagedLeagueTheme } from "../data/types";
 import { devOn, localAuthed } from "../lib/auth";
+import {
+  deleteManagedBrandingLogo,
+  getManagedBrandingLogoFilename,
+  isManagedBrandingLogoUrl,
+  uploadManagedBrandingLogo,
+  validateManagedBrandingLogoFile,
+} from "../lib/managedBrandingLogo";
 
 const STORE_KEY = "lms_store_v1";
 const SEED_SENTINEL = "lms_seed_done";
@@ -168,10 +175,14 @@ export function Admin() {
   const [brandingLoading, setBrandingLoading] = useState(false);
   const [brandingNotice, setBrandingNotice] = useState("");
   const [brandingError, setBrandingError] = useState("");
+  const [brandingLogoUploading, setBrandingLogoUploading] = useState(false);
+  const [brandingLogoError, setBrandingLogoError] = useState("");
+  const [persistedBrandingLogoUrl, setPersistedBrandingLogoUrl] = useState("");
   const [roundPicks, setRoundPicks] = useState<any[]>([]);
   const [effectiveTestUserId, setEffectiveTestUserId] = useState<string>(
     () => localStorage.getItem("test_user_override") || localStorage.getItem("player_id") || ""
   );
+  const brandingLogoInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const syncEffectiveTestUser = () => {
@@ -412,6 +423,9 @@ export function Admin() {
       setBrandingDraft(EMPTY_MANAGED_THEME_DRAFT);
       setBrandingError("");
       setBrandingNotice("");
+      setBrandingLogoError("");
+      setBrandingLogoUploading(false);
+      setPersistedBrandingLogoUrl("");
       return;
     }
 
@@ -438,7 +452,9 @@ export function Admin() {
       if (resp.status === 401 || resp.status === 403) {
         setSiteAdminAllowed(false);
         setSiteAdminChecked(true);
-        setBrandingDraft(draftFromManagedTheme(selectedLeagueRecord?.managed_theme ?? null));
+        const fallbackDraft = draftFromManagedTheme(selectedLeagueRecord?.managed_theme ?? null);
+        setBrandingDraft(fallbackDraft);
+        setPersistedBrandingLogoUrl(fallbackDraft.hostLogoUrl);
         setBrandingLoading(false);
         return;
       }
@@ -447,15 +463,19 @@ export function Admin() {
         setSiteAdminAllowed(false);
         setSiteAdminChecked(true);
         setBrandingError(body?.error ?? "Failed to load managed branding.");
-        setBrandingDraft(draftFromManagedTheme(selectedLeagueRecord?.managed_theme ?? null));
+        const fallbackDraft = draftFromManagedTheme(selectedLeagueRecord?.managed_theme ?? null);
+        setBrandingDraft(fallbackDraft);
+        setPersistedBrandingLogoUrl(fallbackDraft.hostLogoUrl);
         setBrandingLoading(false);
         return;
       }
 
       const nextTheme = body?.managed_theme ?? null;
+      const nextDraft = draftFromManagedTheme(nextTheme);
       setSiteAdminAllowed(true);
       setSiteAdminChecked(true);
-      setBrandingDraft(draftFromManagedTheme(nextTheme));
+      setBrandingDraft(nextDraft);
+      setPersistedBrandingLogoUrl(nextDraft.hostLogoUrl);
       setAllLeagues((prev) =>
         prev.map((item: any) =>
           item.id === selectedLeagueId ? { ...item, managed_theme: nextTheme } : item
@@ -704,6 +724,11 @@ export function Admin() {
   async function saveManagedBranding(nextTheme: Record<string, unknown> | null) {
     if (!selectedLeagueId) return;
 
+    const previousPersistedLogoUrl = persistedBrandingLogoUrl;
+    const currentDraftLogoUrl = brandingDraft.hostLogoUrl.trim();
+    const nextLogoUrl =
+      nextTheme && typeof nextTheme.hostLogoUrl === "string" ? nextTheme.hostLogoUrl : "";
+
     setBrandingLoading(true);
     setBrandingError("");
     setBrandingNotice("");
@@ -735,9 +760,11 @@ export function Admin() {
       }
 
       const savedTheme = body?.managed_theme ?? null;
+      const savedDraft = draftFromManagedTheme(savedTheme);
       setSiteAdminAllowed(true);
       setSiteAdminChecked(true);
-      setBrandingDraft(draftFromManagedTheme(savedTheme));
+      setBrandingDraft(savedDraft);
+      setPersistedBrandingLogoUrl(savedDraft.hostLogoUrl);
       setBrandingNotice(savedTheme ? "Managed branding saved." : "Managed branding cleared.");
       setAllLeagues((prev) =>
         prev.map((item: any) =>
@@ -746,6 +773,35 @@ export function Admin() {
       );
       if (league?.id === selectedLeagueId) {
         setLeague((prev: any) => (prev ? { ...prev, managed_theme: savedTheme } : prev));
+      }
+
+      if (
+        previousPersistedLogoUrl &&
+        previousPersistedLogoUrl !== nextLogoUrl &&
+        isManagedBrandingLogoUrl(previousPersistedLogoUrl)
+      ) {
+        try {
+          await deleteManagedBrandingLogo(previousPersistedLogoUrl);
+        } catch (cleanupErr: any) {
+          setBrandingNotice(
+            `Managed branding saved, but the previous hosted logo could not be deleted: ${
+              cleanupErr?.message ?? "cleanup failed"
+            }`
+          );
+        }
+      }
+
+      if (
+        currentDraftLogoUrl &&
+        currentDraftLogoUrl !== previousPersistedLogoUrl &&
+        currentDraftLogoUrl !== nextLogoUrl &&
+        isManagedBrandingLogoUrl(currentDraftLogoUrl)
+      ) {
+        try {
+          await deleteManagedBrandingLogo(currentDraftLogoUrl);
+        } catch {
+          // Best effort cleanup for draft-only uploads after a successful save.
+        }
       }
     } catch (err: any) {
       setBrandingError(err?.message ?? "Failed to save managed branding.");
@@ -761,6 +817,79 @@ export function Admin() {
     setBrandingDraft((prev) => ({
       ...prev,
       [key]: value,
+    }));
+  }
+
+  function openBrandingLogoPicker() {
+    if (brandingLoading || brandingLogoUploading) return;
+    brandingLogoInputRef.current?.click();
+  }
+
+  async function handleManagedBrandingLogoSelected(
+    event: ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !selectedLeagueId) return;
+
+    const validation = validateManagedBrandingLogoFile(file);
+    if (!validation.ok) {
+      setBrandingLogoError(validation.error);
+      return;
+    }
+
+    setBrandingLogoUploading(true);
+    setBrandingLogoError("");
+    setBrandingNotice("");
+
+    const previousDraftLogoUrl = brandingDraft.hostLogoUrl;
+
+    try {
+      const uploaded = await uploadManagedBrandingLogo(file, selectedLeagueId);
+      if (
+        previousDraftLogoUrl &&
+        previousDraftLogoUrl !== persistedBrandingLogoUrl &&
+        isManagedBrandingLogoUrl(previousDraftLogoUrl)
+      ) {
+        try {
+          await deleteManagedBrandingLogo(previousDraftLogoUrl);
+        } catch {
+          // Best effort cleanup for abandoned draft uploads only.
+        }
+      }
+
+      setBrandingDraft((prev) => ({
+        ...prev,
+        hostLogoUrl: uploaded.publicUrl,
+      }));
+      setBrandingNotice("Logo uploaded. Save managed branding to persist the new logo.");
+    } catch (err: any) {
+      setBrandingLogoError(err?.message ?? "Failed to upload logo.");
+    } finally {
+      setBrandingLogoUploading(false);
+    }
+  }
+
+  async function handleManagedBrandingLogoRemove() {
+    if (brandingLoading || brandingLogoUploading) return;
+
+    const currentLogoUrl = brandingDraft.hostLogoUrl.trim();
+    if (
+      currentLogoUrl &&
+      currentLogoUrl !== persistedBrandingLogoUrl &&
+      isManagedBrandingLogoUrl(currentLogoUrl)
+    ) {
+      try {
+        await deleteManagedBrandingLogo(currentLogoUrl);
+      } catch {
+        // Best effort cleanup for unsaved draft uploads only.
+      }
+    }
+
+    setBrandingLogoError("");
+    setBrandingDraft((prev) => ({
+      ...prev,
+      hostLogoUrl: "",
     }));
   }
 
@@ -1287,16 +1416,97 @@ export function Admin() {
 
                   <div className="sm:col-span-2">
                     <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Host logo URL
+                      Host logo
                     </label>
-                    <input
-                      type="url"
-                      value={brandingDraft.hostLogoUrl}
-                      disabled={brandingLoading}
-                      onChange={(e) => updateBrandingField("hostLogoUrl", e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                      placeholder="https://example.com/logo.png"
-                    />
+                    <div className="mt-1 rounded-xl border border-slate-300 bg-white p-3">
+                      <input
+                        ref={brandingLogoInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        disabled={brandingLoading || brandingLogoUploading}
+                        onChange={handleManagedBrandingLogoSelected}
+                      />
+
+                      {brandingDraft.hostLogoUrl ? (
+                        <div className="space-y-3">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                            <div className="flex h-24 w-full max-w-[180px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                              <img
+                                src={brandingDraft.hostLogoUrl}
+                                alt="Host logo preview"
+                                className="max-h-full max-w-full object-contain"
+                              />
+                            </div>
+                            <div className="min-w-0 flex-1 text-sm text-slate-600">
+                              <div className="truncate font-medium text-slate-800">
+                                {getManagedBrandingLogoFilename(brandingDraft.hostLogoUrl) ||
+                                  "Current logo preview"}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                PNG, JPG, or WebP up to 5 MB.
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <button
+                              type="button"
+                              disabled={brandingLoading || brandingLogoUploading}
+                              onClick={openBrandingLogoPicker}
+                              className="min-h-[44px] rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                            >
+                              {brandingLogoUploading ? "Uploading..." : "Change logo"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={brandingLoading || brandingLogoUploading}
+                              onClick={handleManagedBrandingLogoRemove}
+                              className="min-h-[44px] rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <button
+                            type="button"
+                            disabled={brandingLoading || brandingLogoUploading}
+                            onClick={openBrandingLogoPicker}
+                            className="min-h-[44px] w-full rounded-lg border border-dashed border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60 sm:w-auto"
+                          >
+                            {brandingLogoUploading ? "Uploading..." : "Upload logo / Choose image"}
+                          </button>
+                          <p className="text-xs text-slate-500">
+                            Works with mobile photo libraries, Files, and desktop file pickers.
+                          </p>
+                        </div>
+                      )}
+
+                      {brandingLogoError && (
+                        <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                          {brandingLogoError}
+                        </div>
+                      )}
+
+                      <div className="mt-4">
+                        <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                          Or use image URL
+                        </label>
+                        <input
+                          type="url"
+                          value={brandingDraft.hostLogoUrl}
+                          disabled={brandingLoading || brandingLogoUploading}
+                          onChange={(e) => {
+                            setBrandingLogoError("");
+                            updateBrandingField("hostLogoUrl", e.target.value);
+                          }}
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                          placeholder="https://example.com/logo.png"
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   <div>
@@ -1358,15 +1568,19 @@ export function Admin() {
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button
                     type="button"
-                    disabled={brandingLoading}
+                    disabled={brandingLoading || brandingLogoUploading}
                     onClick={handleManagedBrandingSave}
                     className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
                   >
-                    {brandingLoading ? "Saving..." : "Save managed branding"}
+                    {brandingLogoUploading
+                      ? "Uploading logo..."
+                      : brandingLoading
+                      ? "Saving..."
+                      : "Save managed branding"}
                   </button>
                   <button
                     type="button"
-                    disabled={brandingLoading}
+                    disabled={brandingLoading || brandingLogoUploading}
                     onClick={handleManagedBrandingClear}
                     className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-white disabled:opacity-60"
                   >
