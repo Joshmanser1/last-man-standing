@@ -48,6 +48,14 @@ type ManagedThemeDraft = {
   tagline: string;
 };
 
+type FounderLeagueDraft = {
+  name: string;
+  isPublic: boolean;
+  joinCode: string;
+  startEventId: number | null;
+  startDeadlineISO: string | null;
+};
+
 const EMPTY_MANAGED_THEME_DRAFT: ManagedThemeDraft = {
   enabled: false,
   managed: true,
@@ -58,6 +66,14 @@ const EMPTY_MANAGED_THEME_DRAFT: ManagedThemeDraft = {
   secondaryColour: "",
   eyebrow: "",
   tagline: "",
+};
+
+const EMPTY_FOUNDER_LEAGUE_DRAFT: FounderLeagueDraft = {
+  name: "Founder League",
+  isPublic: false,
+  joinCode: "",
+  startEventId: null,
+  startDeadlineISO: null,
 };
 
 function getUnavailableRound(leagueLike: { current_round?: number | null } | null) {
@@ -178,6 +194,12 @@ export function Admin() {
   const [brandingLogoUploading, setBrandingLogoUploading] = useState(false);
   const [brandingLogoError, setBrandingLogoError] = useState("");
   const [persistedBrandingLogoUrl, setPersistedBrandingLogoUrl] = useState("");
+  const [founderDraft, setFounderDraft] = useState<FounderLeagueDraft>(
+    EMPTY_FOUNDER_LEAGUE_DRAFT
+  );
+  const [founderCreating, setFounderCreating] = useState(false);
+  const [founderError, setFounderError] = useState("");
+  const [founderNotice, setFounderNotice] = useState("");
   const [roundPicks, setRoundPicks] = useState<any[]>([]);
   const [effectiveTestUserId, setEffectiveTestUserId] = useState<string>(
     () => localStorage.getItem("test_user_override") || localStorage.getItem("player_id") || ""
@@ -360,11 +382,10 @@ export function Admin() {
           if (!Number.isNaN(deadlineTs) && Date.now() >= deadlineTs) {
             try {
               await dataService.lockRound(currentRound.id);
-              toast("Round auto-locked at deadline.");
               setRefreshTick((x) => x + 1);
               return;
-            } catch (e: any) {
-              toast(e?.message ?? "Failed to auto-lock round.");
+            } catch {
+              // Keep passive auto-lock silent; explicit actions still show feedback.
             }
           }
         }
@@ -905,6 +926,82 @@ export function Admin() {
     await saveManagedBranding(null);
   }
 
+  function handleFounderLeagueCreated(createdLeague: any) {
+    if (!createdLeague?.id) return;
+    localStorage.setItem("active_league_id", createdLeague.id);
+    setAllLeagues((prev) => {
+      const withoutExisting = prev.filter((leagueItem: any) => leagueItem.id !== createdLeague.id);
+      return [...withoutExisting, createdLeague];
+    });
+    setSelectedLeagueId(createdLeague.id);
+    setRefreshTick((x) => x + 1);
+  }
+
+  async function handleFounderLeagueCreate() {
+    if (!founderDraft.name.trim()) {
+      setFounderError("Please enter a league name.");
+      return;
+    }
+    if (!founderDraft.startDeadlineISO || !founderDraft.startEventId) {
+      setFounderError("Pick a starting FPL Gameweek first.");
+      return;
+    }
+
+    setFounderCreating(true);
+    setFounderError("");
+    setFounderNotice("");
+
+    try {
+      const resp = await postJsonWithAuth("/api/admin", {
+        action: "create-founder-league",
+        name: founderDraft.name.trim(),
+        is_public: founderDraft.isPublic,
+        join_code: founderDraft.joinCode.trim() || null,
+        fpl_start_event: founderDraft.startEventId,
+        start_date_utc: founderDraft.startDeadlineISO,
+      });
+
+      let body: any = null;
+      try {
+        body = await resp.json();
+      } catch {
+        body = null;
+      }
+
+      if (resp.status === 401 || resp.status === 403) {
+        setFounderError(body?.error ?? "You are not allowed to create founder leagues.");
+        return;
+      }
+
+      if (!resp.ok) {
+        setFounderError(body?.error ?? "Failed to create founder league.");
+        return;
+      }
+
+      const createdLeague = body?.league ?? null;
+      if (!createdLeague?.id) {
+        setFounderError("Founder league creation returned no league id.");
+        return;
+      }
+
+      handleFounderLeagueCreated(createdLeague);
+      setFounderDraft({
+        ...EMPTY_FOUNDER_LEAGUE_DRAFT,
+        startEventId: founderDraft.startEventId,
+        startDeadlineISO: founderDraft.startDeadlineISO,
+      });
+      setFounderNotice(
+        `Founder league created: ${createdLeague.name}${
+          createdLeague.join_code ? ` (${createdLeague.join_code})` : ""
+        }`
+      );
+    } catch (err: any) {
+      setFounderError(err?.message ?? "Failed to create founder league.");
+    } finally {
+      setFounderCreating(false);
+    }
+  }
+
   async function handleDeleteLeague() {
     if (!selectedLeagueId || !league) return;
     const ok = window.confirm(
@@ -1173,9 +1270,14 @@ export function Admin() {
       <div data-testid="admin-page" className="min-h-screen grid place-items-center p-6">
         <CreateGamePanel
           onCreated={(lg) => {
-            setAllLeagues((prev) => [...prev, lg]);
-            setSelectedLeagueId(lg.id);
+            handleFounderLeagueCreated(lg);
           }}
+          founderDraft={founderDraft}
+          setFounderDraft={setFounderDraft}
+          founderCreating={founderCreating}
+          founderError={founderError}
+          founderNotice={founderNotice}
+          onFounderCreate={handleFounderLeagueCreate}
         />
       </div>
     );
@@ -1201,11 +1303,16 @@ export function Admin() {
             </select>
           </div>
 
-          <CreateGameInline
+          <CreateFounderLeagueInline
             onCreated={(lg) => {
-              setAllLeagues((prev) => [...prev, lg]);
-              setSelectedLeagueId(lg.id);
+              handleFounderLeagueCreated(lg);
             }}
+            founderDraft={founderDraft}
+            setFounderDraft={setFounderDraft}
+            founderCreating={founderCreating}
+            founderError={founderError}
+            founderNotice={founderNotice}
+            onFounderCreate={handleFounderLeagueCreate}
           />
         </div>
         <div className="mb-6">
@@ -1919,6 +2026,115 @@ function CreateGameInline({ onCreated }: { onCreated: (lg: any) => void }) {
   );
 }
 
+function CreateFounderLeagueInline({
+  onCreated: _onCreated,
+  founderDraft,
+  setFounderDraft,
+  founderCreating,
+  founderError,
+  founderNotice,
+  onFounderCreate,
+}: {
+  onCreated: (lg: any) => void;
+  founderDraft: FounderLeagueDraft;
+  setFounderDraft: React.Dispatch<React.SetStateAction<FounderLeagueDraft>>;
+  founderCreating: boolean;
+  founderError: string;
+  founderNotice: string;
+  onFounderCreate: () => Promise<void>;
+}) {
+  return (
+    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+      <div>
+        <h3 className="font-semibold text-emerald-900">Create Founder League</h3>
+        <p className="text-xs text-emerald-800">
+          FCC site admins can create managed or founder leagues here without touching the
+          normal consumer flow or host limits.
+        </p>
+      </div>
+
+      {founderError ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {founderError}
+        </div>
+      ) : null}
+
+      {founderNotice ? (
+        <div className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-emerald-700">
+          {founderNotice}
+        </div>
+      ) : null}
+
+      <div className="flex flex-col gap-3">
+        <input
+          data-testid="admin-founder-league-name"
+          value={founderDraft.name}
+          onChange={(e) =>
+            setFounderDraft((current) => ({ ...current, name: e.target.value }))
+          }
+          className="border rounded px-2 py-1 min-w-[160px] bg-white"
+          placeholder="Founder league name"
+        />
+
+        <div data-testid="admin-founder-start-gw" className="min-w-[220px]">
+          <FplGwSelect
+            selectTestId="admin-founder-start-gw-select"
+            label="Start FPL Gameweek"
+            onlyUpcoming
+            onChange={(id, ev) => {
+              setFounderDraft((current) => ({
+                ...current,
+                startEventId: id,
+                startDeadlineISO: ev?.deadline_time ?? null,
+              }));
+            }}
+          />
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          <label className="text-sm text-slate-700 flex items-center gap-2">
+            <input
+              data-testid="admin-founder-make-public"
+              type="checkbox"
+              checked={founderDraft.isPublic}
+              onChange={(e) =>
+                setFounderDraft((current) => ({ ...current, isPublic: e.target.checked }))
+              }
+            />
+            Public
+          </label>
+
+          <input
+            data-testid="admin-founder-join-code"
+            value={founderDraft.isPublic ? "" : founderDraft.joinCode}
+            onChange={(e) =>
+              setFounderDraft((current) => ({
+                ...current,
+                joinCode: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12),
+              }))
+            }
+            className="border rounded px-2 py-1 min-w-[180px] bg-white disabled:bg-slate-100"
+            placeholder="Optional join code"
+            disabled={founderDraft.isPublic}
+          />
+        </div>
+
+        <button
+          data-testid="admin-create-founder-league-btn"
+          type="button"
+          onClick={() => {
+            void onFounderCreate();
+          }}
+          disabled={founderCreating}
+          className="rounded-lg bg-emerald-700 text-white px-4 py-2 hover:bg-emerald-800 disabled:opacity-60 self-start"
+        >
+          {founderCreating ? "Creating..." : "Create Founder League"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CreateTestLeagueInline({ onCreated }: { onCreated: (lg: any) => void }) {
   const [name, setName] = useState("Pre-Season Test League");
   const [startEvent, setStartEvent] = useState<number | null>(null);
@@ -1993,15 +2209,39 @@ function CreateTestLeagueInline({ onCreated }: { onCreated: (lg: any) => void })
   );
 }
 
-function CreateGamePanel({ onCreated }: { onCreated: (lg: any) => void }) {
+function CreateGamePanel({
+  onCreated,
+  founderDraft,
+  setFounderDraft,
+  founderCreating,
+  founderError,
+  founderNotice,
+  onFounderCreate,
+}: {
+  onCreated: (lg: any) => void;
+  founderDraft: FounderLeagueDraft;
+  setFounderDraft: React.Dispatch<React.SetStateAction<FounderLeagueDraft>>;
+  founderCreating: boolean;
+  founderError: string;
+  founderNotice: string;
+  onFounderCreate: () => Promise<void>;
+}) {
   return (
     <div className="w-full max-w-xl bg-white rounded-2xl shadow p-6 space-y-4">
-      <h2 className="text-xl font-semibold">Create your first Last Man Standing game</h2>
+      <h2 className="text-xl font-semibold">Create your first founder or managed league</h2>
       <p className="text-slate-600 text-sm">
         Pick a <b>starting FPL Gameweek</b>. We’ll use the official FPL deadline for Round 1 and map
         future rounds to the FPL calendar.
       </p>
-      <CreateGameInline onCreated={onCreated} />
+      <CreateFounderLeagueInline
+        onCreated={onCreated}
+        founderDraft={founderDraft}
+        setFounderDraft={setFounderDraft}
+        founderCreating={founderCreating}
+        founderError={founderError}
+        founderNotice={founderNotice}
+        onFounderCreate={onFounderCreate}
+      />
       <CreateTestLeagueInline onCreated={onCreated} />
     </div>
   );

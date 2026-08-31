@@ -21,9 +21,19 @@ type ValidationResult =
   | { ok: true; value: Record<string, unknown> | null }
   | { ok: false; error: string };
 
+type FixtureInsertRow = {
+  round_id: string;
+  home_team_id: string;
+  away_team_id: string;
+  kickoff_utc?: string;
+  result: "home_win" | "away_win" | "draw" | "not_set";
+  winning_team_id: string | null;
+};
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HEX_COLOUR_RE = /^#[0-9a-f]{6}$/i;
+const FPL_BASE = "https://fantasy.premierleague.com/api";
 
 function sendJson(res: Res, status: number, body: unknown): void {
   res.statusCode = status;
@@ -58,6 +68,242 @@ function validateLeagueId(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return UUID_RE.test(trimmed) ? trimmed : null;
+}
+
+function generateInviteCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 6; i++) {
+    code += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return code;
+}
+
+async function fetchFplJson<T>(path: string): Promise<T> {
+  const response = await fetch(`${FPL_BASE}${path}`, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome Safari",
+      Accept: "application/json,text/plain,*/*",
+      Referer: "https://fantasy.premierleague.com/",
+      Origin: "https://fantasy.premierleague.com",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`FPL request failed: ${response.status} ${response.statusText}`);
+  }
+  return (await response.json()) as T;
+}
+
+function getRoundDeadline(startDateUtc: string) {
+  const roundDeadline = new Date(startDateUtc);
+  if (Number.isNaN(roundDeadline.getTime())) {
+    throw new Error("start_date_utc must be a valid ISO date");
+  }
+  roundDeadline.setHours(17, 0, 0, 0);
+  return roundDeadline.toISOString();
+}
+
+async function createFounderLeague(ctx: AuthedContext, payload: any, res: Res) {
+  const name = typeof payload?.name === "string" ? payload.name.trim() : "";
+  const startDateUtc =
+    typeof payload?.start_date_utc === "string" ? payload.start_date_utc.trim() : "";
+  const fplStartEvent = payload?.fpl_start_event;
+  const isPublic = payload?.is_public === true;
+  const joinCodeInput =
+    typeof payload?.join_code === "string" ? payload.join_code.trim().toUpperCase() : "";
+
+  if (!name || !startDateUtc || typeof fplStartEvent !== "number") {
+    return sendJson(res, 400, {
+      error: "Missing required fields: name, start_date_utc, fpl_start_event",
+    });
+  }
+
+  const joinCode = isPublic ? null : joinCodeInput || generateInviteCode();
+
+  if (joinCode) {
+    const { data: existingJoinCodeLeague, error: existingJoinCodeLeagueError } = await ctx.supabase
+      .from("leagues")
+      .select("id")
+      .eq("join_code", joinCode)
+      .is("deleted_at", null)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingJoinCodeLeagueError) {
+      return sendJson(res, 502, {
+        error: existingJoinCodeLeagueError.message,
+        code: existingJoinCodeLeagueError.code,
+        details: existingJoinCodeLeagueError.details,
+        hint: existingJoinCodeLeagueError.hint,
+      });
+    }
+
+    if (existingJoinCodeLeague) {
+      return sendJson(res, 409, { error: "Invite code already exists" });
+    }
+  }
+
+  const leagueId = crypto.randomUUID();
+  const round1Id = crypto.randomUUID();
+
+  const { data: league, error: leagueInsertError } = await ctx.supabase
+    .from("leagues")
+    .insert({
+      id: leagueId,
+      name,
+      status: "upcoming",
+      current_round: 1,
+      start_date_utc: startDateUtc,
+      fpl_start_event: fplStartEvent,
+      is_public: isPublic,
+      is_test: false,
+      join_code: joinCode,
+      created_by: ctx.userId,
+      managed_theme: null,
+    })
+    .select(
+      "id, name, created_by, created_at, is_public, is_test, join_code, fpl_start_event, start_date_utc, current_round, status, managed_theme, deleted_at"
+    )
+    .maybeSingle();
+  if (leagueInsertError) {
+    return sendJson(res, 502, {
+      error: leagueInsertError.message,
+      code: leagueInsertError.code,
+      details: leagueInsertError.details,
+      hint: leagueInsertError.hint,
+    });
+  }
+
+  const { error: membershipError } = await ctx.supabase.from("memberships").insert({
+    league_id: leagueId,
+    player_id: ctx.userId,
+    role: "owner",
+    is_active: true,
+  });
+  if (membershipError) {
+    return sendJson(res, 502, {
+      error: membershipError.message,
+      code: membershipError.code,
+      details: membershipError.details,
+      hint: membershipError.hint,
+    });
+  }
+
+  const roundDeadlineIso = getRoundDeadline(startDateUtc);
+  const { data: round, error: roundError } = await ctx.supabase
+    .from("rounds")
+    .insert({
+      id: round1Id,
+      league_id: leagueId,
+      round_number: 1,
+      name: "Round 1",
+      pick_deadline_utc: roundDeadlineIso,
+      status: "upcoming",
+    })
+    .select("*")
+    .maybeSingle();
+  if (roundError) {
+    return sendJson(res, 502, {
+      error: roundError.message,
+      code: roundError.code,
+      details: roundError.details,
+      hint: roundError.hint,
+    });
+  }
+
+  const bootstrap = await fetchFplJson<{
+    teams?: Array<{ id: number; name: string; short_name: string }>;
+  }>("/bootstrap-static/");
+  const fplTeams = bootstrap.teams ?? [];
+  const teamRows = fplTeams.map((team) => {
+    const code = String(team.short_name ?? "").toUpperCase();
+    return {
+      id: crypto.randomUUID(),
+      league_id: leagueId,
+      name: team.name,
+      code,
+      logo_url: code ? `https://via.placeholder.com/96?text=${code}` : undefined,
+      fpl_team_id: team.id,
+    };
+  });
+
+  if (teamRows.length) {
+    const { error: teamError } = await ctx.supabase.from("teams").insert(
+      teamRows.map(({ fpl_team_id: _fplTeamId, ...row }) => row)
+    );
+    if (teamError) {
+      return sendJson(res, 502, {
+        error: teamError.message,
+        code: teamError.code,
+        details: teamError.details,
+        hint: teamError.hint,
+      });
+    }
+  }
+
+  const teamByFplId = new Map<number, { id: string }>(
+    teamRows.map((row) => [row.fpl_team_id, { id: row.id }])
+  );
+
+  const fixtures = await fetchFplJson<
+    Array<{
+      team_h: number;
+      team_a: number;
+      kickoff_time?: string | null;
+      finished?: boolean;
+      team_h_score?: number | null;
+      team_a_score?: number | null;
+    }>
+  >(`/fixtures/?event=${fplStartEvent}`);
+
+  const fixtureRows: FixtureInsertRow[] = [];
+  for (const fixture of fixtures) {
+    const home = teamByFplId.get(fixture.team_h);
+    const away = teamByFplId.get(fixture.team_a);
+    if (!home || !away) continue;
+
+    const result =
+      fixture.finished &&
+      fixture.team_h_score != null &&
+      fixture.team_a_score != null
+        ? fixture.team_h_score > fixture.team_a_score
+          ? "home_win"
+          : fixture.team_a_score > fixture.team_h_score
+          ? "away_win"
+          : "draw"
+        : "not_set";
+
+    fixtureRows.push({
+      round_id: round1Id,
+      home_team_id: home.id,
+      away_team_id: away.id,
+      kickoff_utc: fixture.kickoff_time ?? undefined,
+      result,
+      winning_team_id:
+        result === "home_win" ? home.id : result === "away_win" ? away.id : null,
+    });
+  }
+
+  if (fixtureRows.length) {
+    const { error: fixtureError } = await ctx.supabase.from("fixtures").upsert(fixtureRows, {
+      ignoreDuplicates: true,
+      onConflict: "round_id,home_team_id,away_team_id",
+    });
+    if (fixtureError) {
+      return sendJson(res, 502, {
+        error: fixtureError.message,
+        code: fixtureError.code,
+        details: fixtureError.details,
+        hint: fixtureError.hint,
+      });
+    }
+  }
+
+  return sendJson(res, 200, {
+    league,
+    round,
+  });
 }
 
 function validateManagedTheme(value: unknown): ValidationResult {
@@ -238,6 +484,10 @@ export default async function handler(req: Req, res: Res) {
         });
       }
       return sendJson(res, 200, leagues ?? []);
+    }
+
+    if (action === "create-founder-league") {
+      return await createFounderLeague(ctx, payload, res);
     }
 
     const leagueId = validateLeagueId(payload?.league_id);
