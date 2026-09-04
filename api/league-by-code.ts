@@ -11,11 +11,45 @@ type Res = {
   end: (body: string) => void;
 };
 
+type ManagedThemePreview = {
+  hostName: string;
+  displayName?: string;
+  hostLogoUrl?: string;
+  primaryColour?: string;
+  secondaryColour?: string;
+  eyebrow?: string;
+  tagline?: string;
+};
+
 function sendJson(res: Res, status: number, body: unknown): void {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
   res.end(JSON.stringify(body));
+}
+
+function cleanString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+// Managed branding is presentation-only. Keep the public response independent
+// of the unrestricted JSON object stored on the league.
+function toManagedThemePreview(value: unknown): ManagedThemePreview | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const theme = value as Record<string, unknown>;
+  const hostName = cleanString(theme.hostName);
+  if (theme.enabled !== true || !hostName) return null;
+
+  return {
+    hostName,
+    displayName: cleanString(theme.displayName),
+    hostLogoUrl: cleanString(theme.hostLogoUrl),
+    primaryColour: cleanString(theme.primaryColour),
+    secondaryColour: cleanString(theme.secondaryColour),
+    eyebrow: cleanString(theme.eyebrow),
+    tagline: cleanString(theme.tagline),
+  };
 }
 
 export default async function handler(req: Req, res: Res) {
@@ -49,7 +83,7 @@ export default async function handler(req: Req, res: Res) {
 
     const { data: league, error } = await supabase
       .from("leagues")
-      .select("id, name, join_code, is_public, is_test, created_by")
+      .select("id, name, current_round, managed_theme")
       .eq("join_code", joinCode)
       .is("deleted_at", null)
       .maybeSingle();
@@ -67,8 +101,31 @@ export default async function handler(req: Req, res: Res) {
       return sendJson(res, 404, { error: "League not found for join_code" });
     }
 
-    return sendJson(res, 200, league);
+    const currentRoundNumber =
+      typeof league.current_round === "number" && Number.isFinite(league.current_round)
+        ? league.current_round
+        : 1;
+    const { data: round, error: roundError } = await supabase
+      .from("rounds")
+      .select("round_number, pick_deadline_utc")
+      .eq("league_id", league.id)
+      .eq("round_number", currentRoundNumber)
+      .maybeSingle();
+
+    if (roundError) {
+      return sendJson(res, 502, { error: "Failed to load league preview" });
+    }
+
+    // This is deliberately the complete public contract for an invite landing page.
+    return sendJson(res, 200, {
+      league: {
+        name: league.name,
+        current_round: round?.round_number ?? currentRoundNumber,
+        pick_deadline_utc: round?.pick_deadline_utc ?? null,
+        managed_theme: toManagedThemePreview(league.managed_theme),
+      },
+    });
   } catch (err: any) {
-    return sendJson(res, 502, { error: err?.message ?? "Failed to load league" });
+    return sendJson(res, 502, { error: "Failed to load league preview" });
   }
 }

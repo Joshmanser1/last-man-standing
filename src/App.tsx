@@ -133,11 +133,7 @@ function AppInner() {
           />
           <Route
             path="/private/join"
-            element={
-              <RequireAuth>
-                <PrivateLeagueJoin />
-              </RequireAuth>
-            }
+            element={<PrivateLeagueJoin />}
           />
           <Route
             path="/admin"
