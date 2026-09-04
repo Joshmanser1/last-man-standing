@@ -1,9 +1,16 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import { supa } from "../lib/supabaseClient";
 import { dataService } from "../data/service";
 import { postJsonWithAuth } from "../lib/apiAuth";
+import {
+  bindInviteAttributionToLeague,
+  captureInviteAttribution,
+  inviteEventProperties,
+  trackFunnelEvent,
+  trackInviteEventOnce,
+} from "../lib/analytics";
 
 type LeaguePreview = {
   name: string;
@@ -49,6 +56,7 @@ export function PrivateLeagueJoin() {
   const [loadingPreview, setLoadingPreview] = useState(true);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const landingTrackedForCode = useRef<string>("");
 
   const navigate = useNavigate();
   const toast = useToast();
@@ -96,7 +104,25 @@ export function PrivateLeagueJoin() {
           return;
         }
 
-        setPreview(body.league as LeaguePreview);
+        const loadedPreview = body.league as LeaguePreview;
+        setPreview(loadedPreview);
+        if (landingTrackedForCode.current !== trimmed) {
+          landingTrackedForCode.current = trimmed;
+          const attribution = captureInviteAttribution(window.location.search);
+          trackFunnelEvent(
+            "league_landing_view",
+            inviteEventProperties(attribution, {
+              managed: !!loadedPreview.managed_theme,
+              current_round: loadedPreview.current_round,
+              ...(loadedPreview.managed_theme?.hostName
+                ? { host_name: loadedPreview.managed_theme.hostName }
+                : {}),
+              ...(loadedPreview.managed_theme?.displayName
+                ? { display_name: loadedPreview.managed_theme.displayName }
+                : {}),
+            })
+          );
+        }
       } catch (err: any) {
         if (!active) return;
         setPreview(null);
@@ -127,6 +153,21 @@ export function PrivateLeagueJoin() {
       return;
     }
 
+    const attribution = captureInviteAttribution(window.location.search);
+    trackFunnelEvent(
+      "join_clicked",
+      inviteEventProperties(attribution, {
+        managed: !!preview.managed_theme,
+        current_round: preview.current_round,
+        ...(preview.managed_theme?.hostName
+          ? { host_name: preview.managed_theme.hostName }
+          : {}),
+        ...(preview.managed_theme?.displayName
+          ? { display_name: preview.managed_theme.displayName }
+          : {}),
+      })
+    );
+
     try {
       setJoining(true);
       const { data } = await supa.auth.getUser();
@@ -156,6 +197,20 @@ export function PrivateLeagueJoin() {
       if (!joinedLeagueId) {
         setError("Joined the league, but we couldn't open it. Please try again from My Games.");
         return;
+      }
+
+      if (body?.membership_created === true) {
+        const boundAttribution = bindInviteAttributionToLeague(joinedLeagueId);
+        trackInviteEventOnce("league_joined", boundAttribution, {
+          managed: !!preview.managed_theme,
+          current_round: preview.current_round,
+          ...(preview.managed_theme?.hostName
+            ? { host_name: preview.managed_theme.hostName }
+            : {}),
+          ...(preview.managed_theme?.displayName
+            ? { display_name: preview.managed_theme.displayName }
+            : {}),
+        });
       }
 
       localStorage.setItem("active_league_id", joinedLeagueId);

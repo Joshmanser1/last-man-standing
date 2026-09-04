@@ -7,6 +7,11 @@ import {
   getNextParamRedirect,
   rememberPendingAuthRedirect,
 } from "../lib/authRedirect";
+import {
+  captureInviteAttributionFromPath,
+  hasTrackedInviteEvent,
+  trackInviteEventOnce,
+} from "../lib/analytics";
 
 type Notice = {
   tone: "error" | "info";
@@ -79,6 +84,7 @@ export function Login() {
     const next = getNextParamRedirect(location.search);
     if (next) {
       rememberPendingAuthRedirect(next);
+      captureInviteAttributionFromPath(next);
     }
   }, [location.search]);
 
@@ -94,6 +100,12 @@ export function Login() {
     const redirectOnce = () => {
       if (!mounted || didPostAuthNavigate.current) return;
       didPostAuthNavigate.current = true;
+      const inviteAttribution = captureInviteAttributionFromPath(
+        getNextParamRedirect(location.search)
+      );
+      if (hasTrackedInviteEvent("auth_started", inviteAttribution)) {
+        trackInviteEventOnce("auth_completed", inviteAttribution);
+      }
       navigate(getRedirectTarget(location.search), { replace: true });
     };
 
@@ -153,6 +165,11 @@ export function Login() {
         setNotice({ tone: "error", text: getFriendlyAuthError(error, "send") });
         return;
       }
+
+      const inviteAttribution = captureInviteAttributionFromPath(
+        getNextParamRedirect(location.search)
+      );
+      trackInviteEventOnce("auth_started", inviteAttribution);
 
       setStage("verify");
       setOtpCode("");

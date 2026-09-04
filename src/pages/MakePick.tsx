@@ -10,6 +10,10 @@ import { resolveManagedLeagueTheme } from "../lib/leagueTheme";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
 import { getMemberElimination, loadLeagueRoundState } from "../lib/leagueRoundState";
+import {
+  getInviteAttributionForLeague,
+  trackInviteEventOnce,
+} from "../lib/analytics";
 
 type OpponentMap = Record<string, string>;
 
@@ -233,6 +237,7 @@ export function MakePick() {
       if (!league || !round || !playerId) return;
       if (locked) return;
       const isUpdatingPick = !!currentPick && currentPick.team_id !== teamId;
+      const isFirstPickForLeague = !currentPick && usedTeamIds.size === 0;
 
       if (currentPick && currentPick.team_id !== teamId) {
         const ok = confirm("Replace your existing pick with this team?");
@@ -255,6 +260,13 @@ export function MakePick() {
           msg = err?.error ?? msg;
         } catch {}
         throw new Error(msg);
+      }
+      if (isFirstPickForLeague) {
+        trackInviteEventOnce(
+          "first_pick_submitted",
+          getInviteAttributionForLeague(String(league.id)),
+          { current_round: round.round_number }
+        );
       }
       toast(isUpdatingPick ? "Pick updated" : "Pick submitted", { variant: "success" });
       navigate("/leaderboard");

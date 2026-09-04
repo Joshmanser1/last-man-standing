@@ -259,7 +259,7 @@ export default async function handler(req: Req, res: Res) {
       });
     }
 
-    return sendJson(res, 200, data);
+    return sendJson(res, 200, { ...data, membership_created: !existing });
   } catch (err: any) {
     return sendJson(res, 502, { error: err?.message ?? "Failed to join league" });
   }
