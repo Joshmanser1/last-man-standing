@@ -132,7 +132,8 @@ export function PrivateLeagueJoin() {
       const { data } = await supa.auth.getUser();
       const user = data.user;
       if (!user?.id) {
-        setError("You must be logged in to join this league.");
+        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        navigate(`/login?next=${encodeURIComponent(next)}`);
         return;
       }
 
@@ -235,7 +236,6 @@ export function PrivateLeagueJoin() {
               <button type="submit" className="btn w-full border-0 bg-emerald-500 font-bold text-slate-950 hover:bg-emerald-400" disabled={joining}>
                 {joining ? "Joining..." : ctaLabel}
               </button>
-              <p className="text-center text-xs text-slate-500">You will need to log in before joining this league.</p>
               {error && <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
             </form>
           </section>

@@ -14,7 +14,9 @@ type Notice = {
 } | null;
 
 function getRedirectTarget(search: string) {
-  return consumePendingAuthRedirect() || getNextParamRedirect(search) || "/my-games";
+  const next = getNextParamRedirect(search);
+  const pending = consumePendingAuthRedirect();
+  return next || pending || "/my-games";
 }
 
 function normalizeOtp(value: string) {
