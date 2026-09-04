@@ -166,7 +166,7 @@ export function PrivateLeagueJoin() {
       }
 
       toast(`Joined ${preview.name}`, { variant: "success" });
-      navigate("/private/create", { replace: true });
+      navigate("/make-pick", { replace: true });
     } catch (err: any) {
       setError(err?.message || "Failed to join league.");
     } finally {
