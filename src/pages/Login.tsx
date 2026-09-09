@@ -73,6 +73,15 @@ export function Login() {
   const triedAlt = useRef(false);
   const codeInputRef = useRef<HTMLInputElement | null>(null);
 
+  function trackInviteAuthCompleted() {
+    const inviteAttribution = captureInviteAttributionFromPath(
+      getNextParamRedirect(location.search)
+    );
+    if (hasTrackedInviteEvent("auth_started", inviteAttribution)) {
+      trackInviteEventOnce("auth_completed", inviteAttribution);
+    }
+  }
+
   useEffect(() => {
     if (!cooldown) return;
     const t = setInterval(() => setCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
@@ -100,12 +109,7 @@ export function Login() {
     const redirectOnce = () => {
       if (!mounted || didPostAuthNavigate.current) return;
       didPostAuthNavigate.current = true;
-      const inviteAttribution = captureInviteAttributionFromPath(
-        getNextParamRedirect(location.search)
-      );
-      if (hasTrackedInviteEvent("auth_started", inviteAttribution)) {
-        trackInviteEventOnce("auth_completed", inviteAttribution);
-      }
+      trackInviteAuthCompleted();
       navigate(getRedirectTarget(location.search), { replace: true });
     };
 
@@ -219,6 +223,7 @@ export function Login() {
 
       if (!didPostAuthNavigate.current) {
         didPostAuthNavigate.current = true;
+        trackInviteAuthCompleted();
         navigate(getRedirectTarget(location.search), { replace: true });
       }
     } catch (error) {
@@ -243,6 +248,7 @@ export function Login() {
       if (hasSupa) {
         if (!didPostAuthNavigate.current) {
           didPostAuthNavigate.current = true;
+          trackInviteAuthCompleted();
           navigate(getRedirectTarget(location.search), { replace: true });
         }
       } else {

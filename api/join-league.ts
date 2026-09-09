@@ -101,8 +101,6 @@ export default async function handler(req: Req, res: Res) {
 
   const leagueIdInput = typeof payload?.league_id === "string" ? payload.league_id : "";
   const joinCode = typeof payload?.join_code === "string" ? payload.join_code : "";
-  const role = typeof payload?.role === "string" ? payload.role : "player";
-
   if (!leagueIdInput && !joinCode) {
     return sendJson(res, 400, { error: "Missing required fields: league_id or join_code" });
   }
@@ -242,9 +240,9 @@ export default async function handler(req: Req, res: Res) {
       : await supabase
           .from("memberships")
           .insert({
-            league_id: leagueId,
-            player_id: authenticatedUserId,
-            role,
+          league_id: leagueId,
+          player_id: authenticatedUserId,
+          role: "player",
             is_active: true,
           })
           .select("*")

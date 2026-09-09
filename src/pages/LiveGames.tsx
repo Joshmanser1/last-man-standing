@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId, hasTestUserOverride } from "../lib/auth";
+import { postJsonWithAuth } from "../lib/apiAuth";
 
 type LeagueLite = {
   id: string;
@@ -156,14 +157,8 @@ export function LiveGames() {
         await dataService.upsertPlayer(displayName);
       }
 
-      const joinRes = await fetch("/api/join-league", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          league_id: l.id,
-          player_id: effectiveUserId,
-          role: "player",
-        }),
+      const joinRes = await postJsonWithAuth("/api/join-league", {
+        league_id: l.id,
       });
       if (!joinRes.ok) {
         let msg = "Failed to join this game.";

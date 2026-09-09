@@ -10,6 +10,7 @@ import { resolveManagedLeagueTheme } from "../lib/leagueTheme";
 import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
 import { getMemberElimination, loadLeagueRoundState } from "../lib/leagueRoundState";
+import { postJsonWithAuth } from "../lib/apiAuth";
 import {
   getInviteAttributionForLeague,
   trackInviteEventOnce,
@@ -243,15 +244,10 @@ export function MakePick() {
         const ok = confirm("Replace your existing pick with this team?");
         if (!ok) return;
       }
-      const res = await fetch("/api/submit-pick", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          league_id: league.id,
-          round_id: round.id,
-          player_id: playerId,
-          team_id: teamId,
-        }),
+      const res = await postJsonWithAuth("/api/submit-pick", {
+        league_id: league.id,
+        round_id: round.id,
+        team_id: teamId,
       });
       if (!res.ok) {
         let msg = "Could not save pick.";

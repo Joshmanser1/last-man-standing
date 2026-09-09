@@ -180,7 +180,6 @@ export function PrivateLeagueJoin() {
 
       const joinRes = await postJsonWithAuth("/api/join-league", {
         join_code: trimmed,
-        role: "player",
       });
 
       let body: any = null;

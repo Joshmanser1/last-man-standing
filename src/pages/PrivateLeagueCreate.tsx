@@ -298,7 +298,6 @@ export function PrivateLeagueCreate() {
       await (dataService as any).upsertPlayer(playerName || "You");
       const joinRes = await postJsonWithAuth("/api/join-league", {
         join_code: code,
-        role: "player",
       });
       if (!joinRes.ok) {
         try {
