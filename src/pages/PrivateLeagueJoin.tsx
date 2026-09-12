@@ -29,6 +29,12 @@ type ManagedThemePreview = {
   tagline?: string;
 };
 
+const PENDING_DISPLAY_NAME_KEY = "fcc_pending_display_name";
+
+function readPendingDisplayName() {
+  return sessionStorage.getItem(PENDING_DISPLAY_NAME_KEY)?.trim() ?? "";
+}
+
 function isHexColour(value: string | undefined, fallback: string) {
   return value && /^#[0-9a-f]{3,8}$/i.test(value) ? value : fallback;
 }
@@ -56,6 +62,8 @@ export function PrivateLeagueJoin() {
   const [loadingPreview, setLoadingPreview] = useState(true);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [profileName, setProfileName] = useState(readPendingDisplayName);
+  const [profileRequired, setProfileRequired] = useState(false);
   const landingTrackedForCode = useRef<string>("");
 
   const navigate = useNavigate();
@@ -178,8 +186,14 @@ export function PrivateLeagueJoin() {
         return;
       }
 
+      const displayName = profileName.trim();
+      if (profileRequired && !displayName) {
+        setError("Choose a display name to continue.");
+        return;
+      }
       const joinRes = await postJsonWithAuth("/api/join-league", {
         join_code: trimmed,
+        ...(displayName ? { display_name: displayName } : {}),
       });
 
       let body: any = null;
@@ -188,6 +202,11 @@ export function PrivateLeagueJoin() {
       } catch {}
 
       if (!joinRes.ok) {
+        if (body?.code === "profile_required") {
+          setProfileRequired(true);
+          setError(null);
+          return;
+        }
         setError(body?.error || "Failed to join league.");
         return;
       }
@@ -212,6 +231,7 @@ export function PrivateLeagueJoin() {
         });
       }
 
+      sessionStorage.removeItem(PENDING_DISPLAY_NAME_KEY);
       localStorage.setItem("active_league_id", joinedLeagueId);
       try {
         await dataService.getCurrentRound(joinedLeagueId);
@@ -287,6 +307,20 @@ export function PrivateLeagueJoin() {
               <ul className="mt-2 space-y-1 text-sm leading-6 text-slate-600"><li>Pick one Premier League team each round.</li><li>Win and you survive.</li><li>Draw, lose or miss your pick and you're out.</li><li>You can't reuse a team.</li></ul>
             </div>
             <form onSubmit={handleSubmit} className="mt-6 space-y-3">
+              {profileRequired && (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <label className="label text-slate-900">Choose your display name</label>
+                  <p className="mt-1 text-xs text-slate-600">This is how other players will see you in the league.</p>
+                  <input
+                    className="input mt-3 w-full"
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    placeholder="Your display name"
+                    autoComplete="nickname"
+                    autoFocus
+                  />
+                </div>
+              )}
               <button type="submit" className="btn w-full border-0 bg-emerald-500 font-bold text-slate-950 hover:bg-emerald-400" disabled={joining}>
                 {joining ? "Joining..." : ctaLabel}
               </button>

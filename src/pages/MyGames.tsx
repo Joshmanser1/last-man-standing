@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { dataService } from "../data/service";
 import { supa } from "../lib/supabaseClient";
 import { useToast } from "../components/Toast";
 import { getEffectiveUserId } from "../lib/auth";
@@ -52,15 +51,8 @@ export function MyGames() {
           return;
         }
 
-        const guessedName =
-          localStorage.getItem("player_name") ||
-          (user.user_metadata?.full_name as string | undefined) ||
-          (user.email ? user.email.split("@")[0] : undefined) ||
-          "Manager";
-
-        const p = await dataService.upsertPlayer(guessedName);
-        localStorage.setItem("player_id", p.id);
-        localStorage.setItem("player_name", p.display_name ?? guessedName);
+        // Profile names must come from an explicit user choice, never an email fallback.
+        localStorage.setItem("player_id", user.id);
         if (!localStorage.getItem(STORE_KEY)) {
           localStorage.setItem(STORE_KEY, "{}");
         }

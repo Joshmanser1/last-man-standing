@@ -50,7 +50,7 @@ function createServiceRoleClient() {
   });
 }
 
-async function getAuthenticatedUserId(req: Req) {
+async function getAuthenticatedUser(req: Req) {
   const { supabaseUrl, anonKey } = getSupabaseServerEnv();
   if (!anonKey) return null;
 
@@ -66,7 +66,7 @@ async function getAuthenticatedUserId(req: Req) {
   } = await authClient.auth.getUser(bearerToken);
 
   if (error || !user?.id) return null;
-  return user.id;
+  return { id: user.id, email: user.email ?? null };
 }
 
 async function isSiteAdminUser(
@@ -107,10 +107,56 @@ export default async function handler(req: Req, res: Res) {
 
   try {
     const supabase = createServiceRoleClient();
-    const authenticatedUserId = await getAuthenticatedUserId(req);
-    if (!authenticatedUserId) {
+    const authenticatedUser = await getAuthenticatedUser(req);
+    if (!authenticatedUser) {
       return sendJson(res, 401, { error: "You must be logged in to join a private league." });
     }
+    const authenticatedUserId = authenticatedUser.id;
+
+    const { data: profile, error: profileLookupError } = await supabase
+      .from("profiles")
+      .select("id, display_name, email")
+      .eq("id", authenticatedUserId)
+      .maybeSingle();
+    if (profileLookupError) {
+      return sendJson(res, 502, {
+        error: profileLookupError.message,
+        code: profileLookupError.code,
+        details: profileLookupError.details,
+        hint: profileLookupError.hint,
+      });
+    }
+
+    if (!String(profile?.display_name ?? "").trim()) {
+      const displayName = typeof payload?.display_name === "string" ? payload.display_name.trim() : "";
+      if (!displayName) {
+        return sendJson(res, 422, {
+          error: "Choose a display name before joining this league.",
+          code: "profile_required",
+        });
+      }
+
+      const profilePayload: Record<string, string> = {
+        id: authenticatedUserId,
+        display_name: displayName,
+      };
+      if (!profile?.email && authenticatedUser.email) {
+        profilePayload.email = authenticatedUser.email;
+      }
+
+      const { error: profileUpsertError } = await supabase
+        .from("profiles")
+        .upsert(profilePayload, { onConflict: "id" });
+      if (profileUpsertError) {
+        return sendJson(res, 502, {
+          error: profileUpsertError.message,
+          code: profileUpsertError.code,
+          details: profileUpsertError.details,
+          hint: profileUpsertError.hint,
+        });
+      }
+    }
+
     const isSiteAdmin = await isSiteAdminUser(supabase, authenticatedUserId);
 
     let leagueId = leagueIdInput;

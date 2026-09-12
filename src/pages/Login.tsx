@@ -18,6 +18,8 @@ type Notice = {
   text: string;
 } | null;
 
+const PENDING_DISPLAY_NAME_KEY = "fcc_pending_display_name";
+
 function getRedirectTarget(search: string) {
   const next = getNextParamRedirect(search);
   const pending = consumePendingAuthRedirect();
@@ -154,7 +156,7 @@ export function Login() {
     try {
       setSending(true);
       setNotice(null);
-      localStorage.setItem("player_name", name);
+      sessionStorage.setItem(PENDING_DISPLAY_NAME_KEY, name);
       rememberPendingAuthRedirect(getNextParamRedirect(location.search) || "/my-games");
 
       const { error } = await supa.auth.signInWithOtp({
@@ -209,6 +211,7 @@ export function Login() {
     try {
       setVerifying(true);
       setNotice(null);
+      sessionStorage.setItem(PENDING_DISPLAY_NAME_KEY, formName.trim());
 
       const { data, error } = await supa.auth.verifyOtp({
         email,
