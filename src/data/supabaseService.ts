@@ -6,6 +6,18 @@ import { fetchFplFixturesForEvent, getEventForDate, getSmartCurrentEvent } from 
 import { getEffectiveUserId } from "../lib/auth";
 import { getApiHeaders } from "../lib/apiAuth";
 import { postJsonWithAuth } from "../lib/apiAuth";
+import type { UpsertPlayerOptions } from "./service";
+
+const RESERVED_DISPLAY_NAMES = new Set(["you", "manager", "player", "user"]);
+
+function normaliseDisplayName(value: string): string {
+  const displayName = value.trim();
+  if (!displayName) throw new Error("Enter a display name.");
+  if (RESERVED_DISPLAY_NAMES.has(displayName.toLowerCase())) {
+    throw new Error("Choose a different display name.");
+  }
+  return displayName;
+}
 
 /** Helpers */
 function must<T>(val: T | null | undefined, msg = "Not found"): T {
@@ -101,7 +113,8 @@ const supabaseService: IDataService = {
   },
 
   // Players & membership
-  async upsertPlayer(display_name: string): Promise<Player> {
+  async upsertPlayer(display_name: string, options?: UpsertPlayerOptions): Promise<Player> {
+    const normalizedDisplayName = normaliseDisplayName(display_name);
     const { data: authData, error: authErr } = await supa.auth.getUser();
     if (authErr || !authData?.user?.id) throw new Error("You must be logged in.");
     const uid = authData.user.id;
@@ -110,13 +123,17 @@ const supabaseService: IDataService = {
 
     const { data: existing, error: existingErr } = await supa
       .from("profiles")
-      .select("email")
+      .select("email, display_name")
       .eq("id", uid)
       .maybeSingle();
     if (existingErr) throw existingErr;
+    const existingDisplayName = String(existing?.display_name ?? "").trim();
+    if (existingDisplayName && options?.allowNameOverwrite !== true) {
+      return { id: uid, display_name: existingDisplayName } as Player;
+    }
     console.log("upsertPlayer existing profile", { found: Boolean(existing), email: existing?.email ?? null });
 
-    const payload: Record<string, unknown> = { id: uid, display_name };
+    const payload: Record<string, unknown> = { id: uid, display_name: normalizedDisplayName };
     if (!existing?.email && email) payload.email = email;
     console.log("upsertPlayer payload", payload);
 

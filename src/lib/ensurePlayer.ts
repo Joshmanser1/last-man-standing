@@ -2,21 +2,19 @@
 import { supa } from "../lib/supabaseClient";
 import { dataService } from "../data/service";
 
-/** Decide a display name: local override > full_name > email local-part > fallback */
-function inferDisplayName(u: { user_metadata?: any; email?: string } | null): string {
+const RESERVED_DISPLAY_NAMES = new Set(["you", "manager", "player", "user"]);
+
+function getStoredDisplayName(): string | null {
   const local = localStorage.getItem("player_name");
-  if (local && local.trim()) return local.trim();
-  const metaName = u?.user_metadata?.full_name || u?.user_metadata?.name;
-  if (metaName && String(metaName).trim()) return String(metaName).trim();
-  const email = u?.email || "";
-  if (email.includes("@")) return email.split("@")[0];
-  return "Player";
+  const displayName = local?.trim() ?? "";
+  if (!displayName || RESERVED_DISPLAY_NAMES.has(displayName.toLowerCase())) return null;
+  return displayName;
 }
 
 /**
  * Call this once on app mount.
  * - Sync local `player_id`
- * - Ensure a Player row exists/updates with a good display_name
+ * - Fill a missing Player row only when an explicit local name is available
  * - Stay subscribed to future auth changes
  */
 export async function wireAuthUpsertPlayer(): Promise<() => void> {
@@ -26,15 +24,13 @@ export async function wireAuthUpsertPlayer(): Promise<() => void> {
 
   if (user?.id) {
     localStorage.setItem("player_id", user.id);
-    const display = inferDisplayName(user);
-    try {
-      await dataService.upsertPlayer(display);
-      // also cache for header greeting
-      if (!localStorage.getItem("player_name")) {
-        localStorage.setItem("player_name", display);
+    const display = getStoredDisplayName();
+    if (display) {
+      try {
+        await dataService.upsertPlayer(display);
+      } catch (e) {
+        console.error("Failed to ensure player on initial session:", e);
       }
-    } catch (e) {
-      console.error("Failed to ensure player on initial session:", e);
     }
   } else {
     localStorage.removeItem("player_id");
@@ -45,14 +41,13 @@ export async function wireAuthUpsertPlayer(): Promise<() => void> {
     const u = session?.user ?? null;
     if (u?.id) {
       localStorage.setItem("player_id", u.id);
-      const display = inferDisplayName(u);
-      try {
-        await dataService.upsertPlayer(display);
-        if (!localStorage.getItem("player_name")) {
-          localStorage.setItem("player_name", display);
+      const display = getStoredDisplayName();
+      if (display) {
+        try {
+          await dataService.upsertPlayer(display);
+        } catch (e) {
+          console.error("Failed to ensure player on auth change:", e);
         }
-      } catch (e) {
-        console.error("Failed to ensure player on auth change:", e);
       }
     } else {
       localStorage.removeItem("player_id");

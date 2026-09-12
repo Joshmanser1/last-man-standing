@@ -51,10 +51,6 @@ function getPlayerId() {
   return localStorage.getItem("player_id") || "anon-player";
 }
 
-function getPlayerName() {
-  return localStorage.getItem("player_name") || "You";
-}
-
 function getShareUrl(code: string) {
   const url = new URL(window.location.origin);
   url.pathname = "/private/join";
@@ -83,7 +79,6 @@ export function PrivateLeagueCreate() {
   const [postJoin, setPostJoin] = useState<PostJoinState | null>(null);
 
   const playerId = getPlayerId();
-  const playerName = getPlayerName();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -222,7 +217,6 @@ export function PrivateLeagueCreate() {
       const created = await (dataService as any).createGame(name.trim(), startISO, {
         joinCode: code,
       });
-      await (dataService as any).upsertPlayer(playerName || "You");
 
       setName("");
       setStartEventId(null);
@@ -295,7 +289,6 @@ export function PrivateLeagueCreate() {
         return;
       }
 
-      await (dataService as any).upsertPlayer(playerName || "You");
       const joinRes = await postJsonWithAuth("/api/join-league", {
         join_code: code,
       });

@@ -262,7 +262,13 @@ export function Leaderboard() {
           joined_at: "",
         } as Membership);
       const player = playersById.get(playerId);
-      const display = player?.display_name || "Unknown";
+      const storedDisplayName = player?.display_name?.trim() ?? "";
+      const display =
+        playerId === viewerId && viewerId
+          ? "You"
+          : storedDisplayName && storedDisplayName.toLowerCase() !== "you"
+            ? storedDisplayName
+            : "Unknown";
       const alive = !!membership.is_active;
       const state = league?.status === "completed" && alive ? "Winner" : alive ? "Alive" : "Eliminated";
       const lastElimRound = (() => {
@@ -284,6 +290,7 @@ export function Leaderboard() {
         membership,
         playerId,
         name: display,
+        sortName: storedDisplayName || "Unknown",
         alive,
         state,
         sortKey: alive ? 1e9 : lastElimRound ?? 0,
@@ -293,10 +300,10 @@ export function Leaderboard() {
     const filtered = showElims ? items : items.filter((r) => r.alive);
     filtered.sort((a, b) => {
       if (b.sortKey !== a.sortKey) return b.sortKey - a.sortKey;
-      return a.name.localeCompare(b.name);
+      return a.sortName.localeCompare(b.sortName);
     });
     return filtered;
-  }, [memberships, playersById, picksByPlayerByRound, showElims, effectivePicks, league, leagueId]);
+  }, [memberships, playersById, picksByPlayerByRound, showElims, effectivePicks, league, leagueId, viewerId]);
 
   const eliminationRows = useMemo(() => {
     const byRound = new Map<string, Round>(rounds.map((r) => [r.id, r]));

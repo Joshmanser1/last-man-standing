@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { supa } from "../lib/supabaseClient";
-import { getEffectiveUserId, hasTestUserOverride } from "../lib/auth";
+import { getEffectiveUserId } from "../lib/auth";
 import { postJsonWithAuth } from "../lib/apiAuth";
 
 type LeagueLite = {
@@ -150,11 +150,6 @@ export function LiveGames() {
 
       if (!effectiveUserId) {
         throw new Error("No effective test user selected.");
-      }
-
-      if (!hasTestUserOverride()) {
-        const displayName = localStorage.getItem("player_name") || "Manager";
-        await dataService.upsertPlayer(displayName);
       }
 
       const joinRes = await postJsonWithAuth("/api/join-league", {

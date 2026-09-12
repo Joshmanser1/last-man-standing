@@ -8,6 +8,7 @@ import { NotificationCentre } from "../components/NotificationCentre";
 
 const STORE_KEY = "lms_store_v1";
 const DEFAULT_LEAGUE_NAME = "English Premier League LMS";
+const RESERVED_DISPLAY_NAMES = new Set(["you", "manager", "player", "user"]);
 
 type LeagueLite = {
   id: string;
@@ -123,16 +124,20 @@ export function Home() {
   async function join() {
     if (!selectedLeagueId)
       return toast("Select a game to join.", { variant: "error" });
-    if (!displayName.trim())
+    const trimmedDisplayName = displayName.trim();
+    if (!trimmedDisplayName)
       return toast("Enter your name.", { variant: "error" });
+    if (RESERVED_DISPLAY_NAMES.has(trimmedDisplayName.toLowerCase())) {
+      return toast("Choose a different display name.", { variant: "error" });
+    }
 
     setLoading(true);
     try {
-      const p = await dataService.upsertPlayer(displayName.trim());
+      const p = await dataService.upsertPlayer(trimmedDisplayName, { allowNameOverwrite: true });
       await dataService.ensureMembership(selectedLeagueId, p.id);
 
       localStorage.setItem("player_id", p.id);
-      localStorage.setItem("player_name", displayName.trim());
+      localStorage.setItem("player_name", trimmedDisplayName);
       localStorage.setItem("active_league_id", selectedLeagueId);
 
       localStorage.getItem(STORE_KEY) || localStorage.setItem(STORE_KEY, "{}");

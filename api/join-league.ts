@@ -12,6 +12,8 @@ type Res = {
   end: (body: string) => void;
 };
 
+const RESERVED_DISPLAY_NAMES = new Set(["you", "manager", "player", "user"]);
+
 function sendJson(res: Res, status: number, body: unknown): void {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -112,6 +114,14 @@ export default async function handler(req: Req, res: Res) {
       return sendJson(res, 401, { error: "You must be logged in to join a private league." });
     }
     const authenticatedUserId = authenticatedUser.id;
+    const submittedDisplayName =
+      typeof payload?.display_name === "string" ? payload.display_name.trim() : "";
+    if (submittedDisplayName && RESERVED_DISPLAY_NAMES.has(submittedDisplayName.toLowerCase())) {
+      return sendJson(res, 422, {
+        error: "Choose a different display name before joining this league.",
+        code: "invalid_display_name",
+      });
+    }
 
     const { data: profile, error: profileLookupError } = await supabase
       .from("profiles")
@@ -128,7 +138,7 @@ export default async function handler(req: Req, res: Res) {
     }
 
     if (!String(profile?.display_name ?? "").trim()) {
-      const displayName = typeof payload?.display_name === "string" ? payload.display_name.trim() : "";
+      const displayName = submittedDisplayName;
       if (!displayName) {
         return sendJson(res, 422, {
           error: "Choose a display name before joining this league.",

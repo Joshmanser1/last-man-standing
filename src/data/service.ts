@@ -11,6 +11,10 @@ import type {
 import mockService from "./mock";
 import { supabaseService } from "./supabaseService";
 
+export type UpsertPlayerOptions = {
+  allowNameOverwrite?: boolean;
+};
+
 /* -----------------------------------------------------------------------------
    Public service interface
 ----------------------------------------------------------------------------- */
@@ -25,7 +29,7 @@ export interface IDataService {
   listUsedTeamIds(leagueId: ID, playerId: ID): Promise<Set<ID>>;
 
   // players & membership
-  upsertPlayer(display_name: string): Promise<Player>;
+  upsertPlayer(display_name: string, options?: UpsertPlayerOptions): Promise<Player>;
   ensureMembership(leagueId: ID, playerId: ID): Promise<Membership>;
 
   // picks
