@@ -113,6 +113,7 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
     }
 
     if (roundStatus === "locked") {
+      let fplFixturesReadyForEvaluation = typeof league.fpl_start_event !== "number";
       if (typeof league.fpl_start_event === "number") {
         try {
           const eventNumber = league.fpl_start_event + currentRoundNumber - 1;
@@ -143,7 +144,7 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
               if (!homeTeamId || !awayTeamId) continue;
 
               let result: "not_set" | "home_win" | "away_win" | "draw" = "not_set";
-              if (fx?.team_h_score != null && fx?.team_a_score != null) {
+              if (fx?.finished === true && fx?.team_h_score != null && fx?.team_a_score != null) {
                 if (fx.team_h_score > fx.team_a_score) result = "home_win";
                 else if (fx.team_a_score > fx.team_h_score) result = "away_win";
                 else result = "draw";
@@ -165,6 +166,10 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
               if (fixtureUpsertError) {
                 actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_error", error: fixtureUpsertError.message });
               } else {
+                fplFixturesReadyForEvaluation =
+                  eventFixtures.length > 0 &&
+                  fixtureUpserts.length === eventFixtures.length &&
+                  eventFixtures.every((fixture: any) => fixture?.finished === true);
                 actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest", event: eventNumber, updated: fixtureUpserts.length });
               }
             }
@@ -174,6 +179,11 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
         } catch (ingestError: any) {
           actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_error", error: ingestError?.message ?? "Fixture ingest failed" });
         }
+      }
+
+      if (!fplFixturesReadyForEvaluation) {
+        actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_results_pending" });
+        return { alreadyRan: false, runKey };
       }
 
       const fixturesResult = await supabase.from("fixtures").select("id, result, winning_team_id").eq("round_id", roundId);
