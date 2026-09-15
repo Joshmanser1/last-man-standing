@@ -51,12 +51,35 @@ type Pick = {
 type Team = { id: ID; league_id: ID; name: string; code: string };
 type ViewMode = "leaderboard" | "matrix" | "eliminations";
 type EliminationRow = {
+  playerId: ID;
   roundNumber: number;
   playerName: string;
   teamName: string;
   reason: string;
   when: string;
 };
+
+const RESERVED_LEGACY_DISPLAY_NAMES = new Set(["you", "manager", "player", "user", "name"]);
+
+function resolveDisplayName(value: unknown): string {
+  const displayName = typeof value === "string" ? value.trim() : "";
+  return displayName && !RESERVED_LEGACY_DISPLAY_NAMES.has(displayName.toLowerCase())
+    ? displayName
+    : "Unknown";
+}
+
+function PlayerName({ name, isViewer }: { name: string; isViewer: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span>{name}</span>
+      {isViewer && (
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+          You
+        </span>
+      )}
+    </span>
+  );
+}
 
 function teamShort(name: string) {
   const cleaned = name.replace(/\s+/g, " ").trim();
@@ -262,13 +285,7 @@ export function Leaderboard() {
           joined_at: "",
         } as Membership);
       const player = playersById.get(playerId);
-      const storedDisplayName = player?.display_name?.trim() ?? "";
-      const display =
-        playerId === viewerId && viewerId
-          ? "You"
-          : storedDisplayName && storedDisplayName.toLowerCase() !== "you"
-            ? storedDisplayName
-            : "Unknown";
+      const display = resolveDisplayName(player?.display_name);
       const alive = !!membership.is_active;
       const state = league?.status === "completed" && alive ? "Winner" : alive ? "Alive" : "Eliminated";
       const lastElimRound = (() => {
@@ -290,7 +307,8 @@ export function Leaderboard() {
         membership,
         playerId,
         name: display,
-        sortName: storedDisplayName || "Unknown",
+        isViewer: playerId === viewerId && !!viewerId,
+        sortName: display,
         alive,
         state,
         sortKey: alive ? 1e9 : lastElimRound ?? 0,
@@ -305,6 +323,21 @@ export function Leaderboard() {
     return filtered;
   }, [memberships, playersById, picksByPlayerByRound, showElims, effectivePicks, league, leagueId, viewerId]);
 
+  const matrixRows = useMemo(() => {
+    const playersWithSubmittedPicks = new Set(
+      picks
+        .filter(
+          (pick) =>
+            pick.league_id === league?.id &&
+            pick.status !== "no-pick" &&
+            typeof pick.team_id === "string" &&
+            teamsById.has(pick.team_id)
+        )
+        .map((pick) => pick.player_id)
+    );
+    return rows.filter((row) => playersWithSubmittedPicks.has(row.playerId));
+  }, [league, picks, rows, teamsById]);
+
   const eliminationRows = useMemo(() => {
     const byRound = new Map<string, Round>(rounds.map((r) => [r.id, r]));
     return effectivePicks
@@ -313,8 +346,9 @@ export function Leaderboard() {
         const round = byRound.get(p.round_id);
         const team = teamsById.get(p.team_id);
         return {
+          playerId: p.player_id,
           roundNumber: round?.round_number ?? 0,
-          playerName: playersById.get(p.player_id)?.display_name ?? "Unknown",
+          playerName: resolveDisplayName(playersById.get(p.player_id)?.display_name),
           teamName: team?.name ?? "\u2014",
           reason: p.reason ?? (p.status === "no-pick" ? "no-pick" : "loss"),
           when: round?.pick_deadline_utc ?? "",
@@ -576,7 +610,7 @@ export function Leaderboard() {
                   {rows.map((r, i) => (
                     <tr key={r.membership.id} className="border-t">
                       <td className="px-3 py-2">{i + 1}</td>
-                      <td className="px-3 py-2">{r.name}</td>
+                      <td className="px-3 py-2"><PlayerName name={r.name} isViewer={r.isViewer} /></td>
                       <td className="px-3 py-2">
                         <span
                           className={
@@ -612,24 +646,18 @@ export function Leaderboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.length === 0 ? (
+                  {matrixRows.length === 0 ? (
                     <tr>
                       <td className="px-3 py-6 text-center text-slate-500" colSpan={2 + maxRound}>
                         No entrants yet. Invite players to join the league.
                       </td>
                     </tr>
-                  ) : effectivePicks.length === 0 ? (
-                    <tr>
-                      <td className="px-3 py-6 text-center text-slate-500" colSpan={2 + maxRound}>
-                        No picks have been submitted yet.
-                      </td>
-                    </tr>
                   ) : (
-                    rows.map((r) => {
+                    matrixRows.map((r) => {
                       const perRound = picksByPlayerByRound.get(r.playerId);
                       return (
                         <tr key={r.membership.id} className="border-t">
-                          <td className="px-3 py-2 whitespace-nowrap">{r.name}</td>
+                          <td className="px-3 py-2 whitespace-nowrap"><PlayerName name={r.name} isViewer={r.isViewer} /></td>
                           <td className="px-3 py-2">
                             <span
                               className={
@@ -672,7 +700,9 @@ export function Leaderboard() {
                   {eliminationRows.map((row, i) => (
                     <tr key={`${row.playerName}:${row.roundNumber}:${i}`} className="border-t">
                       <td className="px-3 py-2">R{row.roundNumber}</td>
-                      <td className="px-3 py-2">{row.playerName}</td>
+                      <td className="px-3 py-2">
+                        <PlayerName name={row.playerName} isViewer={row.playerId === viewerId && !!viewerId} />
+                      </td>
                       <td className="px-3 py-2">{row.teamName}</td>
                       <td className="px-3 py-2 capitalize">
                         {row.reason === "no-pick" ? "No Pick" : row.reason}
