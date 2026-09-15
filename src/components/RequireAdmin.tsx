@@ -1,15 +1,18 @@
 import React, { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
-import { devOn, localAuthed, isCurrentUserSiteAdmin } from "../lib/auth";
+import { devOn, getCurrentUserSiteAdminAccess, localAuthed, type SiteAdminAccess } from "../lib/auth";
 import { rememberPendingAuthRedirect } from "../lib/authRedirect";
 
 type RequireAdminProps = { children: React.ReactElement };
 
 export function RequireAdmin({ children }: RequireAdminProps) {
   const loc = useLocation();
-  const [allowed, setAllowed] = useState<boolean>(devOn() && localAuthed());
+  const [access, setAccess] = useState<SiteAdminAccess | null>(
+    devOn() && localAuthed() ? "allowed" : null
+  );
   const [loading, setLoading] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -17,23 +20,14 @@ export function RequireAdmin({ children }: RequireAdminProps) {
     const syncAccess = async () => {
       if (devOn() && localAuthed()) {
         if (!mounted) return;
-        setAllowed(true);
+        setAccess("allowed");
         setLoading(false);
         return;
       }
 
-      const { data } = await supa.auth.getSession();
+      const accessResult = await getCurrentUserSiteAdminAccess();
       if (!mounted) return;
-
-      if (!data.session?.user?.id) {
-        setAllowed(false);
-        setLoading(false);
-        return;
-      }
-
-      const siteAdmin = await isCurrentUserSiteAdmin();
-      if (!mounted) return;
-      setAllowed(siteAdmin);
+      setAccess(accessResult);
       setLoading(false);
     };
 
@@ -48,7 +42,7 @@ export function RequireAdmin({ children }: RequireAdminProps) {
     const onStore = () => {
       if (!mounted) return;
       if (devOn() && localAuthed()) {
-        setAllowed(true);
+        setAccess("allowed");
         setLoading(false);
       }
     };
@@ -60,12 +54,33 @@ export function RequireAdmin({ children }: RequireAdminProps) {
       window.removeEventListener("lms:store-updated", onStore as EventListener);
       window.removeEventListener("focus", onStore);
     };
-  }, []);
+  }, [retryCount]);
 
   if (loading) return null;
-  if (allowed) return children;
+  if (access === "allowed") return children;
 
-  const next = `${loc.pathname}${loc.search}${loc.hash}`;
-  rememberPendingAuthRedirect(next);
-  return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
+  if (access === "unauthenticated") {
+    const next = `${loc.pathname}${loc.search}${loc.hash}`;
+    rememberPendingAuthRedirect(next);
+    return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
+  }
+
+  if (access === "error") {
+    return (
+      <main role="alert">
+        <h1>Unable to verify admin access</h1>
+        <p>Your session is still protected. Please try again.</p>
+        <button type="button" onClick={() => setRetryCount((count) => count + 1)}>
+          Retry
+        </button>
+      </main>
+    );
+  }
+
+  return (
+    <main role="alert">
+      <h1>Access denied</h1>
+      <p>Your account is not authorised to access the admin area.</p>
+    </main>
+  );
 }

@@ -55,25 +55,31 @@ export function isAdminNow(): boolean {
   return typeof window !== "undefined" && localStorage.getItem("is_admin") === "1";
 }
 
-export async function isCurrentUserSiteAdmin(): Promise<boolean> {
-  if (devOn() && localAuthed()) return true;
+export type SiteAdminAccess = "allowed" | "denied" | "unauthenticated" | "error";
+
+export async function getCurrentUserSiteAdminAccess(): Promise<SiteAdminAccess> {
+  if (devOn() && localAuthed()) return "allowed";
 
   try {
     const { data } = await supa.auth.getSession();
-    if (!data.session?.user?.id) return false;
+    if (!data.session?.user?.id) return "unauthenticated";
 
     const resp = await fetch("/api/admin", {
       method: "POST",
       headers: await getApiHeaders(),
       body: JSON.stringify({ action: "site-admin-status" }),
     });
-    if (!resp.ok) return false;
+    if (!resp.ok) return "error";
 
     const body = (await resp.json()) as { is_site_admin?: boolean };
-    return body?.is_site_admin === true;
+    return body?.is_site_admin === true ? "allowed" : "denied";
   } catch {
-    return false;
+    return "error";
   }
+}
+
+export async function isCurrentUserSiteAdmin(): Promise<boolean> {
+  return (await getCurrentUserSiteAdminAccess()) === "allowed";
 }
 
 /** Async admin check with site_admins as production authority and dev fallback */

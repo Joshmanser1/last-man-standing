@@ -1,5 +1,4 @@
 import { createClient } from "@supabase/supabase-js";
-import { isEligibleForTick, runLeagueLifecycle, type TickAction } from "../server/tickLifecycle";
 
 type Req = {
   method?: string;
@@ -584,11 +583,13 @@ export default async function handler(req: Req, res: Res) {
     }
 
     if (action === "run-league-tick") {
+      // Keep lifecycle code out of routine admin requests such as site-admin-status.
+      const { isEligibleForTick, runLeagueLifecycle } = await import("../server/tickLifecycle");
       if (!isEligibleForTick(league)) {
         return sendJson(res, 409, { error: "League is not eligible for automation." });
       }
 
-      const actions: TickAction[] = [];
+      const actions: Record<string, unknown>[] = [];
       const result = await runLeagueLifecycle({
         supabase: ctx.supabase,
         league,
