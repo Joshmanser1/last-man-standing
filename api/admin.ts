@@ -584,7 +584,7 @@ export default async function handler(req: Req, res: Res) {
 
     if (action === "run-league-tick") {
       // Keep lifecycle code out of routine admin requests such as site-admin-status.
-      const { isEligibleForTick, runLeagueLifecycle } = await import("../server/tickLifecycle");
+      const { isEligibleForTick, runLeagueLifecycle } = await import("../server/tickLifecycle.js");
       if (!isEligibleForTick(league)) {
         return sendJson(res, 409, { error: "League is not eligible for automation." });
       }
