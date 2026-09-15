@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { isEligibleForTick, runLeagueLifecycle, type TickAction } from "../server/tickLifecycle";
 
 type Req = {
   method?: string;
@@ -580,6 +581,27 @@ export default async function handler(req: Req, res: Res) {
     }
     if (!league?.id) {
       return sendJson(res, 404, { error: "League not found" });
+    }
+
+    if (action === "run-league-tick") {
+      if (!isEligibleForTick(league)) {
+        return sendJson(res, 409, { error: "League is not eligible for automation." });
+      }
+
+      const actions: TickAction[] = [];
+      const result = await runLeagueLifecycle({
+        supabase: ctx.supabase,
+        league,
+        now: new Date(),
+        actions,
+      });
+      return sendJson(res, 200, {
+        ok: true,
+        league_id: league.id,
+        processed_leagues: result.alreadyRan ? 0 : 1,
+        actions,
+        ...(result.alreadyRan ? { error: `Already ran for run_key=${result.runKey}` } : {}),
+      });
     }
 
     if (action === "get-managed-theme") {

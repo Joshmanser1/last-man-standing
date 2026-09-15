@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { isEligibleForTick, runLeagueLifecycle, type TickAction } from "../server/tickLifecycle";
 
 type TickResponse = {
   ok: boolean;
@@ -7,7 +8,7 @@ type TickResponse = {
   round_count: number | null;
   timestamp: string;
   duration_ms: number;
-  actions: Array<Record<string, unknown>>;
+  actions: TickAction[];
   processed_leagues: number;
   error?: string;
 };
@@ -37,8 +38,7 @@ function getBearerToken(req: Req): string | null {
     (req.headers as Record<string, string | string[] | undefined>).Authorization;
   if (!authHeader || Array.isArray(authHeader)) return null;
   const [scheme, token] = authHeader.split(" ");
-  if (!scheme || !token) return null;
-  if (scheme.toLowerCase() !== "bearer") return null;
+  if (!scheme || !token || scheme.toLowerCase() !== "bearer") return null;
   return token;
 }
 
@@ -50,36 +50,21 @@ export default async function handler(req: Req, res: Res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
     return sendJson(res, 405, {
-      ok: false,
-      env_check: false,
-      db_connection_check: false,
-      round_count: null,
-      timestamp,
-      duration_ms: Date.now() - started,
-      actions: [],
-      processed_leagues: 0,
-      error: "Method Not Allowed",
+      ok: false, env_check: false, db_connection_check: false, round_count: null, timestamp,
+      duration_ms: Date.now() - started, actions: [], processed_leagues: 0, error: "Method Not Allowed",
     });
   }
 
   const cronSecret = process.env.CRON_SECRET;
   const bearerToken = getBearerToken(req);
   const queryKey = typeof req.query.key === "string" ? req.query.key : null;
-
   if (!cronSecret || (bearerToken !== cronSecret && queryKey !== cronSecret)) {
     const authError = !cronSecret
       ? "Unauthorized: missing CRON_SECRET env configuration"
       : "Unauthorized: provide Authorization: Bearer <CRON_SECRET> or ?key=<CRON_SECRET>";
     return sendJson(res, 401, {
-      ok: false,
-      env_check: false,
-      db_connection_check: false,
-      round_count: null,
-      timestamp,
-      duration_ms: Date.now() - started,
-      actions: [],
-      processed_leagues: 0,
-      error: authError,
+      ok: false, env_check: false, db_connection_check: false, round_count: null, timestamp,
+      duration_ms: Date.now() - started, actions: [], processed_leagues: 0, error: authError,
     });
   }
 
@@ -93,14 +78,8 @@ export default async function handler(req: Req, res: Res) {
 
   if (!envCheck) {
     return sendJson(res, 500, {
-      ok: false,
-      env_check: false,
-      db_connection_check: false,
-      round_count: null,
-      timestamp,
-      duration_ms: Date.now() - started,
-      actions: [],
-      processed_leagues: 0,
+      ok: false, env_check: false, db_connection_check: false, round_count: null, timestamp,
+      duration_ms: Date.now() - started, actions: [], processed_leagues: 0,
       error: "Invalid SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
     });
   }
@@ -116,512 +95,96 @@ export default async function handler(req: Req, res: Res) {
     const bucketMs = 5 * 60 * 1000;
     const bucketStart = new Date(Math.floor(now.getTime() / bucketMs) * bucketMs);
     const runKey = bucketStart.toISOString().slice(0, 16) + "Z";
-
-    const insertResult = await supabase
-      .from("tick_runs")
-      .insert({ run_key: runKey })
-      .select("id")
-      .single();
+    const insertResult = await supabase.from("tick_runs").insert({ run_key: runKey }).select("id").single();
 
     if (insertResult.error) {
       const message = insertResult.error.message ?? "Failed to insert tick run";
       if (insertResult.error.code === "23505") {
         return sendJson(res, 200, {
-          ok: true,
-          env_check: envCheck,
-          db_connection_check: true,
-          round_count: null,
-          timestamp,
-          duration_ms: Date.now() - started,
-          actions: [],
-          processed_leagues: 0,
+          ok: true, env_check: envCheck, db_connection_check: true, round_count: null, timestamp,
+          duration_ms: Date.now() - started, actions: [], processed_leagues: 0,
           error: `Already ran for run_key=${runKey}`,
         });
       }
       return sendJson(res, 502, {
-        ok: false,
-        env_check: envCheck,
-        db_connection_check: false,
-        round_count: null,
-        timestamp,
-        duration_ms: Date.now() - started,
-        actions: [],
-        processed_leagues: 0,
-        error: message,
+        ok: false, env_check: envCheck, db_connection_check: false, round_count: null, timestamp,
+        duration_ms: Date.now() - started, actions: [], processed_leagues: 0, error: message,
       });
     }
 
     tickRunId = insertResult.data.id;
     const connectionTest = await supabase.from("rounds").select("id", { head: true }).limit(1);
     const dbConnectionCheck = !connectionTest.error;
-
     if (!dbConnectionCheck) {
-      if (tickRunId) {
-        await supabase
-          .from("tick_runs")
-          .update({ status: "error", completed_at: new Date().toISOString(), error: connectionTest.error?.message ?? "DB connectivity check failed" })
-          .eq("id", tickRunId);
-      }
+      await supabase.from("tick_runs").update({
+        status: "error", completed_at: new Date().toISOString(),
+        error: connectionTest.error?.message ?? "DB connectivity check failed",
+      }).eq("id", tickRunId);
       return sendJson(res, 502, {
-        ok: false,
-        env_check: envCheck,
-        db_connection_check: dbConnectionCheck,
-        round_count: null,
-        timestamp,
-        duration_ms: Date.now() - started,
-        actions: [],
-        processed_leagues: 0,
+        ok: false, env_check: envCheck, db_connection_check: false, round_count: null, timestamp,
+        duration_ms: Date.now() - started, actions: [], processed_leagues: 0,
         error: connectionTest.error?.message ?? "DB connectivity check failed",
       });
     }
 
     const countResult = await supabase.from("rounds").select("id", { head: true, count: "exact" });
     if (countResult.error) {
-      if (tickRunId) {
-        await supabase
-          .from("tick_runs")
-          .update({ status: "error", completed_at: new Date().toISOString(), error: countResult.error.message })
-          .eq("id", tickRunId);
-      }
+      await supabase.from("tick_runs").update({
+        status: "error", completed_at: new Date().toISOString(), error: countResult.error.message,
+      }).eq("id", tickRunId);
       return sendJson(res, 502, {
-        ok: false,
-        env_check: envCheck,
-        db_connection_check: dbConnectionCheck,
-        round_count: null,
-        timestamp,
-        duration_ms: Date.now() - started,
-        actions: [],
-        processed_leagues: 0,
-        error: countResult.error.message,
+        ok: false, env_check: envCheck, db_connection_check: dbConnectionCheck, round_count: null, timestamp,
+        duration_ms: Date.now() - started, actions: [], processed_leagues: 0, error: countResult.error.message,
       });
     }
 
-    const actions: Array<Record<string, unknown>> = [];
+    const actions: TickAction[] = [];
     let processedLeagues = 0;
     const leaguesResult = await supabase
       .from("leagues")
       .select("id, status, current_round, fpl_start_event, is_test")
       .is("deleted_at", null);
-
     if (leaguesResult.error) {
-      if (tickRunId) {
-        await supabase
-          .from("tick_runs")
-          .update({ status: "error", completed_at: new Date().toISOString(), error: leaguesResult.error.message })
-          .eq("id", tickRunId);
-      }
+      await supabase.from("tick_runs").update({
+        status: "error", completed_at: new Date().toISOString(), error: leaguesResult.error.message,
+      }).eq("id", tickRunId);
       return sendJson(res, 502, {
-        ok: false,
-        env_check: envCheck,
-        db_connection_check: dbConnectionCheck,
-        round_count: countResult.count ?? 0,
-        timestamp,
-        duration_ms: Date.now() - started,
-        actions,
-        processed_leagues: processedLeagues,
-        error: leaguesResult.error.message,
+        ok: false, env_check: envCheck, db_connection_check: dbConnectionCheck,
+        round_count: countResult.count ?? 0, timestamp, duration_ms: Date.now() - started,
+        actions, processed_leagues: processedLeagues, error: leaguesResult.error.message,
       });
     }
 
-    const activeLeagues = (leaguesResult.data ?? []).filter((league: any) => {
-      const status = league.status as string | null;
-      return status == null || status === "upcoming" || status === "active" || status === "running";
-    });
-
-    for (const league of activeLeagues) {
+    for (const league of (leaguesResult.data ?? []).filter(isEligibleForTick)) {
       processedLeagues += 1;
       try {
-        const leagueId = league.id as string;
-        const currentRoundNumber = league.current_round as number | null;
-        if (currentRoundNumber == null) {
-          actions.push({ league_id: leagueId, step: "skip_no_current_round" });
-          continue;
-        }
-
-        const roundResult = await supabase
-          .from("rounds")
-          .select("id, status, pick_deadline_utc, round_number")
-          .eq("league_id", leagueId)
-          .eq("round_number", currentRoundNumber)
-          .maybeSingle();
-
-        if (roundResult.error) {
-          actions.push({ league_id: leagueId, step: "round_lookup_error", error: roundResult.error.message });
-          continue;
-        }
-
-        if (!roundResult.data) {
-          actions.push({ league_id: leagueId, step: "round_missing", round_number: currentRoundNumber });
-          continue;
-        }
-
-        const roundId = roundResult.data.id as string;
-        let roundStatus = (roundResult.data.status as string | null) ?? "upcoming";
-        const pickDeadline = roundResult.data.pick_deadline_utc ? new Date(roundResult.data.pick_deadline_utc) : null;
-        if ((league.status as string | null) === "upcoming" && (roundStatus === "locked" || roundStatus === "completed")) {
-          await supabase
-            .from("leagues")
-            .update({ status: "active" })
-            .eq("id", leagueId)
-            .eq("status", "upcoming");
-        }
-
-        if (roundStatus === "upcoming" && pickDeadline && pickDeadline.getTime() <= now.getTime()) {
-          const lockRound = await supabase
-            .from("rounds")
-            .update({ status: "locked" })
-            .eq("id", roundId)
-            .eq("status", "upcoming");
-
-          if (lockRound.error) {
-            actions.push({ league_id: leagueId, round_id: roundId, step: "lock_failed", error: lockRound.error.message });
-          } else {
-            roundStatus = "locked";
-            await supabase
-              .from("leagues")
-              .update({ status: "active" })
-              .eq("id", leagueId)
-              .eq("status", "upcoming");
-            const membersResult = await supabase
-              .from("memberships")
-              .select("player_id")
-              .eq("league_id", leagueId)
-              .eq("is_active", true);
-            const picksForRound = await supabase
-              .from("picks")
-              .select("player_id")
-              .eq("round_id", roundId);
-
-            if (membersResult.error) {
-              actions.push({ league_id: leagueId, round_id: roundId, step: "memberships_error", error: membersResult.error.message });
-            } else if (picksForRound.error) {
-              actions.push({ league_id: leagueId, round_id: roundId, step: "picks_error", error: picksForRound.error.message });
-            } else {
-              const pickedIds = new Set<string>(
-                (picksForRound.data ?? [])
-                  .map((p: any) => p.player_id)
-                  .filter((id: any) => typeof id === "string")
-              );
-              const missingPlayerIds = (membersResult.data ?? [])
-                .map((m: any) => m.player_id)
-                .filter((id: any) => typeof id === "string" && !pickedIds.has(id));
-
-              if (missingPlayerIds.length > 0) {
-                const { error: deactivateError } = await supabase
-                  .from("memberships")
-                  .update({ is_active: false })
-                  .eq("league_id", leagueId)
-                  .in("player_id", missingPlayerIds);
-                if (deactivateError) {
-                  actions.push({ league_id: leagueId, round_id: roundId, step: "no_pick_deactivate_failed", error: deactivateError.message });
-                } else {
-                  actions.push({ league_id: leagueId, round_id: roundId, step: "no_pick_members_eliminated", count: missingPlayerIds.length });
-                }
-              }
-            }
-            actions.push({ league_id: leagueId, round_id: roundId, step: "lock" });
-          }
-        }
-
-        if (roundStatus === "locked") {
-          if (typeof (league as any).fpl_start_event === "number") {
-            try {
-              const eventNumber = ((league as any).fpl_start_event as number) + currentRoundNumber - 1;
-              const [bootstrapRes, eventFixturesRes, leagueTeamsRes] = await Promise.all([
-                fetch("https://fantasy.premierleague.com/api/bootstrap-static/"),
-                fetch(`https://fantasy.premierleague.com/api/fixtures/?event=${eventNumber}`),
-                supabase.from("teams").select("id, code").eq("league_id", leagueId),
-              ]);
-
-              if (bootstrapRes.ok && eventFixturesRes.ok && !leagueTeamsRes.error) {
-                const bootstrap = (await bootstrapRes.json()) as any;
-                const eventFixtures = (await eventFixturesRes.json()) as any[];
-                const fplCodeById = new Map<number, string>(
-                  (bootstrap?.teams ?? [])
-                    .filter((t: any) => typeof t?.id === "number")
-                    .map((t: any) => [t.id as number, String(t.short_name ?? "").toUpperCase()])
-                );
-                const teamIdByCode = new Map<string, string>(
-                  (leagueTeamsRes.data ?? []).map((t: any) => [String(t.code ?? "").toUpperCase(), t.id as string])
-                );
-
-                const fixtureUpserts: Array<Record<string, unknown>> = [];
-                for (const fx of eventFixtures ?? []) {
-                  const homeCode = fplCodeById.get(Number(fx?.team_h));
-                  const awayCode = fplCodeById.get(Number(fx?.team_a));
-                  const homeTeamId = homeCode ? teamIdByCode.get(homeCode) : undefined;
-                  const awayTeamId = awayCode ? teamIdByCode.get(awayCode) : undefined;
-                  if (!homeTeamId || !awayTeamId) continue;
-
-                  let result: "not_set" | "home_win" | "away_win" | "draw" = "not_set";
-                  if (fx?.team_h_score != null && fx?.team_a_score != null) {
-                    if (fx.team_h_score > fx.team_a_score) result = "home_win";
-                    else if (fx.team_a_score > fx.team_h_score) result = "away_win";
-                    else result = "draw";
-                  }
-
-                  fixtureUpserts.push({
-                    round_id: roundId,
-                    home_team_id: homeTeamId,
-                    away_team_id: awayTeamId,
-                    result,
-                    winning_team_id: result === "home_win" ? homeTeamId : result === "away_win" ? awayTeamId : null,
-                  });
-                }
-
-                if (fixtureUpserts.length > 0) {
-                  const { error: fixtureUpsertError } = await supabase
-                    .from("fixtures")
-                    .upsert(fixtureUpserts as any, { onConflict: "round_id,home_team_id,away_team_id" });
-                  if (fixtureUpsertError) {
-                    actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_error", error: fixtureUpsertError.message });
-                  } else {
-                    actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest", event: eventNumber, updated: fixtureUpserts.length });
-                  }
-                }
-              } else {
-                actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_skipped", event: eventNumber });
-              }
-            } catch (ingestError: any) {
-              actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_error", error: ingestError?.message ?? "Fixture ingest failed" });
-            }
-          }
-
-          const fixturesResult = await supabase
-            .from("fixtures")
-            .select("id, result, winning_team_id")
-            .eq("round_id", roundId);
-
-          if (fixturesResult.error) {
-            actions.push({ league_id: leagueId, round_id: roundId, step: "fixtures_error", error: fixturesResult.error.message });
-            continue;
-          }
-
-          const fixtures = fixturesResult.data ?? [];
-          if (fixtures.length === 0) {
-            actions.push({ league_id: leagueId, round_id: roundId, step: "fixtures_missing" });
-          } else {
-            const unresolved = fixtures.some((fixture: any) => {
-              const result = fixture.result as string | null;
-              const winningTeamId = fixture.winning_team_id as string | null;
-              if (!result || result === "not_set" || result === "pending") return true;
-              if ((result === "home_win" || result === "away_win") && !winningTeamId) return true;
-              return false;
-            });
-
-            if (!unresolved) {
-              const winners = new Set<string>();
-              for (const fixture of fixtures) {
-                if (fixture.winning_team_id) winners.add(fixture.winning_team_id as string);
-              }
-
-              const picksResult = await supabase
-                .from("picks")
-                .select("id, team_id, status, player_id")
-                .eq("round_id", roundId);
-
-              if (picksResult.error) {
-                actions.push({ league_id: leagueId, round_id: roundId, step: "picks_error", error: picksResult.error.message });
-                continue;
-              }
-
-              let survivors = 0;
-              const eliminatedPlayerIds = new Set<string>();
-              const noPickPlayerIds = new Set<string>();
-              for (const pick of picksResult.data ?? []) {
-                if (pick.status === "no-pick") {
-                  if (pick.player_id) {
-                    noPickPlayerIds.add(pick.player_id as string);
-                  }
-                  continue;
-                }
-                const teamId = pick.team_id as string | null;
-                if (teamId && winners.has(teamId)) {
-                  await supabase
-                    .from("picks")
-                    .update({ status: "through", reason: null })
-                    .eq("id", pick.id);
-                  survivors += 1;
-                } else {
-                  await supabase
-                    .from("picks")
-                    .update({ status: "eliminated", reason: "loss" })
-                    .eq("id", pick.id);
-                  if (pick.player_id) {
-                    eliminatedPlayerIds.add(pick.player_id as string);
-                  }
-                }
-              }
-
-              const deactivateIds = new Set<string>([
-                ...Array.from(eliminatedPlayerIds),
-                ...Array.from(noPickPlayerIds),
-              ]);
-
-              if (deactivateIds.size > 0) {
-                const { error: membershipError } = await supabase
-                  .from("memberships")
-                  .update({ is_active: false })
-                  .eq("league_id", leagueId)
-                  .in("player_id", Array.from(deactivateIds));
-                if (membershipError) {
-                  actions.push({ league_id: leagueId, round_id: roundId, step: "deactivate_failed", error: membershipError.message });
-                }
-              }
-
-              await supabase
-                .from("rounds")
-                .update({ status: "completed" })
-                .eq("id", roundId)
-                .eq("status", "locked");
-
-              roundStatus = "completed";
-              actions.push({ league_id: leagueId, round_id: roundId, step: "evaluate_complete", survivors });
-            }
-          }
-        }
-
-        if (roundStatus === "completed") {
-          const survivorsResult = await supabase
-            .from("picks")
-            .select("id", { count: "exact", head: true })
-            .eq("round_id", roundId)
-            .eq("status", "through");
-
-          if (survivorsResult.error) {
-            actions.push({ league_id: leagueId, round_id: roundId, step: "survivor_count_error", error: survivorsResult.error.message });
-            continue;
-          }
-
-          const survivors = survivorsResult.count ?? 0;
-          if (survivors === 1) {
-            const winnerResult = await supabase
-              .from("picks")
-              .select("player_id")
-              .eq("round_id", roundId)
-              .eq("status", "through")
-              .limit(1)
-              .maybeSingle();
-            const winnerPlayerId = winnerResult.data?.player_id ?? null;
-            await supabase
-              .from("leagues")
-              .update({ status: "completed" })
-              .eq("id", leagueId);
-            actions.push({ league_id: leagueId, step: "winner", winner_player_id: winnerPlayerId });
-          } else if (survivors === 0) {
-            actions.push({ league_id: leagueId, step: "rollover_zero_survivors" });
-          } else {
-            const nextRoundNumber = currentRoundNumber + 1;
-            const nextRoundCheck = await supabase
-              .from("rounds")
-              .select("id")
-              .eq("league_id", leagueId)
-              .eq("round_number", nextRoundNumber)
-              .maybeSingle();
-            let canAdvance = false;
-
-            if (nextRoundCheck.error) {
-              actions.push({ league_id: leagueId, step: "next_round_lookup_error", error: nextRoundCheck.error.message });
-            } else if (!nextRoundCheck.data) {
-              let nextDeadlineUtc = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
-              if ((league as any).is_test === true && typeof (league as any).fpl_start_event === "number") {
-                try {
-                  const nextEventNumber =
-                    ((league as any).fpl_start_event as number) + nextRoundNumber - 1;
-                  const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/");
-                  if (bootstrapRes.ok) {
-                    const bootstrap = (await bootstrapRes.json()) as any;
-                    const nextEvent = (bootstrap?.events ?? []).find(
-                      (event: any) => event?.id === nextEventNumber
-                    );
-                    if (nextEvent?.deadline_time) {
-                      nextDeadlineUtc = String(nextEvent.deadline_time);
-                    } else {
-                      actions.push({
-                        league_id: leagueId,
-                        step: "test_round_deadline_missing",
-                        next_round: nextRoundNumber,
-                        event: nextEventNumber,
-                      });
-                    }
-                  }
-                } catch (deadlineError: any) {
-                  actions.push({
-                    league_id: leagueId,
-                    step: "test_round_deadline_lookup_error",
-                    next_round: nextRoundNumber,
-                    error: deadlineError?.message ?? "Deadline lookup failed",
-                  });
-                }
-              }
-              const { error: insertRoundError } = await supabase
-                .from("rounds")
-                .insert({
-                  id: crypto.randomUUID(),
-                  league_id: leagueId,
-                  round_number: nextRoundNumber,
-                  name: `Round ${nextRoundNumber}`,
-                  status: "upcoming",
-                  pick_deadline_utc: nextDeadlineUtc,
-                });
-              if (insertRoundError) {
-                actions.push({ league_id: leagueId, step: "next_round_create_failed", error: insertRoundError.message, next_round: nextRoundNumber });
-              } else {
-                canAdvance = true;
-              }
-            } else {
-              canAdvance = true;
-            }
-
-            if (canAdvance) {
-              await supabase
-                .from("leagues")
-                .update({ current_round: nextRoundNumber })
-                .eq("id", leagueId);
-              actions.push({ league_id: leagueId, step: "advance", next_round: nextRoundNumber });
-            }
-          }
-        }
+        await runLeagueLifecycle({ supabase, league, now, actions });
       } catch (leagueError: any) {
-        actions.push({ league_id: league.id, step: "league_error", error: leagueError?.message ?? "League tick failed" });
+        actions.push({
+          league_id: league.id,
+          step: "league_error",
+          error: leagueError?.message ?? "League tick failed",
+        });
       }
     }
 
-    if (tickRunId) {
-      await supabase
-        .from("tick_runs")
-        .update({ status: "ok", completed_at: new Date().toISOString() })
-        .eq("id", tickRunId);
-    }
-
+    await supabase.from("tick_runs").update({ status: "ok", completed_at: new Date().toISOString() }).eq("id", tickRunId);
     return sendJson(res, 200, {
-      ok: true,
-      env_check: envCheck,
-      db_connection_check: dbConnectionCheck,
-      round_count: countResult.count ?? 0,
-      timestamp,
-      duration_ms: Date.now() - started,
-      actions,
-      processed_leagues: processedLeagues,
+      ok: true, env_check: envCheck, db_connection_check: dbConnectionCheck,
+      round_count: countResult.count ?? 0, timestamp, duration_ms: Date.now() - started,
+      actions, processed_leagues: processedLeagues,
     });
   } catch (error: any) {
     if (supabase && tickRunId) {
       try {
-        await supabase
-          .from("tick_runs")
-          .update({ status: "error", completed_at: new Date().toISOString(), error: error?.message ?? "DB check failed" })
-          .eq("id", tickRunId);
+        await supabase.from("tick_runs").update({
+          status: "error", completed_at: new Date().toISOString(), error: error?.message ?? "DB check failed",
+        }).eq("id", tickRunId);
       } catch {}
     }
     return sendJson(res, 502, {
-      ok: false,
-      env_check: envCheck,
-      db_connection_check: false,
-      round_count: null,
-      timestamp,
-      duration_ms: Date.now() - started,
-      actions: [],
-      processed_leagues: 0,
+      ok: false, env_check: envCheck, db_connection_check: false, round_count: null, timestamp,
+      duration_ms: Date.now() - started, actions: [], processed_leagues: 0,
       error: error?.message ?? "DB check failed",
     });
   }

@@ -147,20 +147,21 @@ function buildManagedThemePayload(draft: ManagedThemeDraft): Record<string, unkn
 
 export function Admin() {
   async function runTickNow() {
+    if (!selectedLeagueId) {
+      alert("Select a league before running automation.");
+      return;
+    }
     try {
-      const key =
-        (import.meta as any)?.env?.VITE_CRON_SECRET ||
-        localStorage.getItem("cron_secret") ||
-        "";
-
-      const res = await fetch("/api/tick?key=" + encodeURIComponent(key), {
-        cache: "no-store",
+      const res = await postJsonWithAuth("/api/admin", {
+        action: "run-league-tick",
+        league_id: selectedLeagueId,
       });
-
       const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Failed to run selected league automation.");
       alert(JSON.stringify(json, null, 2));
+      setRefreshTick((value) => value + 1);
     } catch (err: any) {
-      alert(err?.message ?? "Failed to run tick.");
+      alert(err?.message ?? "Failed to run selected league automation.");
     }
   }
   const [allLeagues, setAllLeagues] = useState<any[]>([]);
@@ -1735,11 +1736,11 @@ export function Admin() {
               onClick={runTickNow}
               className="rounded-lg bg-emerald-600 text-white px-4 py-2 hover:bg-emerald-700"
             >
-              Run Automation Now
+              Run Selected League Automation
             </button>
 
             <span className="text-xs text-slate-500">
-              Manually triggers cron lifecycle: lock -&gt; evaluate -&gt; advance.
+              Runs lock -&gt; evaluate -&gt; advance for the selected league only.
             </span>
           </div>
         </div>
