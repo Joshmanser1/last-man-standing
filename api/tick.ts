@@ -143,6 +143,8 @@ export default async function handler(req: Req, res: Res) {
     const leaguesResult = await supabase
       .from("leagues")
       .select("id, status, current_round, fpl_start_event, is_test")
+      .eq("automation_enabled", true)
+      .not("is_test", "is", true)
       .is("deleted_at", null);
     if (leaguesResult.error) {
       await supabase.from("tick_runs").update({
