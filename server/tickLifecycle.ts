@@ -26,6 +26,103 @@ export function isEligibleForTick(league: TickLeague): boolean {
   return status == null || status === "upcoming" || status === "active" || status === "running";
 }
 
+async function ingestFplRoundFixtures(args: {
+  supabase: any;
+  leagueId: string;
+  roundId: string;
+  eventNumber: number;
+  includeFinalResults: boolean;
+  actions: TickAction[];
+}) {
+  const { supabase, leagueId, roundId, eventNumber, includeFinalResults, actions } = args;
+  try {
+    const [bootstrapRes, eventFixturesRes, leagueTeamsRes] = await Promise.all([
+      fetch("https://fantasy.premierleague.com/api/bootstrap-static/"),
+      fetch(`https://fantasy.premierleague.com/api/fixtures/?event=${eventNumber}`),
+      supabase.from("teams").select("id, code").eq("league_id", leagueId),
+    ]);
+
+    if (!bootstrapRes.ok || !eventFixturesRes.ok || leagueTeamsRes.error) {
+      actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_skipped", event: eventNumber });
+      return { readyForEvaluation: false };
+    }
+
+    const bootstrap = (await bootstrapRes.json()) as any;
+    const eventFixtures = (await eventFixturesRes.json()) as any[];
+    if (!Array.isArray(eventFixtures) || eventFixtures.length === 0) {
+      actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_skipped", event: eventNumber });
+      return { readyForEvaluation: false };
+    }
+
+    const fplCodeById = new Map<number, string>(
+      (bootstrap?.teams ?? [])
+        .filter((team: any) => typeof team?.id === "number")
+        .map((team: any) => [team.id as number, String(team.short_name ?? "").toUpperCase()])
+    );
+    const teamIdByCode = new Map<string, string>(
+      (leagueTeamsRes.data ?? []).map((team: any) => [String(team.code ?? "").toUpperCase(), team.id as string])
+    );
+
+    const fixtureUpserts: Array<Record<string, unknown>> = [];
+    for (const fixture of eventFixtures) {
+      const homeCode = fplCodeById.get(Number(fixture?.team_h));
+      const awayCode = fplCodeById.get(Number(fixture?.team_a));
+      const homeTeamId = homeCode ? teamIdByCode.get(homeCode) : undefined;
+      const awayTeamId = awayCode ? teamIdByCode.get(awayCode) : undefined;
+      if (!homeTeamId || !awayTeamId) continue;
+
+      let result: "not_set" | "home_win" | "away_win" | "draw" = "not_set";
+      if (
+        includeFinalResults &&
+        fixture?.finished === true &&
+        fixture?.team_h_score != null &&
+        fixture?.team_a_score != null
+      ) {
+        if (fixture.team_h_score > fixture.team_a_score) result = "home_win";
+        else if (fixture.team_a_score > fixture.team_h_score) result = "away_win";
+        else result = "draw";
+      }
+
+      fixtureUpserts.push({
+        round_id: roundId,
+        home_team_id: homeTeamId,
+        away_team_id: awayTeamId,
+        kickoff_utc: fixture?.kickoff_time ?? null,
+        result,
+        winning_team_id: result === "home_win" ? homeTeamId : result === "away_win" ? awayTeamId : null,
+      });
+    }
+
+    if (fixtureUpserts.length !== eventFixtures.length) {
+      actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_incomplete", event: eventNumber });
+      return { readyForEvaluation: false };
+    }
+
+    const { error: fixtureUpsertError } = await supabase
+      .from("fixtures")
+      .upsert(fixtureUpserts as any, { onConflict: "round_id,home_team_id,away_team_id" });
+    if (fixtureUpsertError) {
+      actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_error", error: fixtureUpsertError.message });
+      return { readyForEvaluation: false };
+    }
+
+    actions.push({
+      league_id: leagueId,
+      round_id: roundId,
+      step: includeFinalResults ? "fixture_ingest" : "fixture_schedule_seed",
+      event: eventNumber,
+      updated: fixtureUpserts.length,
+    });
+    return {
+      readyForEvaluation:
+        includeFinalResults && eventFixtures.every((fixture: any) => fixture?.finished === true),
+    };
+  } catch (ingestError: any) {
+    actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_error", error: ingestError?.message ?? "Fixture ingest failed" });
+    return { readyForEvaluation: false };
+  }
+}
+
 export async function runLeagueLifecycle({ supabase, league, now, actions }: RunLeagueLifecycleArgs) {
   const leagueId = league.id;
   const runKey = getLeagueRunKey(leagueId, now);
@@ -68,6 +165,31 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
     const pickDeadline = roundResult.data.pick_deadline_utc ? new Date(roundResult.data.pick_deadline_utc) : null;
     if (league.status === "upcoming" && (roundStatus === "locked" || roundStatus === "completed")) {
       await supabase.from("leagues").update({ status: "active" }).eq("id", leagueId).eq("status", "upcoming");
+    }
+
+    if (
+      roundStatus === "upcoming" &&
+      league.is_test !== true &&
+      typeof league.fpl_start_event === "number" &&
+      (!pickDeadline || pickDeadline.getTime() > now.getTime())
+    ) {
+      const fixturesResult = await supabase
+        .from("fixtures")
+        .select("id", { count: "exact", head: true })
+        .eq("round_id", roundId);
+      if (fixturesResult.error) {
+        actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_schedule_lookup_error", error: fixturesResult.error.message });
+      } else if ((fixturesResult.count ?? 0) === 0) {
+        const eventNumber = league.fpl_start_event + currentRoundNumber - 1;
+        await ingestFplRoundFixtures({
+          supabase,
+          leagueId,
+          roundId,
+          eventNumber,
+          includeFinalResults: false,
+          actions,
+        });
+      }
     }
 
     if (roundStatus === "upcoming" && pickDeadline && pickDeadline.getTime() <= now.getTime()) {
@@ -115,70 +237,16 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
     if (roundStatus === "locked") {
       let fplFixturesReadyForEvaluation = typeof league.fpl_start_event !== "number";
       if (typeof league.fpl_start_event === "number") {
-        try {
-          const eventNumber = league.fpl_start_event + currentRoundNumber - 1;
-          const [bootstrapRes, eventFixturesRes, leagueTeamsRes] = await Promise.all([
-            fetch("https://fantasy.premierleague.com/api/bootstrap-static/"),
-            fetch(`https://fantasy.premierleague.com/api/fixtures/?event=${eventNumber}`),
-            supabase.from("teams").select("id, code").eq("league_id", leagueId),
-          ]);
-
-          if (bootstrapRes.ok && eventFixturesRes.ok && !leagueTeamsRes.error) {
-            const bootstrap = (await bootstrapRes.json()) as any;
-            const eventFixtures = (await eventFixturesRes.json()) as any[];
-            const fplCodeById = new Map<number, string>(
-              (bootstrap?.teams ?? [])
-                .filter((t: any) => typeof t?.id === "number")
-                .map((t: any) => [t.id as number, String(t.short_name ?? "").toUpperCase()])
-            );
-            const teamIdByCode = new Map<string, string>(
-              (leagueTeamsRes.data ?? []).map((t: any) => [String(t.code ?? "").toUpperCase(), t.id as string])
-            );
-
-            const fixtureUpserts: Array<Record<string, unknown>> = [];
-            for (const fx of eventFixtures ?? []) {
-              const homeCode = fplCodeById.get(Number(fx?.team_h));
-              const awayCode = fplCodeById.get(Number(fx?.team_a));
-              const homeTeamId = homeCode ? teamIdByCode.get(homeCode) : undefined;
-              const awayTeamId = awayCode ? teamIdByCode.get(awayCode) : undefined;
-              if (!homeTeamId || !awayTeamId) continue;
-
-              let result: "not_set" | "home_win" | "away_win" | "draw" = "not_set";
-              if (fx?.finished === true && fx?.team_h_score != null && fx?.team_a_score != null) {
-                if (fx.team_h_score > fx.team_a_score) result = "home_win";
-                else if (fx.team_a_score > fx.team_h_score) result = "away_win";
-                else result = "draw";
-              }
-
-              fixtureUpserts.push({
-                round_id: roundId,
-                home_team_id: homeTeamId,
-                away_team_id: awayTeamId,
-                result,
-                winning_team_id: result === "home_win" ? homeTeamId : result === "away_win" ? awayTeamId : null,
-              });
-            }
-
-            if (fixtureUpserts.length > 0) {
-              const { error: fixtureUpsertError } = await supabase
-                .from("fixtures")
-                .upsert(fixtureUpserts as any, { onConflict: "round_id,home_team_id,away_team_id" });
-              if (fixtureUpsertError) {
-                actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_error", error: fixtureUpsertError.message });
-              } else {
-                fplFixturesReadyForEvaluation =
-                  eventFixtures.length > 0 &&
-                  fixtureUpserts.length === eventFixtures.length &&
-                  eventFixtures.every((fixture: any) => fixture?.finished === true);
-                actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest", event: eventNumber, updated: fixtureUpserts.length });
-              }
-            }
-          } else {
-            actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_skipped", event: eventNumber });
-          }
-        } catch (ingestError: any) {
-          actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_error", error: ingestError?.message ?? "Fixture ingest failed" });
-        }
+        const eventNumber = league.fpl_start_event + currentRoundNumber - 1;
+        const ingestResult = await ingestFplRoundFixtures({
+          supabase,
+          leagueId,
+          roundId,
+          eventNumber,
+          includeFinalResults: true,
+          actions,
+        });
+        fplFixturesReadyForEvaluation = ingestResult.readyForEvaluation;
       }
 
       if (!fplFixturesReadyForEvaluation) {
