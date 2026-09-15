@@ -171,15 +171,6 @@ async function fetchFplJson<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-function getRoundDeadline(startDateUtc: string) {
-  const roundDeadline = new Date(startDateUtc);
-  if (Number.isNaN(roundDeadline.getTime())) {
-    throw new Error("start_date_utc must be a valid ISO date");
-  }
-  roundDeadline.setHours(17, 0, 0, 0);
-  return roundDeadline.toISOString();
-}
-
 async function createFounderLeague(ctx: AuthedContext, payload: any, res: Res) {
   const name = typeof payload?.name === "string" ? payload.name.trim() : "";
   const startDateUtc =
@@ -198,6 +189,16 @@ async function createFounderLeague(ctx: AuthedContext, payload: any, res: Res) {
     return sendJson(res, joinCodeResult.status, joinCodeResult.body);
   }
   const joinCode = joinCodeResult.joinCode;
+
+  const bootstrap = await fetchFplJson<{
+    teams?: Array<{ id: number; name: string; short_name: string }>;
+    events?: Array<{ id: number; deadline_time?: string | null }>;
+  }>("/bootstrap-static/");
+  const roundDeadlineIso = (bootstrap.events ?? []).find((event) => event.id === fplStartEvent)
+    ?.deadline_time;
+  if (!roundDeadlineIso) {
+    return sendJson(res, 502, { error: "FPL event deadline is unavailable" });
+  }
 
   const leagueId = crypto.randomUUID();
   const round1Id = crypto.randomUUID();
@@ -241,7 +242,6 @@ async function createFounderLeague(ctx: AuthedContext, payload: any, res: Res) {
     });
   }
 
-  const roundDeadlineIso = getRoundDeadline(startDateUtc);
   const { data: round, error: roundError } = await ctx.supabase
     .from("rounds")
     .insert({
@@ -263,9 +263,6 @@ async function createFounderLeague(ctx: AuthedContext, payload: any, res: Res) {
     });
   }
 
-  const bootstrap = await fetchFplJson<{
-    teams?: Array<{ id: number; name: string; short_name: string }>;
-  }>("/bootstrap-static/");
   const fplTeams = bootstrap.teams ?? [];
   const teamRows = fplTeams.map((team) => {
     const code = String(team.short_name ?? "").toUpperCase();

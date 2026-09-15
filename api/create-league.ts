@@ -206,6 +206,16 @@ export default async function handler(req: Req, res: Res) {
       }
     }
 
+    const bootstrap = await fetchFplJson<{
+      teams?: Array<{ id: number; name: string; short_name: string }>;
+      events?: Array<{ id: number; deadline_time?: string | null }>;
+    }>("/bootstrap-static/");
+    const officialDeadline = (bootstrap.events ?? []).find((event) => event.id === fplStartEvent)
+      ?.deadline_time;
+    if (!isTest && !officialDeadline) {
+      return sendJson(res, 502, { error: "FPL event deadline is unavailable" });
+    }
+
     const leagueId = crypto.randomUUID();
     const { data: league, error } = await supabase
       .from("leagues")
@@ -250,15 +260,19 @@ export default async function handler(req: Req, res: Res) {
     }
 
     const round1Id = crypto.randomUUID();
-    const roundDeadline = new Date(startDateUtc);
-    roundDeadline.setHours(17, 0, 0, 0);
+    let roundDeadlineIso = officialDeadline!;
+    if (isTest) {
+      const roundDeadline = new Date(startDateUtc);
+      roundDeadline.setHours(17, 0, 0, 0);
+      roundDeadlineIso = roundDeadline.toISOString();
+    }
 
     const { error: roundError } = await supabase.from("rounds").insert({
       id: round1Id,
       league_id: leagueId,
       round_number: 1,
       name: "Round 1",
-      pick_deadline_utc: roundDeadline.toISOString(),
+      pick_deadline_utc: roundDeadlineIso,
       status: "upcoming",
     });
     if (roundError) {
@@ -270,9 +284,6 @@ export default async function handler(req: Req, res: Res) {
       });
     }
 
-    const bootstrap = await fetchFplJson<{ teams?: Array<{ id: number; name: string; short_name: string }> }>(
-      "/bootstrap-static/"
-    );
     const fplTeams = bootstrap.teams ?? [];
     const teamRows = fplTeams.map((team) => {
       const code = String(team.short_name ?? "").toUpperCase();

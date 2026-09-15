@@ -266,8 +266,10 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
         if (nextRoundCheck.error) {
           actions.push({ league_id: leagueId, step: "next_round_lookup_error", error: nextRoundCheck.error.message });
         } else if (!nextRoundCheck.data) {
-          let nextDeadlineUtc = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
-          if (league.is_test === true && typeof league.fpl_start_event === "number") {
+          let nextDeadlineUtc = league.is_test === true
+            ? new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+            : null;
+          if (typeof league.fpl_start_event === "number") {
             try {
               const nextEventNumber = league.fpl_start_event + nextRoundNumber - 1;
               const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/");
@@ -277,21 +279,37 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
                 if (nextEvent?.deadline_time) {
                   nextDeadlineUtc = String(nextEvent.deadline_time);
                 } else {
-                  actions.push({ league_id: leagueId, step: "test_round_deadline_missing", next_round: nextRoundNumber, event: nextEventNumber });
+                  actions.push({
+                    league_id: leagueId,
+                    step: league.is_test === true ? "test_round_deadline_missing" : "round_deadline_missing",
+                    next_round: nextRoundNumber,
+                    event: nextEventNumber,
+                  });
                 }
+              } else if (league.is_test !== true) {
+                actions.push({ league_id: leagueId, step: "round_deadline_lookup_failed", next_round: nextRoundNumber, event: nextEventNumber });
               }
             } catch (deadlineError: any) {
-              actions.push({ league_id: leagueId, step: "test_round_deadline_lookup_error", next_round: nextRoundNumber, error: deadlineError?.message ?? "Deadline lookup failed" });
+              actions.push({
+                league_id: leagueId,
+                step: league.is_test === true ? "test_round_deadline_lookup_error" : "round_deadline_lookup_error",
+                next_round: nextRoundNumber,
+                error: deadlineError?.message ?? "Deadline lookup failed",
+              });
             }
           }
-          const { error: insertRoundError } = await supabase.from("rounds").insert({
-            id: crypto.randomUUID(), league_id: leagueId, round_number: nextRoundNumber,
-            name: `Round ${nextRoundNumber}`, status: "upcoming", pick_deadline_utc: nextDeadlineUtc,
-          });
-          if (insertRoundError) {
-            actions.push({ league_id: leagueId, step: "next_round_create_failed", error: insertRoundError.message, next_round: nextRoundNumber });
+          if (!nextDeadlineUtc) {
+            actions.push({ league_id: leagueId, step: "next_round_deadline_unavailable", next_round: nextRoundNumber });
           } else {
-            canAdvance = true;
+            const { error: insertRoundError } = await supabase.from("rounds").insert({
+              id: crypto.randomUUID(), league_id: leagueId, round_number: nextRoundNumber,
+              name: `Round ${nextRoundNumber}`, status: "upcoming", pick_deadline_utc: nextDeadlineUtc,
+            });
+            if (insertRoundError) {
+              actions.push({ league_id: leagueId, step: "next_round_create_failed", error: insertRoundError.message, next_round: nextRoundNumber });
+            } else {
+              canAdvance = true;
+            }
           }
         } else {
           canAdvance = true;
