@@ -19,7 +19,7 @@ export default function LandingPage() {
   const exploreHref = authed ? "/my-games" : "/login";
 
   return (
-    <main className="min-h-screen text-white bg-[radial-gradient(120%_120%_at_50%_-20%,#072a25,#0b1f20_50%,#0a0e12_90%)]">
+    <main className="fcc-landing-shell min-h-screen text-white">
       {/* Hero */}
       <section className="relative overflow-hidden pt-8 md:pt-12">
         <div className="mx-auto max-w-7xl px-4 py-20 md:py-28">
@@ -42,14 +42,14 @@ export default function LandingPage() {
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
                 to={hostHref}
-                className="px-6 py-3 rounded-xl bg-emerald-500 text-slate-900 font-semibold hover:bg-emerald-400 transition"
+                className="btn btn-primary px-6 py-3"
               >
                 Host a private league
               </Link>
 
               <Link
                 to={exploreHref}
-                className="px-6 py-3 rounded-xl border border-emerald-300/60 text-emerald-100 hover:text-white hover:border-emerald-200 hover:bg-emerald-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b1f20] transition"
+                className="btn btn-ghost border-emerald-300/35 px-6 py-3 text-emerald-100 hover:border-emerald-200 hover:bg-emerald-400/10"
               >
                 Explore public games
               </Link>
@@ -68,7 +68,7 @@ export default function LandingPage() {
             { t: "Live Scoring", b: "Auto eliminations, fixtures awareness, and live status." },
             { t: "Admin Tools", b: "One-click round setup, tie-breaks, badges, exports." },
           ].map((f) => (
-            <div key={f.t} className="rounded-2xl border border-white/10 p-6 bg-white/5">
+            <div key={f.t} className="fcc-landing-panel rounded-2xl border border-white/10 p-6">
               <h3 className="font-semibold">{f.t}</h3>
               <p className="mt-2 opacity-80">{f.b}</p>
             </div>
@@ -82,19 +82,19 @@ export default function LandingPage() {
           <h2 className="text-3xl md:text-4xl font-bold text-center">Simple, tiered access</h2>
           <p className="mt-3 text-center opacity-75">Start free. Upgrade for public games, bigger pots, and pro features.</p>
           <div className="mt-10 grid gap-6 md:grid-cols-3">
-            <div className="rounded-3xl border border-white/10 p-6 bg-white/5 flex flex-col">
+            <div className="fcc-landing-panel rounded-3xl border border-white/10 p-6 flex flex-col">
               <h3 className="text-xl font-semibold">Free</h3>
               <p className="mt-1 opacity-75">Best for casual groups</p>
               <div className="mt-6 text-4xl font-bold">£0</div>
               <ul className="mt-6 space-y-2 text-sm opacity-90">
                 <li>• Host 1 private league</li><li>• Join 1 private league</li><li>• No public league access</li>
               </ul>
-              <Link to="/login" className="mt-8 px-4 py-3 rounded-xl bg-white text-slate-900 text-center font-medium hover:opacity-90 transition">
+              <Link to="/login" className="btn btn-primary mt-8 px-4 py-3 text-center">
                 Get started
               </Link>
             </div>
 
-            <div className="rounded-3xl border border-emerald-400/30 p-6 bg-emerald-400/10 flex flex-col relative">
+            <div className="fcc-landing-panel rounded-3xl border border-emerald-400/30 p-6 flex flex-col relative">
               <div className="absolute -top-3 right-4 text-xs rounded-full px-2 py-1 bg-emerald-500 text-slate-900 font-semibold">Popular</div>
               <h3 className="text-xl font-semibold">Pro</h3>
               <p className="mt-1 opacity-75">Unlock selected public games</p>
@@ -102,19 +102,19 @@ export default function LandingPage() {
               <ul className="mt-6 space-y-2 text-sm opacity-90">
                 <li>• All Free features</li><li>• Access selected public games</li><li>• Advanced admin & exports</li>
               </ul>
-              <Link to="/login?plan=pro" className="mt-8 px-4 py-3 rounded-xl bg-emerald-500 text-slate-900 text-center font-semibold hover:bg-emerald-400 transition">
+              <Link to="/login?plan=pro" className="btn btn-primary mt-8 px-4 py-3 text-center">
                 Upgrade to Pro
               </Link>
             </div>
 
-            <div className="rounded-3xl border border-white/10 p-6 bg-white/5 flex flex-col">
+            <div className="fcc-landing-panel rounded-3xl border border-white/10 p-6 flex flex-col">
               <h3 className="text-xl font-semibold">Elite</h3>
               <p className="mt-1 opacity-75">All public pots & exclusives</p>
               <div className="mt-6 text-4xl font-bold">£y/mo</div>
               <ul className="mt-6 space-y-2 text-sm opacity-90">
                 <li>• All Pro features</li><li>• All public games (incl. higher pots)</li><li>• Priority support</li>
               </ul>
-              <Link to="/login?plan=elite" className="mt-8 px-4 py-3 rounded-xl border border-white/20 text-center hover:border-white/40 transition">
+              <Link to="/login?plan=elite" className="btn btn-ghost mt-8 border-white/20 px-4 py-3 text-center">
                 Go Elite
               </Link>
             </div>
@@ -125,11 +125,11 @@ export default function LandingPage() {
       {/* FAQ */}
       <section id="faq" className="border-t border-white/10">
         <div className="mx-auto max-w-5xl px-4 py-14 grid gap-6 md:grid-cols-2">
-          <div className="rounded-2xl border border-white/10 p-6 bg-white/5">
+          <div className="fcc-landing-panel rounded-2xl border border-white/10 p-6">
             <h3 className="font-semibold">Is it free to start?</h3>
             <p className="mt-2 opacity-80">Yes. Host one private league and join one private league on the Free tier.</p>
           </div>
-          <div className="rounded-2xl border border-white/10 p-6 bg-white/5">
+          <div className="fcc-landing-panel rounded-2xl border border-white/10 p-6">
             <h3 className="font-semibold">Do you send marketing emails?</h3>
             <p className="mt-2 opacity-80">Only if you opt in during signup. You can opt out anytime.</p>
           </div>

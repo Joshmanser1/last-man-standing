@@ -71,8 +71,6 @@ export function Login() {
   const [notice, setNotice] = useState<Notice>(null);
 
   const didPostAuthNavigate = useRef(false);
-  const imgRef = useRef<HTMLImageElement | null>(null);
-  const triedAlt = useRef(false);
   const codeInputRef = useRef<HTMLInputElement | null>(null);
 
   function trackInviteAuthCompleted() {
@@ -272,36 +270,24 @@ export function Login() {
     navigate("/login", { replace: true });
   }
 
-  const onLogoError = () => {
-    if (triedAlt.current) {
-      if (imgRef.current) imgRef.current.style.display = "none";
-      return;
-    }
-    triedAlt.current = true;
-    if (imgRef.current) imgRef.current.src = "/logo-shield.png";
-  };
-
   return (
-    <div className="min-h-screen bg-[radial-gradient(120%_120%_at_50%_-20%,#072a25,#0b1f20_50%,#0a0e12_90%)] flex items-start sm:items-center justify-center p-6">
-      <div className="fixed top-0 left-0 right-0 px-4 py-3 flex items-center justify-between text-slate-200/90">
+    <div className="fcc-login-shell min-h-screen flex items-start justify-center p-4 pt-20 sm:items-center sm:p-6">
+      <div className="fcc-login-topbar fixed top-0 left-0 right-0 flex items-center justify-between px-4 py-3 text-slate-200/90">
         <Link to="/" className="text-sm hover:underline">Back to landing</Link>
-        <div className="flex items-center gap-2">
-          <span className="rounded-full bg-emerald-400/15 text-emerald-300 px-3 py-1 text-xs font-semibold">
-            Fantasy Command Centre
-          </span>
+        <div className="flex items-center gap-2 text-xs font-semibold text-emerald-100">
+          <img src="/fcc-logo.png" alt="" className="h-7 w-7 rounded-md" />
+          <span>Fantasy Command Centre</span>
         </div>
       </div>
 
-      <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-xl p-6 sm:p-8 text-slate-100">
+      <div className="fcc-login-panel card w-full max-w-xl p-6 sm:p-8 text-slate-100">
         <div className="mx-auto w-fit mb-5 flex items-center gap-2">
           <img
-            ref={imgRef}
-            src="/fcc-shield.png"
-            width={28}
-            height={28}
+            src="/fcc-logo.png"
+            width={36}
+            height={36}
             alt="FCC"
-            className="rounded-md"
-            onError={onLogoError}
+            className="rounded-lg"
           />
           <span className="rounded-full bg-emerald-400/15 text-emerald-300 px-3 py-1 text-xs font-semibold">
             Fantasy Command Centre
@@ -355,7 +341,7 @@ export function Login() {
 
             <button
               type="submit"
-              className="btn w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold border-0"
+              className="btn btn-primary w-full"
               disabled={sending}
             >
               {sending ? "Sending..." : "Send code"}
@@ -379,7 +365,7 @@ export function Login() {
 
             <button
               type="submit"
-              className="btn w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold border-0"
+              className="btn btn-primary w-full"
               disabled={verifying}
             >
               {verifying ? "Verifying..." : "Verify code"}

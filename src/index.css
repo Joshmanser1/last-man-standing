@@ -44,16 +44,24 @@
     @apply mx-auto max-w-6xl px-3 sm:px-4;
   }
 
-  .app-main {
+  .app-main,
+  .fcc-landing-shell,
+  .fcc-login-shell {
     position: relative;
     isolation: isolate;
-    min-height: calc(100vh - 5rem);
     background:
-      radial-gradient(circle at 50% -12rem, rgba(29, 121, 83, 0.26), transparent 42rem),
+      radial-gradient(circle at 50% -12rem, rgba(29, 121, 83, 0.3), transparent 42rem),
+      radial-gradient(circle at 96% 44rem, rgba(22, 99, 70, 0.14), transparent 34rem),
       linear-gradient(140deg, var(--fcc-canvas) 0%, var(--fcc-canvas-deep) 72%);
   }
 
-  .app-main > * {
+  .app-main {
+    min-height: calc(100vh - 5rem);
+  }
+
+  .app-main > *,
+  .fcc-landing-shell > *,
+  .fcc-login-shell > * {
     position: relative;
     z-index: 1;
   }
@@ -63,13 +71,15 @@
   }
 
   .app-main::before,
+  .fcc-landing-shell::before,
+  .fcc-login-shell::before,
   .fcc-tactics-surface::before {
     position: absolute;
     z-index: 0;
     inset: 0;
     pointer-events: none;
     content: "";
-    opacity: 0.58;
+    opacity: 0.64;
     background-image:
       radial-gradient(circle at 13% 22%, rgba(105, 217, 165, 0.2) 0 2px, transparent 2.7px),
       radial-gradient(circle at 18% 29%, rgba(105, 217, 165, 0.16) 0 2px, transparent 2.7px),
@@ -78,10 +88,26 @@
       linear-gradient(90deg, transparent 0 73%, rgba(105, 217, 165, 0.14) 73.1% 73.4%, transparent 73.5% 100%),
       radial-gradient(ellipse at 82% 15%, transparent 0 13%, rgba(105, 217, 165, 0.15) 13.15% 13.35%, transparent 13.5% 100%),
       linear-gradient(45deg, transparent 47%, rgba(105, 217, 165, 0.14) 48% 52%, transparent 53%),
-      linear-gradient(-45deg, transparent 47%, rgba(105, 217, 165, 0.14) 48% 52%, transparent 53%);
-    background-size: 260px 260px, 260px 260px, 260px 260px, 520px 360px, 460px 460px, 620px 420px, 38px 38px, 38px 38px;
-    background-position: 0 18rem, 0 18rem, 0 18rem, right 8rem top 4rem, right -9rem top 20rem, left -16rem bottom -14rem, right 15% bottom 14rem, right 15% bottom 14rem;
+      linear-gradient(-45deg, transparent 47%, rgba(105, 217, 165, 0.14) 48% 52%, transparent 53%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='250' viewBox='0 0 360 250'%3E%3Cg fill='none' stroke='%2369d9a5' stroke-width='2' opacity='.32'%3E%3Cpath d='M24 196 C104 208 112 58 246 76' stroke-dasharray='7 9'/%3E%3Cpath d='M238 62 l18 14 -20 9'/%3E%3Cpath d='M56 42 L176 116'/%3E%3Cpath d='M168 103 l13 15 -18 2'/%3E%3Ccircle cx='58' cy='42' r='7'/%3E%3Ccircle cx='246' cy='76' r='7'/%3E%3Cpath d='M286 154 l14 14 m0-14 -14 14'/%3E%3C/g%3E%3C/svg%3E"),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='410' height='290' viewBox='0 0 410 290'%3E%3Cg fill='none' stroke='%2369d9a5' stroke-width='2' opacity='.25'%3E%3Cpath d='M10 155 H155' stroke-dasharray='4 8'/%3E%3Cpath d='M145 145 l16 10 -16 10'/%3E%3Cpath d='M248 24 a94 94 0 0 1 132 132'/%3E%3Cpath d='M36 239 l14 14 m0-14 -14 14'/%3E%3Ccircle cx='244' cy='202' r='8'/%3E%3Ccircle cx='318' cy='142' r='8'/%3E%3C/g%3E%3C/svg%3E");
+    background-size: 260px 260px, 260px 260px, 260px 260px, 520px 360px, 460px 460px, 620px 420px, 38px 38px, 38px 38px, 360px 250px, 410px 290px;
+    background-position: 0 18rem, 0 18rem, 0 18rem, right 8rem top 4rem, right -9rem top 20rem, left -16rem bottom -14rem, right 15% bottom 14rem, right 15% bottom 14rem, left -4rem top 38rem, right -8rem top 74rem;
     background-repeat: no-repeat;
+  }
+
+  .app-main::after,
+  .fcc-landing-shell::after {
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    pointer-events: none;
+    content: "";
+    opacity: 0.045;
+    background-image: url("/fcc-logo.png");
+    background-repeat: no-repeat;
+    background-size: min(23rem, 58vw);
+    background-position: right -6rem top 62rem;
   }
 
   .card {
@@ -186,6 +212,38 @@
   .fcc-mobile-link-active {
     @apply border-emerald-300/30 bg-emerald-300/10 text-emerald-200;
   }
+
+  .fcc-brand-wordmark {
+    display: none;
+  }
+
+  @media (min-width: 390px) {
+    .fcc-brand-wordmark {
+      display: inline;
+    }
+  }
+}
+
+.fcc-landing-shell::before {
+  background-position: 0 12rem, 0 12rem, 0 12rem, right 8rem top 2rem, right -9rem top 18rem, left -16rem bottom -14rem, right 15% bottom 14rem, right 15% bottom 14rem, left -4rem top 34rem, right -8rem top 68rem;
+}
+
+.fcc-landing-panel,
+.fcc-login-panel {
+  border-color: rgba(145, 187, 169, 0.2) !important;
+  background: linear-gradient(145deg, rgba(19, 43, 37, 0.9), rgba(7, 21, 19, 0.94));
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.2), 0 1px 0 rgba(225, 255, 239, 0.06) inset;
+}
+
+.fcc-login-shell {
+  background-position: center -10rem, right -4rem 32rem, center;
+}
+
+.fcc-login-topbar {
+  z-index: 2;
+  border-bottom: 1px solid rgba(145, 187, 169, 0.15);
+  background: rgba(5, 15, 14, 0.72);
+  backdrop-filter: blur(14px);
 }
 
 /* Consumer pages retain their existing utility markup while inheriting dark surfaces. */

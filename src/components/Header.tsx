@@ -146,16 +146,19 @@ export function Header() {
     if (!drawerOpen) return;
 
     const previousOverflow = document.body.style.overflow;
+    const previousDocumentOverflow = document.documentElement.style.overflow;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setDrawerOpen(false);
     };
 
     document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
     window.addEventListener("keydown", onKeyDown);
     window.setTimeout(() => drawerCloseRef.current?.focus(), 0);
 
     return () => {
       document.body.style.overflow = previousOverflow;
+      document.documentElement.style.overflow = previousDocumentOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [drawerOpen]);
@@ -178,20 +181,19 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-emerald-300/15 bg-[radial-gradient(120%_120%_at_50%_-10%,#153129,#0b1715_42%,#060b0b_88%)] text-white/90 shadow-[0_10px_30px_rgba(0,0,0,0.18)] backdrop-blur-xl">
-      <div className="container-page flex min-w-0 items-center gap-2 py-2.5 sm:gap-3">
+      <div className="container-page flex min-w-0 items-center gap-2 py-2 sm:gap-3">
         {/* Brand */}
         <NavLink to="/" className="mr-1 flex shrink-0 items-center gap-2.5 sm:mr-2">
           <img
-            src="/fcc-shield.png?v=1"
+            src="/fcc-logo.png"
             alt="Fantasy Command Centre"
-            width={40}
-            height={40}
-            className="block h-10 w-10 rounded-xl border border-emerald-200/20 bg-emerald-200/5 shadow-[0_5px_16px_rgba(57,191,135,0.16)]"
+            width={36}
+            height={36}
+            className="block h-9 w-9 rounded-lg border border-emerald-200/20 bg-emerald-200/5 shadow-[0_5px_16px_rgba(57,191,135,0.16)]"
           />
-          <span className="hidden whitespace-nowrap text-sm font-bold tracking-tight text-emerald-100 sm:inline">
+          <span className="fcc-brand-wordmark whitespace-nowrap text-xs font-bold tracking-tight text-emerald-100 sm:text-sm">
             Fantasy Command Centre
           </span>
-          <span className="text-xs font-extrabold tracking-[0.16em] text-emerald-200 sm:hidden">FCC</span>
         </NavLink>
 
         {/* Desktop nav */}
@@ -291,31 +293,9 @@ export function Header() {
         </div>
       </div>
 
-      {/* Keep core game actions immediately available without horizontal overflow. */}
-      {authed && (
-        <nav className="grid grid-cols-2 gap-1 border-t border-white/10 px-3 py-2 sm:px-4 md:hidden">
-          <NavLink to="/my-games" className={linkCls}>
-            My Games
-          </NavLink>
-          {hasLeague && (
-            <>
-              <NavLink to="/make-pick" className={linkCls}>
-                Picks
-              </NavLink>
-              <NavLink to="/leaderboard" className={linkCls}>
-                Leaderboard
-              </NavLink>
-              <NavLink to="/league" className={linkCls}>
-                League
-              </NavLink>
-            </>
-          )}
-        </nav>
-      )}
-
       {authed && (
         <div
-          className={`fixed inset-0 z-50 transition ${drawerOpen ? "pointer-events-auto" : "pointer-events-none"}`}
+          className={`fixed inset-0 z-[70] transition ${drawerOpen ? "pointer-events-auto" : "pointer-events-none"}`}
           aria-hidden={!drawerOpen}
         >
           <button
@@ -331,11 +311,11 @@ export function Header() {
             aria-modal="true"
             aria-label="Navigation menu"
             inert={!drawerOpen}
-            className={`fcc-tactics-surface absolute right-0 top-0 flex h-full w-[min(22rem,calc(100vw-1.25rem))] flex-col overflow-hidden border-l border-emerald-200/15 bg-[#0b1715] p-5 shadow-[-20px_0_50px_rgba(0,0,0,0.35)] transition duration-200 ease-out ${drawerOpen ? "translate-x-0 opacity-100" : "translate-x-full opacity-0"}`}
+            className={`fcc-tactics-surface fixed inset-y-0 right-0 flex h-[100dvh] w-[min(22rem,calc(100vw-1.25rem))] flex-col overflow-hidden border-l border-emerald-200/15 bg-[#0b1715] pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] shadow-[-20px_0_50px_rgba(0,0,0,0.35)] transition duration-200 ease-out ${drawerOpen ? "translate-x-0 opacity-100" : "translate-x-full opacity-0"}`}
           >
-            <div className="relative z-10 flex items-center justify-between border-b border-white/10 pb-4">
+            <div className="relative z-10 mx-5 flex shrink-0 items-center justify-between border-b border-white/10 pb-4">
               <div className="flex items-center gap-3">
-                <img src="/fcc-shield.png?v=1" alt="" className="h-9 w-9 rounded-lg" />
+                <img src="/fcc-logo.png" alt="" className="h-9 w-9 rounded-lg" />
                 <div>
                   <div className="text-sm font-bold tracking-wide text-white">Fantasy Command Centre</div>
                   <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300/75">Matchday menu</div>
@@ -352,7 +332,12 @@ export function Header() {
               </button>
             </div>
 
-            <nav className="relative z-10 mt-5 space-y-5">
+            <nav
+              className="relative z-10 mt-5 min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 pb-5"
+              onClick={(event) => {
+                if ((event.target as HTMLElement).closest("a")) setDrawerOpen(false);
+              }}
+            >
               <section className="space-y-2">
                 <h2 className="px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300/65">Your game</h2>
                 <NavLink to="/my-games" className={mobileLinkCls}>My Games <span aria-hidden="true">›</span></NavLink>
@@ -382,7 +367,7 @@ export function Header() {
 
             <button
               type="button"
-              className="relative z-10 mt-auto inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/[0.045] px-4 py-3 text-sm font-semibold text-white/80 transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+              className="relative z-10 mx-5 mt-1 inline-flex shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/[0.045] px-4 py-3 text-sm font-semibold text-white/80 transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
               onClick={logout}
             >
               Log out
