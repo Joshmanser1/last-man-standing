@@ -7,6 +7,8 @@ import { getEffectiveUserId } from "../lib/auth";
 import { loadLeagueRoundState } from "../lib/leagueRoundState";
 import { getLeagueOutcomeForPlayer } from "../lib/leagueOutcome";
 import { postJsonWithAuth } from "../lib/apiAuth";
+import { TeamBadge } from "../components/TeamBadge";
+import { fetchFplTeams } from "../lib/fpl";
 
 const STORE_KEY = "lms_store_v1";
 
@@ -22,21 +24,119 @@ type DashboardLeague = {
   viewerActive: boolean;
   eliminationRound?: number;
   pickedTeamName?: string;
+  pickedTeamFplCode?: number;
   winnerName?: string;
 };
+
+type DashboardSection = "action" | "picked" | "waiting" | "following" | "completed";
+
+function previewDeadline(hoursFromNow: number) {
+  return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString();
+}
+
+const DEV_PREVIEW_LEAGUES: DashboardLeague[] = [
+  {
+    id: "dev-my-games-action-required",
+    name: "The 44 Last Man Standing",
+    isPublic: true,
+    status: "active",
+    roundNumber: 6,
+    roundStatus: "upcoming",
+    deadlineUtc: previewDeadline(18),
+    hasViewerPick: false,
+    viewerActive: true,
+  },
+  {
+    id: "dev-my-games-pick-submitted",
+    name: "Mark FPL Last Man Standing",
+    isPublic: false,
+    status: "active",
+    roundNumber: 2,
+    roundStatus: "upcoming",
+    deadlineUtc: previewDeadline(27),
+    hasViewerPick: true,
+    viewerActive: true,
+    pickedTeamName: "Arsenal",
+    pickedTeamFplCode: 3,
+  },
+  {
+    id: "dev-my-games-waiting",
+    name: "FCC £100 Last Man Standing",
+    isPublic: true,
+    status: "active",
+    roundNumber: 4,
+    roundStatus: "locked",
+    deadlineUtc: previewDeadline(-3),
+    hasViewerPick: true,
+    viewerActive: true,
+    pickedTeamName: "Chelsea",
+    pickedTeamFplCode: 8,
+  },
+  {
+    id: "dev-my-games-following",
+    name: "North Stand Survival League",
+    isPublic: false,
+    status: "active",
+    roundNumber: 6,
+    roundStatus: "upcoming",
+    deadlineUtc: previewDeadline(42),
+    hasViewerPick: false,
+    viewerActive: false,
+    eliminationRound: 3,
+  },
+  {
+    id: "dev-my-games-completed",
+    name: "FCC Opening Weekend LMS",
+    isPublic: true,
+    status: "completed",
+    roundNumber: 8,
+    roundStatus: "completed",
+    hasViewerPick: true,
+    viewerActive: true,
+    winnerName: "Ava",
+  },
+];
+
+function formatDeadline(deadlineUtc?: string) {
+  if (!deadlineUtc || Number.isNaN(Date.parse(deadlineUtc))) return null;
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(deadlineUtc));
+}
+
+function getDeadlineLabel(deadlineUtc?: string) {
+  if (!deadlineUtc) return null;
+  const milliseconds = Date.parse(deadlineUtc) - Date.now();
+  if (milliseconds <= 0) return "Deadline passed";
+
+  const hours = Math.ceil(milliseconds / (60 * 60 * 1000));
+  if (hours < 24) return `${hours}h remaining`;
+  return `${Math.ceil(hours / 24)}d remaining`;
+}
 
 export function MyGames() {
   const navigate = useNavigate();
   const toast = useToast();
+  const isDevPreview =
+    import.meta.env.DEV && new URLSearchParams(window.location.search).get("devPreview") === "1";
 
-  const [hydrated, setHydrated] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [leagues, setLeagues] = useState<DashboardLeague[]>([]);
+  const [hydrated, setHydrated] = useState(isDevPreview);
+  const [loading, setLoading] = useState(!isDevPreview);
+  const [leagues, setLeagues] = useState<DashboardLeague[]>(() =>
+    isDevPreview ? DEV_PREVIEW_LEAGUES : []
+  );
+  const [fplTeamCodeByName, setFplTeamCodeByName] = useState<Record<string, number>>({});
   const [activeLeagueId, setActiveLeagueId] = useState<string>(
-    localStorage.getItem("active_league_id") || ""
+    () => (isDevPreview ? DEV_PREVIEW_LEAGUES[0].id : localStorage.getItem("active_league_id") || "")
   );
 
   useEffect(() => {
+    if (isDevPreview) return;
+
     (async () => {
       try {
         if (localStorage.getItem("player_id")) {
@@ -62,9 +162,10 @@ export function MyGames() {
         setHydrated(true);
       }
     })();
-  }, []);
+  }, [isDevPreview]);
 
   useEffect(() => {
+    if (isDevPreview) return;
     if (!hydrated) return;
 
     (async () => {
@@ -114,9 +215,35 @@ export function MyGames() {
         setLoading(false);
       }
     })();
-  }, [activeLeagueId, hydrated]);
+  }, [activeLeagueId, hydrated, isDevPreview]);
+
+  useEffect(() => {
+    if (isDevPreview) return;
+
+    void fetchFplTeams()
+      .then((teams) => {
+        const teamCodes = Object.fromEntries(
+          teams
+            .filter((team) => Number.isInteger(team.code) && team.code > 0)
+            .flatMap((team) => [
+              [team.name.trim().toLowerCase(), team.code],
+              [team.short_name.trim().toLowerCase(), team.code],
+            ])
+        );
+        setFplTeamCodeByName(teamCodes);
+      })
+      .catch(() => {
+        // Team crests are decorative; TeamBadge retains its initials fallback.
+        setFplTeamCodeByName({});
+      });
+  }, [isDevPreview]);
 
   function setActive(id: string) {
+    if (isDevPreview) {
+      setActiveLeagueId(id);
+      return;
+    }
+
     localStorage.setItem("active_league_id", id);
     setActiveLeagueId(id);
     toast("Active game set.", { variant: "success" });
@@ -124,11 +251,13 @@ export function MyGames() {
 
   function goToPick(id: string) {
     setActive(id);
+    if (isDevPreview) return;
     navigate("/make-pick");
   }
 
   function goToLeaderboard(id: string) {
     setActive(id);
+    if (isDevPreview) return;
     navigate("/leaderboard");
   }
 
@@ -184,7 +313,7 @@ export function MyGames() {
     );
   }
 
-  if (!localStorage.getItem("player_id")) {
+  if (!isDevPreview && !localStorage.getItem("player_id")) {
     return (
       <div className="min-h-[calc(100vh-5rem)] grid place-items-center p-4">
         <div className="max-w-md space-y-3 text-center">
@@ -211,69 +340,108 @@ export function MyGames() {
   const privateCount = totalGames - publicCount;
 
   function renderSection(
+    kind: DashboardSection,
     title: string,
     rows: DashboardLeague[],
     empty: string,
     actions: (league: DashboardLeague) => ReactNode
   ) {
     return (
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">{title}</h2>
-          <span className="text-xs text-slate-500">{rows.length} total</span>
+      <section className={`my-games-section my-games-section-${kind} space-y-3`}>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+          <span className="text-[11px] text-slate-500">{rows.length} total</span>
         </div>
 
         {rows.length === 0 ? (
-          <div className="rounded-2xl border bg-white p-4 text-sm text-slate-600">{empty}</div>
+          <div className="my-games-empty rounded-2xl border p-4 text-sm text-slate-600">{empty}</div>
         ) : (
           <div className="space-y-3">
-            {rows.map((league) => (
-              <div
-                key={league.id}
-                className={[
-                  "rounded-2xl border bg-white p-4 shadow-sm",
-                  activeLeagueId === league.id ? "border-emerald-400/70" : "border-slate-200",
-                ].join(" ")}
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <div className="truncate text-sm font-semibold">{league.name}</div>
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700">
+            {rows.map((league) => {
+              const statusLabel =
+                kind === "action"
+                  ? "Pick required"
+                  : kind === "picked"
+                  ? "Pick submitted"
+                  : kind === "waiting"
+                  ? "Pick locked"
+                  : kind === "following"
+                  ? `Eliminated · Round ${league.eliminationRound ?? league.roundNumber}`
+                  : "Completed";
+              const pickedTeamName = league.pickedTeamName ?? "";
+              const fplTeamCode =
+                league.pickedTeamFplCode ?? fplTeamCodeByName[pickedTeamName.trim().toLowerCase()];
+              const showTeam = (kind === "picked" || kind === "waiting") && !!pickedTeamName;
+              const deadline = formatDeadline(league.deadlineUtc);
+              const deadlineLabel = getDeadlineLabel(league.deadlineUtc);
+
+              return (
+                <div
+                  key={league.id}
+                  className={[
+                    "my-games-card my-games-card-" + kind,
+                    activeLeagueId === league.id ? "my-games-card-active" : "",
+                  ].join(" ")}
+                >
+                  <div className="my-games-card-main min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="min-w-0 text-base font-bold leading-tight text-white">{league.name}</h3>
+                      <span className="my-games-visibility">
                         {league.isPublic ? "Public" : "Private"}
                       </span>
                     </div>
-                    <div className="mt-1 text-xs text-slate-600">
-                      {league.status === "completed"
-                        ? `Completed \u2022 Round ${league.roundNumber}`
-                        : `Round ${league.roundNumber} \u2022 ${league.roundStatus.toUpperCase()}`}
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="my-games-status-chip">{statusLabel}</span>
+                      <span className="my-games-round">Round {league.roundNumber}</span>
                     </div>
-                    {league.deadlineUtc && (
-                      <div className="mt-1 text-xs text-slate-500">
-                        Deadline: {new Date(league.deadlineUtc).toLocaleString()}
+
+                    {showTeam && (
+                      <div className="my-games-picked-team mt-3">
+                        <TeamBadge
+                          code={pickedTeamName}
+                          fplTeamCode={fplTeamCode}
+                          name={pickedTeamName}
+                          size="sm"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                            {kind === "waiting" ? "Locked selection" : "Your selection"}
+                          </div>
+                          <div className="truncate text-sm font-extrabold uppercase tracking-[0.08em] text-emerald-100">
+                            {pickedTeamName}
+                          </div>
+                        </div>
                       </div>
                     )}
-                    {league.status === "completed" && league.winnerName && (
-                      <div className="mt-1 text-xs text-slate-500">
-                        Winner: {league.winnerName}
+
+                    {kind === "action" && deadline && (
+                      <div className="my-games-deadline mt-3">
+                        <div>
+                          <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-200/75">Pick deadline</div>
+                          <div className="mt-0.5 text-sm font-semibold text-white">{deadline}</div>
+                        </div>
+                        {deadlineLabel && <span className="my-games-deadline-label">{deadlineLabel}</span>}
                       </div>
                     )}
-                    {league.pickedTeamName && (
-                      <div className="mt-1 text-xs text-slate-500">
-                        Selected team: {league.pickedTeamName}
+
+                    {kind !== "action" && deadline && (
+                      <div className="mt-3 text-xs text-slate-400">
+                        {kind === "waiting" ? "Locked at" : "Deadline"}: {deadline}
                       </div>
                     )}
-                    {!league.viewerActive && league.status !== "completed" && league.eliminationRound && (
-                      <div className="mt-1 text-xs text-slate-500">
-                        Eliminated in Round {league.eliminationRound}
+
+                    {kind === "completed" && league.winnerName && (
+                      <div className="mt-3 text-xs text-slate-400">
+                        Winner: <span className="font-semibold text-slate-200">{league.winnerName}</span>
                       </div>
                     )}
                   </div>
 
-                  <div className="flex flex-wrap gap-2 text-xs">{actions(league)}</div>
+                  <div className="my-games-card-actions flex shrink-0 flex-wrap gap-2 text-xs">{actions(league)}</div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
@@ -281,8 +449,13 @@ export function MyGames() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
-      <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+    <div className="my-games-shell mx-auto max-w-5xl space-y-6 p-4 md:p-6">
+      {isDevPreview && (
+        <div className="rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100">
+          DEVELOPMENT PREVIEW: in-memory game states only. Actions are disabled from navigating or writing data.
+        </div>
+      )}
+      <header className="my-games-header flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold">My Games</h1>
           <p className="text-sm text-slate-600">
@@ -290,7 +463,7 @@ export function MyGames() {
             <b>{totalGames}</b> game{totalGames === 1 ? "" : "s"}.
           </p>
         </div>
-        <div className="space-x-2 text-xs text-slate-500">
+        <div className="my-games-counts space-x-2 text-xs text-slate-500">
           <span>
             Public: <b>{publicCount}</b>
           </span>
@@ -302,6 +475,7 @@ export function MyGames() {
       </header>
 
       {renderSection(
+        "action",
         "Action Required",
         sections.open,
         "No leagues need action right now. We'll show games here when a new pick is required.",
@@ -313,44 +487,48 @@ export function MyGames() {
       )}
 
       {renderSection(
+        "picked",
         "Pick Submitted",
         sections.picked,
         "No picks submitted for this round yet.",
         (league) => (
-          <button className="btn btn-primary text-xs" onClick={() => goToLeaderboard(league.id)}>
+          <button className="btn btn-ghost text-xs" onClick={() => goToLeaderboard(league.id)}>
             Leaderboard
           </button>
         )
       )}
 
       {renderSection(
+        "waiting",
         "Waiting / Locked",
         sections.waiting,
         "No leagues are waiting right now. We'll show them here once picks are locked or results are pending.",
         (league) => (
-          <button className="btn btn-primary text-xs" onClick={() => goToLeaderboard(league.id)}>
+          <button className="btn btn-ghost text-xs" onClick={() => goToLeaderboard(league.id)}>
             Leaderboard
           </button>
         )
       )}
 
       {renderSection(
+        "following",
         "Eliminated / Following",
         sections.following,
         "No eliminated leagues to follow right now.",
         (league) => (
-          <button className="btn btn-primary text-xs" onClick={() => goToLeaderboard(league.id)}>
+          <button className="btn btn-ghost text-xs" onClick={() => goToLeaderboard(league.id)}>
             Leaderboard
           </button>
         )
       )}
 
       {renderSection(
+        "completed",
         "Completed Games",
         sections.completed,
         "No completed games yet. Finished leagues will appear here.",
         (league) => (
-          <button className="btn btn-primary text-xs" onClick={() => goToLeaderboard(league.id)}>
+          <button className="btn btn-ghost text-xs" onClick={() => goToLeaderboard(league.id)}>
             Leaderboard
           </button>
         )

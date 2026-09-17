@@ -39,11 +39,20 @@
     <meta name="theme-color" content="#0f172a" />
 
     <!-- === Analytics === -->
-    <script
-      defer
-      src="https://cloud.umami.is/script.js"
-      data-website-id="ba69b2f0-2355-4dcf-a2dd-1069e3b5df3c"
-    ></script>
+    <script>
+      const isDevPreview =
+        "%MODE%" === "development" &&
+        new URLSearchParams(window.location.search).get("devPreview") === "1" &&
+        ["/make-pick", "/my-games", "/leaderboard"].includes(window.location.pathname);
+
+      if (!isDevPreview) {
+        const tracker = document.createElement("script");
+        tracker.defer = true;
+        tracker.src = "https://cloud.umami.is/script.js";
+        tracker.dataset.websiteId = "ba69b2f0-2355-4dcf-a2dd-1069e3b5df3c";
+        document.head.appendChild(tracker);
+      }
+    </script>
 
     <!-- === PWA & Browser Compatibility === -->
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />

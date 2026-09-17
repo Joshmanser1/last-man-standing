@@ -1,7 +1,7 @@
 // src/lib/fpl.ts
 // Client-side FPL helpers (MUST use same-origin proxy to avoid CORS blocks)
 
-type FplTeam = { id: number; name: string; short_name: string };
+type FplTeam = { id: number; code: number; name: string; short_name: string };
 type FplFixture = {
   id: number;
   event: number | null;

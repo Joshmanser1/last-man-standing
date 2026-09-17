@@ -22,18 +22,52 @@ type FplGwSelectProps = {
   fallbackUrl?: string; // defaults to /mock-fpl-bootstrap.json
 };
 
-async function loadBootstrap(): Promise<{ events: FplEvent[] }> {
-  // 1) Try live FPL via our Vercel proxy (matches src/lib/fpl.ts)
-  const live = await fetch("/api/fpl?path=%2Fbootstrap-static%2F", { cache: "no-store" });
-  if (live.ok) return live.json();
-
-  // 2) If that fails (403 etc), try fallback file
-  const backup = await fetch("/mock-fpl-bootstrap.json");
-  if (!backup.ok) {
-    const msg = `Failed to load FPL events: ${live.status}`;
-    throw new Error(msg);
+function parseBootstrap(text: string, source: string): { events: FplEvent[] } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`${source} returned invalid JSON.`);
   }
-  return backup.json();
+
+  const events = (parsed as { events?: unknown })?.events;
+  if (
+    !Array.isArray(events) ||
+    events.length === 0 ||
+    !events.every(
+      (event) =>
+        typeof event?.id === "number" &&
+        typeof event?.name === "string" &&
+        typeof event?.deadline_time === "string" &&
+        !Number.isNaN(Date.parse(event.deadline_time))
+    )
+  ) {
+    throw new Error(`${source} did not contain valid FPL event data.`);
+  }
+
+  return { events: events as FplEvent[] };
+}
+
+async function loadBootstrap(fallbackUrl: string): Promise<{ events: FplEvent[] }> {
+  let liveError: Error | null = null;
+
+  try {
+    // Vercel serves this through api/fpl.ts; Vite development may return source text instead.
+    const live = await fetch("/api/fpl?path=%2Fbootstrap-static%2F", { cache: "no-store" });
+    if (!live.ok) throw new Error(`Live FPL request failed with ${live.status}.`);
+    return parseBootstrap(await live.text(), "Live FPL source");
+  } catch (error: any) {
+    liveError = error instanceof Error ? error : new Error("Live FPL source failed.");
+  }
+
+  try {
+    const backup = await fetch(fallbackUrl, { cache: "no-store" });
+    if (!backup.ok) throw new Error(`Local FPL fallback failed with ${backup.status}.`);
+    return parseBootstrap(await backup.text(), "Local FPL fallback");
+  } catch (fallbackError: any) {
+    const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : "Local FPL fallback failed.";
+    throw new Error(`${liveError.message} ${fallbackMessage}`);
+  }
 }
 
 export function FplGwSelect({
@@ -43,6 +77,7 @@ export function FplGwSelect({
   onlyUpcoming = false,
   className = "",
   selectTestId,
+  fallbackUrl = "/mock-fpl-bootstrap.json",
 }: FplGwSelectProps) {
   const [events, setEvents] = useState<FplEvent[]>([]);
   const [selected, setSelected] = useState<number | undefined>(value);
@@ -55,7 +90,7 @@ export function FplGwSelect({
       setLoading(true);
       setError(null);
       try {
-        const data = await loadBootstrap();
+        const data = await loadBootstrap(fallbackUrl);
         const allEvents = (data.events || []) as FplEvent[];
         let evs = allEvents;
 
@@ -119,9 +154,7 @@ export function FplGwSelect({
     return (
       <div className={className}>
         {label && <label className="label mb-1">{label}</label>}
-        <div className="text-xs text-rose-600">
-          {error} — using fallback failed too.
-        </div>
+        <div className="text-xs text-rose-600">{error}</div>
       </div>
     );
   }

@@ -11,6 +11,8 @@ import { getEffectiveUserId } from "../lib/auth";
 import { resolveManagedLeagueTheme } from "../lib/leagueTheme";
 import { isRoundRevealable, shouldHidePickForViewer } from "../lib/roundReveal";
 import { buildRoundEntries } from "../lib/leagueRoundState";
+import { TeamBadge } from "../components/TeamBadge";
+import { fetchFplTeams } from "../lib/fpl";
 
 type ID = string;
 
@@ -48,15 +50,26 @@ type Pick = {
   status: "pending" | "through" | "eliminated" | "no-pick";
   reason?: "loss" | "draw" | "no-pick";
 };
-type Team = { id: ID; league_id: ID; name: string; code: string };
+type Team = { id: ID; league_id: ID; name: string; code: string; fplTeamCode?: number };
 type ViewMode = "leaderboard" | "matrix" | "eliminations";
 type EliminationRow = {
   playerId: ID;
   roundNumber: number;
   playerName: string;
+  team?: Team;
   teamName: string;
   reason: string;
   when: string;
+};
+
+type LeaderboardPreviewState = {
+  league: League;
+  rounds: Round[];
+  teams: Team[];
+  memberships: Membership[];
+  picks: Pick[];
+  playersById: Map<ID, Player>;
+  viewerId: ID;
 };
 
 const RESERVED_LEGACY_DISPLAY_NAMES = new Set(["you", "manager", "player", "user", "name"]);
@@ -70,10 +83,10 @@ function resolveDisplayName(value: unknown): string {
 
 function PlayerName({ name, isViewer }: { name: string; isViewer: boolean }) {
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className="leaderboard-player-name">
       <span>{name}</span>
       {isViewer && (
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+        <span className="leaderboard-you-badge">
           You
         </span>
       )}
@@ -93,31 +106,145 @@ function teamShort(name: string) {
   return cleaned.slice(0, 3);
 }
 
+function getDevPreviewState(): LeaderboardPreviewState | null {
+  if (!import.meta.env.DEV) return null;
+
+  const leagueId = "dev-leaderboard-command-centre";
+  const roundIds = ["dev-leaderboard-r1", "dev-leaderboard-r2", "dev-leaderboard-r3"];
+  const players = [
+    ["viewer", "Alex Morgan"],
+    ["ava", "Ava Patel"],
+    ["ben", "Ben Carter"],
+    ["chloe", "Chloe Williams"],
+    ["dan", "Dan Hughes"],
+    ["ella", "Ella Brown"],
+    ["frank", "Frank Miller"],
+    ["grace", "Grace Hall"],
+    ["harry", "Harry Jones"],
+    ["isla", "Isla Wilson"],
+    ["jack", "Jack Taylor"],
+    ["kate", "Kate Evans"],
+    ["liam", "Liam Scott"],
+    ["mia", "Mia Turner"],
+  ] as const;
+  const eliminated = new Set(["grace", "harry", "isla", "jack", "kate", "liam", "mia"]);
+  const teamRows: Array<[string, string, string, number]> = [
+    ["arsenal", "Arsenal", "ARS", 3],
+    ["liverpool", "Liverpool", "LIV", 14],
+    ["chelsea", "Chelsea", "CHE", 8],
+    ["man-city", "Manchester City", "MCI", 43],
+    ["spurs", "Tottenham Hotspur", "TOT", 17],
+    ["newcastle", "Newcastle United", "NEW", 4],
+  ];
+  const activePlayers = players.filter(([id]) => !eliminated.has(id));
+  const historicalPicks: Pick[] = players.flatMap(([playerId], index) => {
+    const roundOneTeam = teamRows[index % teamRows.length][0];
+    const eliminatedInRoundOne = playerId === "mia";
+    const eliminatedInRoundTwo = ["grace", "harry", "isla", "jack", "kate", "liam"].includes(playerId);
+    return [
+      {
+        id: `dev-r1-${playerId}`,
+        league_id: leagueId,
+        round_id: roundIds[0],
+        player_id: playerId,
+        team_id: roundOneTeam,
+        status: eliminatedInRoundOne ? "eliminated" : "through",
+        ...(eliminatedInRoundOne ? { reason: "loss" as const } : {}),
+      },
+      ...(!eliminatedInRoundOne
+        ? [
+            {
+              id: `dev-r2-${playerId}`,
+              league_id: leagueId,
+              round_id: roundIds[1],
+              player_id: playerId,
+              team_id: teamRows[(index + 1) % teamRows.length][0],
+              status: eliminatedInRoundTwo ? ("eliminated" as const) : ("through" as const),
+              ...(eliminatedInRoundTwo ? { reason: "draw" as const } : {}),
+            },
+          ]
+        : []),
+    ];
+  });
+  const currentPicks: Pick[] = activePlayers.map(([playerId], index) => ({
+    id: `dev-r3-${playerId}`,
+    league_id: leagueId,
+    round_id: roundIds[2],
+    player_id: playerId,
+    team_id: teamRows[(index + 2) % teamRows.length][0],
+    status: "pending",
+  }));
+
+  return {
+    league: {
+      id: leagueId,
+      name: "North London Command Centre LMS",
+      current_round: 3,
+      fpl_start_event: 6,
+      status: "active",
+    },
+    rounds: [
+      { id: roundIds[0], league_id: leagueId, round_number: 1, status: "completed", pick_deadline_utc: "2026-08-30T11:30:00Z" },
+      { id: roundIds[1], league_id: leagueId, round_number: 2, status: "completed", pick_deadline_utc: "2026-09-06T11:30:00Z" },
+      { id: roundIds[2], league_id: leagueId, round_number: 3, status: "upcoming", pick_deadline_utc: "2026-09-26T11:30:00Z" },
+    ],
+    teams: teamRows.map(([id, name, code, fplTeamCode]) => ({
+      id,
+      league_id: leagueId,
+      name,
+      code,
+      fplTeamCode,
+    })),
+    memberships: players.map(([playerId], index) => ({
+      id: `${leagueId}:${playerId}`,
+      league_id: leagueId,
+      player_id: playerId,
+      is_active: !eliminated.has(playerId),
+      joined_at: `2026-09-${String(1 + index).padStart(2, "0")}T12:00:00Z`,
+    })),
+    picks: [...historicalPicks, ...currentPicks],
+    playersById: new Map(players.map(([id, display_name]) => [id, { id, display_name }])),
+    viewerId: "viewer",
+  };
+}
+
 export function Leaderboard() {
   const navigate = useNavigate();
   const toast = useToast();
   const location = useLocation();
+  const isDevPreview =
+    import.meta.env.DEV && new URLSearchParams(location.search).get("devPreview") === "1";
+  const previewState = isDevPreview ? getDevPreviewState() : null;
   const [view, setView] = useState<ViewMode>("leaderboard");
   const [showElims, setShowElims] = useState(true);
-  const [league, setLeague] = useState<League | null>(null);
-  const [rounds, setRounds] = useState<Round[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [memberships, setMemberships] = useState<Membership[]>([]);
-  const [picks, setPicks] = useState<Pick[]>([]);
-  const [playersById, setPlayersById] = useState<Map<ID, Player>>(new Map());
-  const [viewerId, setViewerId] = useState("");
-  const [loading, setLoading] = useState<boolean>(true);
+  const [league, setLeague] = useState<League | null>(() => previewState?.league ?? null);
+  const [rounds, setRounds] = useState<Round[]>(() => previewState?.rounds ?? []);
+  const [teams, setTeams] = useState<Team[]>(() => previewState?.teams ?? []);
+  const [memberships, setMemberships] = useState<Membership[]>(() => previewState?.memberships ?? []);
+  const [picks, setPicks] = useState<Pick[]>(() => previewState?.picks ?? []);
+  const [playersById, setPlayersById] = useState<Map<ID, Player>>(
+    () => previewState?.playersById ?? new Map()
+  );
+  const [viewerId, setViewerId] = useState(() => previewState?.viewerId ?? "");
+  const [loading, setLoading] = useState<boolean>(() => !isDevPreview);
   const [exporting, setExporting] = useState(false);
-  const [leagueId, setLeagueId] = useState(() => localStorage.getItem("active_league_id") || "");
+  const [fplTeamCodes, setFplTeamCodes] = useState<Record<string, number>>({});
+  const [showOverflowCue, setShowOverflowCue] = useState(false);
+  const [leagueId, setLeagueId] = useState(
+    () => previewState?.league.id ?? localStorage.getItem("active_league_id") ?? ""
+  );
 
   const exportRef = useRef<HTMLDivElement>(null);
-  const guidance = useFirstPickGuidance(leagueId);
+  const boardRef = useRef<HTMLDivElement>(null);
+  const guidance = useFirstPickGuidance(isDevPreview ? undefined : leagueId);
   const managedTheme = useMemo(() => resolveManagedLeagueTheme(league as any), [league]);
   const isManagedLeague = !!managedTheme?.enabled;
 
   function changeView(next: ViewMode) {
     setView(next);
-    navigate(`/leaderboard?view=${next}`, { replace: true });
+    const search = new URLSearchParams(location.search);
+    search.set("view", next);
+    navigate(`/leaderboard?${search.toString()}`, { replace: true });
   }
 
   useEffect(() => {
@@ -128,6 +255,8 @@ export function Leaderboard() {
   }, [location.search]);
 
   useEffect(() => {
+    if (isDevPreview) return;
+
     (async () => {
       setLoading(true);
       try {
@@ -220,7 +349,28 @@ export function Leaderboard() {
         setLoading(false);
       }
     })();
-  }, [leagueId]);
+  }, [isDevPreview, leagueId]);
+
+  useEffect(() => {
+    if (isDevPreview) return;
+
+    void fetchFplTeams()
+      .then((fplTeams) => {
+        const codes = Object.fromEntries(
+          fplTeams
+            .filter((team) => Number.isInteger(team.code) && team.code > 0)
+            .flatMap((team) => [
+              [team.name.trim().toLowerCase(), team.code],
+              [team.short_name.trim().toLowerCase(), team.code],
+            ])
+        );
+        setFplTeamCodes(codes);
+      })
+      .catch(() => {
+        // Crests are decorative; TeamBadge retains the safe initials fallback.
+        setFplTeamCodes({});
+      });
+  }, [isDevPreview]);
 
   const teamsById = useMemo(() => {
     const map = new Map<ID, Team>();
@@ -349,6 +499,7 @@ export function Leaderboard() {
           playerId: p.player_id,
           roundNumber: round?.round_number ?? 0,
           playerName: resolveDisplayName(playersById.get(p.player_id)?.display_name),
+          team,
           teamName: team?.name ?? "\u2014",
           reason: p.reason ?? (p.status === "no-pick" ? "no-pick" : "loss"),
           when: round?.pick_deadline_utc ?? "",
@@ -362,6 +513,30 @@ export function Leaderboard() {
     () => new Map<number, Round>(rounds.map((round) => [round.round_number, round])),
     [rounds]
   );
+
+  function updateOverflowCue() {
+    const board = boardRef.current;
+    if (!board) return;
+
+    const remaining = board.scrollWidth - board.clientWidth - board.scrollLeft;
+    setShowOverflowCue(remaining > 2);
+  }
+
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+
+    const onScroll = () => updateOverflowCue();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onScroll);
+    board.addEventListener("scroll", onScroll, { passive: true });
+    observer?.observe(board);
+    onScroll();
+
+    return () => {
+      board.removeEventListener("scroll", onScroll);
+      observer?.disconnect();
+    };
+  }, [view, maxRound, matrixRows.length, eliminationRows.length]);
 
   function symbolForPick(p?: Pick) {
     if (!p) return "";
@@ -386,6 +561,59 @@ export function Leaderboard() {
       return "Hidden until deadline";
     }
     return symbolForPick(pick);
+  }
+
+  function fplTeamCodeFor(team?: Team) {
+    if (!team) return undefined;
+    return (
+      team.fplTeamCode ??
+      fplTeamCodes[team.code.trim().toLowerCase()] ??
+      fplTeamCodes[team.name.trim().toLowerCase()]
+    );
+  }
+
+  function renderPickCell(roundNumber: number, row: (typeof matrixRows)[number], pick?: Pick) {
+    const round = roundsByNumber.get(roundNumber);
+    const value = matrixCellValue(roundNumber, row.playerId, pick);
+    if (!round || !value) {
+      return <span className="leaderboard-empty-cell" aria-hidden="true">-</span>;
+    }
+
+    // Eliminated players cannot have a meaningful future survival entry.
+    if (!row.alive && !pick && round.round_number > (row.sortKey || 0)) {
+      return <span className="leaderboard-empty-cell" aria-hidden="true">-</span>;
+    }
+
+    if (value === "Hidden until deadline") {
+      return (
+        <span className="leaderboard-hidden-pick" title="Hidden until deadline">
+          <span aria-hidden="true">&#128274;</span>
+          <span>Hidden</span>
+        </span>
+      );
+    }
+
+    const team = teamsById.get(pick?.team_id ?? "");
+    if (!team) return <span className="leaderboard-empty-cell">{value}</span>;
+
+    const failed = pick?.status === "eliminated" || pick?.status === "no-pick";
+    const through = pick?.status === "through";
+    return (
+      <span className={`leaderboard-pick-cell ${failed ? "is-failed" : ""}`}>
+        <TeamBadge
+          code={team.code}
+          name={team.name}
+          fplTeamCode={fplTeamCodeFor(team)}
+          size="sm"
+        />
+        <span className="leaderboard-pick-code">{team.code}</span>
+        {(through || failed) && (
+          <span className={`leaderboard-pick-mark ${failed ? "is-failed" : ""}`} aria-label={failed ? "Eliminated" : "Through"}>
+            {failed ? "x" : "✓"}
+          </span>
+        )}
+      </span>
+    );
   }
 
   async function exportPNG() {
@@ -515,29 +743,35 @@ export function Leaderboard() {
 
   return (
     <div className="container-page py-6 space-y-4">
-      <div className="flex justify-end">
-        <GameSelector
-          value={leagueId}
-          label="Viewing game"
-          onChange={(id) => {
-            setLeagueId(id);
-          }}
-        />
-      </div>
+      {isDevPreview ? (
+        <div className="text-right text-xs font-semibold uppercase tracking-[0.14em] text-emerald-300">
+          Development preview - in-memory data
+        </div>
+      ) : (
+        <div className="flex justify-end">
+          <GameSelector
+            value={leagueId}
+            label="Viewing game"
+            onChange={(id) => {
+              setLeagueId(id);
+            }}
+          />
+        </div>
+      )}
       <ManagedLeagueStrip league={league as any} theme={managedTheme} />
-      <LeagueStatusBanner leagueId={leagueId} />
+      {!isDevPreview && <LeagueStatusBanner leagueId={leagueId} />}
       {guidance.shouldGuide ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
           The leaderboard will appear once players have submitted their picks.
         </div>
       ) : (
         <>
-          <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">
-            <div className="text-lg font-semibold">
+          <div className="leaderboard-toolbar">
+            <div className="text-lg font-semibold text-slate-100">
               {isManagedLeague ? "Leaderboard" : `${league.name} - Leaderboard`}
             </div>
-            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:justify-end">
-              <label className="flex items-center gap-2 text-sm">
+            <div className="leaderboard-controls">
+              <label className="leaderboard-elims-toggle">
                 <input
                   type="checkbox"
                   checked={showElims}
@@ -546,14 +780,14 @@ export function Leaderboard() {
                 Show eliminated
               </label>
 
-              <div className="grid w-full grid-cols-3 rounded-xl border bg-white p-1 shadow-sm md:inline-flex md:w-auto">
+              <div className="leaderboard-tabs" role="tablist" aria-label="Leaderboard views">
                 <button
                   type="button"
                   className={
-                    "min-w-0 rounded-lg px-2 py-2 text-xs leading-tight text-center whitespace-normal " +
+                    "leaderboard-tab " +
                     (view === "leaderboard"
-                      ? "bg-teal-600 text-white"
-                      : "text-slate-700 hover:bg-slate-100")
+                      ? "is-active"
+                      : "")
                   }
                   onClick={() => changeView("leaderboard")}
                 >
@@ -562,10 +796,10 @@ export function Leaderboard() {
                 <button
                   type="button"
                   className={
-                    "min-w-0 rounded-lg px-2 py-2 text-xs leading-tight text-center whitespace-normal " +
+                    "leaderboard-tab " +
                     (view === "matrix"
-                      ? "bg-teal-600 text-white"
-                      : "text-slate-700 hover:bg-slate-100")
+                      ? "is-active"
+                      : "")
                   }
                   onClick={() => changeView("matrix")}
                 >
@@ -574,10 +808,10 @@ export function Leaderboard() {
                 <button
                   type="button"
                   className={
-                    "min-w-0 rounded-lg px-2 py-2 text-xs leading-tight text-center whitespace-normal " +
+                    "leaderboard-tab " +
                     (view === "eliminations"
-                      ? "bg-teal-600 text-white"
-                      : "text-slate-700 hover:bg-slate-100")
+                      ? "is-active"
+                      : "")
                   }
                   onClick={() => changeView("eliminations")}
                 >
@@ -587,7 +821,7 @@ export function Leaderboard() {
 
               <button
                 type="button"
-                className="btn btn-ghost w-full text-xs md:w-auto"
+                className="btn btn-ghost leaderboard-export"
                 disabled={exporting}
                 onClick={exportPNG}
               >
@@ -596,30 +830,37 @@ export function Leaderboard() {
             </div>
           </div>
 
-          <div ref={exportRef} className="rounded-2xl border bg-white overflow-x-auto p-0">
+          <div
+            ref={(node) => {
+              exportRef.current = node;
+              boardRef.current = node;
+            }}
+            className={`leaderboard-board leaderboard-board-${view}`}
+          >
+            {showOverflowCue && view !== "leaderboard" && (
+              <span className="leaderboard-scroll-cue" aria-hidden="true">
+                <span>›</span>
+              </span>
+            )}
             {view === "leaderboard" ? (
-              <table className="min-w-full text-sm">
-                <thead className="bg-slate-50 text-slate-700">
+              <table className="leaderboard-table leaderboard-standings-table">
+                <thead>
                   <tr>
-                    <th className="px-3 py-2 text-left w-[48px]">#</th>
-                    <th className="px-3 py-2 text-left">Name</th>
-                    <th className="px-3 py-2 text-left">State</th>
+                    <th className="leaderboard-position-heading">#</th>
+                    <th>Name</th>
+                    <th>State</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r, i) => (
-                    <tr key={r.membership.id} className="border-t">
-                      <td className="px-3 py-2">{i + 1}</td>
-                      <td className="px-3 py-2"><PlayerName name={r.name} isViewer={r.isViewer} /></td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={
-                            "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold " +
-                            (r.alive
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-slate-200 text-slate-700")
-                          }
-                        >
+                    <tr
+                      key={r.membership.id}
+                      className={`${r.isViewer ? "is-viewer " : ""}${!r.alive ? "is-eliminated" : ""}`}
+                    >
+                      <td className="leaderboard-position"><span>{i + 1}</span></td>
+                      <td className="leaderboard-player"><PlayerName name={r.name} isViewer={r.isViewer} /></td>
+                      <td>
+                        <span className={`leaderboard-state ${r.alive ? "is-alive" : "is-eliminated"}`}>
                           {r.state}
                         </span>
                       </td>
@@ -635,13 +876,13 @@ export function Leaderboard() {
                 </tbody>
               </table>
             ) : view === "matrix" ? (
-              <table className="min-w-[720px] text-sm">
-                <thead className="bg-slate-50 text-slate-700">
+              <table className="leaderboard-table leaderboard-matrix-table">
+                <thead>
                   <tr>
-                    <th className="px-3 py-2 text-left">Name</th>
-                    <th className="px-3 py-2 text-left">State</th>
+                    <th className="leaderboard-matrix-name">Name</th>
+                    <th className="leaderboard-matrix-state">State</th>
                     {Array.from({ length: maxRound }, (_, i) => (
-                      <th key={i} className="px-3 py-2 text-left">{`RD${i + 1}`}</th>
+                      <th key={i} className="leaderboard-round-heading">{`RD${i + 1}`}</th>
                     ))}
                   </tr>
                 </thead>
@@ -656,17 +897,10 @@ export function Leaderboard() {
                     matrixRows.map((r) => {
                       const perRound = picksByPlayerByRound.get(r.playerId);
                       return (
-                        <tr key={r.membership.id} className="border-t">
-                          <td className="px-3 py-2 whitespace-nowrap"><PlayerName name={r.name} isViewer={r.isViewer} /></td>
-                          <td className="px-3 py-2">
-                            <span
-                              className={
-                                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold " +
-                                (r.alive
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : "bg-slate-200 text-slate-700")
-                              }
-                            >
+                        <tr key={r.membership.id} className={`${r.isViewer ? "is-viewer " : ""}${!r.alive ? "is-eliminated" : ""}`}>
+                          <td className="leaderboard-player leaderboard-matrix-name"><PlayerName name={r.name} isViewer={r.isViewer} /></td>
+                          <td className="leaderboard-matrix-state">
+                            <span className={`leaderboard-state ${r.alive ? "is-alive" : "is-eliminated"}`}>
                               {r.state}
                             </span>
                           </td>
@@ -674,8 +908,8 @@ export function Leaderboard() {
                             const rd = i + 1;
                             const p = perRound?.get(rd);
                             return (
-                              <td key={rd} className="px-3 py-2">
-                                {matrixCellValue(rd, r.playerId, p)}
+                              <td key={rd} className="leaderboard-matrix-cell">
+                                {renderPickCell(rd, r, p)}
                               </td>
                             );
                           })}
@@ -686,28 +920,47 @@ export function Leaderboard() {
                 </tbody>
               </table>
             ) : (
-              <table className="min-w-full text-sm">
-                <thead className="bg-slate-50 text-slate-700">
+              <table className="leaderboard-table leaderboard-eliminations-table">
+                <thead>
                   <tr>
-                    <th className="px-3 py-2 text-left w-24">Round</th>
-                    <th className="px-3 py-2 text-left">Player</th>
-                    <th className="px-3 py-2 text-left">Pick</th>
-                    <th className="px-3 py-2 text-left">Reason</th>
-                    <th className="px-3 py-2 text-left">Locked</th>
+                    <th>Round</th>
+                    <th>Player</th>
+                    <th>Pick</th>
+                    <th>Reason</th>
+                    <th className="leaderboard-locked-heading">Locked</th>
                   </tr>
                 </thead>
                 <tbody>
                   {eliminationRows.map((row, i) => (
-                    <tr key={`${row.playerName}:${row.roundNumber}:${i}`} className="border-t">
-                      <td className="px-3 py-2">R{row.roundNumber}</td>
-                      <td className="px-3 py-2">
+                    <tr
+                      key={`${row.playerName}:${row.roundNumber}:${i}`}
+                      className={i === 0 || eliminationRows[i - 1]?.roundNumber !== row.roundNumber ? "leaderboard-new-elimination-round" : ""}
+                    >
+                      <td><span className="leaderboard-round-chip">R{row.roundNumber}</span></td>
+                      <td className="leaderboard-player">
                         <PlayerName name={row.playerName} isViewer={row.playerId === viewerId && !!viewerId} />
                       </td>
-                      <td className="px-3 py-2">{row.teamName}</td>
-                      <td className="px-3 py-2 capitalize">
-                        {row.reason === "no-pick" ? "No Pick" : row.reason}
+                      <td>
+                        {row.team ? (
+                          <span className="leaderboard-eliminated-pick">
+                            <TeamBadge
+                              code={row.team.code}
+                              name={row.team.name}
+                              fplTeamCode={fplTeamCodeFor(row.team)}
+                              size="sm"
+                            />
+                            <span>{row.teamName}</span>
+                          </span>
+                        ) : (
+                          row.teamName
+                        )}
                       </td>
-                      <td className="px-3 py-2">
+                      <td>
+                        <span className="leaderboard-reason">
+                          {row.reason === "no-pick" ? "No Pick" : row.reason}
+                        </span>
+                      </td>
+                      <td className="leaderboard-locked-cell">
                         {row.when ? new Date(row.when).toLocaleString() : "\u2014"}
                       </td>
                     </tr>

@@ -1,5 +1,5 @@
 // src/pages/MakePick.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { useCountdown } from "../hooks/useCountdown";
@@ -11,16 +11,83 @@ import { supa } from "../lib/supabaseClient";
 import { getEffectiveUserId } from "../lib/auth";
 import { getMemberElimination, loadLeagueRoundState } from "../lib/leagueRoundState";
 import { postJsonWithAuth } from "../lib/apiAuth";
+import { fetchFplTeams } from "../lib/fpl";
+import { Spinner } from "../components/ui/Spinner";
+import { TeamBadge } from "../components/TeamBadge";
 import {
   getInviteAttributionForLeague,
   trackInviteEventOnce,
 } from "../lib/analytics";
 
-type OpponentMap = Record<string, string>;
+type FixtureInfo = {
+  opponent: string;
+  venue: "Home" | "Away";
+  kickoffUtc?: string | null;
+};
+
+type FixtureMap = Record<string, FixtureInfo>;
+
+const DEV_PREVIEW_LEAGUE = {
+  id: "dev-make-pick-preview",
+  name: "FCC Matchday Preview",
+  status: "active",
+  current_round: 4,
+  is_test: false,
+};
+
+const DEV_PREVIEW_ROUND = {
+  id: "dev-make-pick-preview-round",
+  league_id: DEV_PREVIEW_LEAGUE.id,
+  round_number: 4,
+  status: "upcoming",
+  pick_deadline_utc: "2099-08-23T14:00:00Z",
+};
+
+const DEV_PREVIEW_TEAMS = [
+  ["arsenal", "Arsenal", "ARS", 3],
+  ["aston-villa", "Aston Villa", "AVL", 7],
+  ["bournemouth", "Bournemouth", "BOU", 91],
+  ["brentford", "Brentford", "BRE", 94],
+  ["brighton", "Brighton", "BHA", 36],
+  ["chelsea", "Chelsea", "CHE", 8],
+  ["crystal-palace", "Crystal Palace", "CRY", 31],
+  ["everton", "Everton", "EVE", 11],
+  ["fulham", "Fulham", "FUL", 54],
+  ["liverpool", "Liverpool", "LIV", 14],
+  ["man-city", "Man City", "MCI", 43],
+  ["newcastle", "Newcastle", "NEW", 4],
+].map(([id, name, code, fplTeamCode]) => ({ id, name, code, fplTeamCode: Number(fplTeamCode) }));
+
+const DEV_PREVIEW_FIXTURES: FixtureMap = {
+  arsenal: { opponent: "Brighton", venue: "Home", kickoffUtc: "2099-08-23T12:30:00Z" },
+  brighton: { opponent: "Arsenal", venue: "Away", kickoffUtc: "2099-08-23T12:30:00Z" },
+  "aston-villa": { opponent: "Newcastle", venue: "Home", kickoffUtc: "2099-08-23T15:00:00Z" },
+  newcastle: { opponent: "Aston Villa", venue: "Away", kickoffUtc: "2099-08-23T15:00:00Z" },
+  bournemouth: { opponent: "Everton", venue: "Home", kickoffUtc: "2099-08-23T15:00:00Z" },
+  everton: { opponent: "Bournemouth", venue: "Away", kickoffUtc: "2099-08-23T15:00:00Z" },
+  brentford: { opponent: "Fulham", venue: "Home", kickoffUtc: "2099-08-23T17:30:00Z" },
+  fulham: { opponent: "Brentford", venue: "Away", kickoffUtc: "2099-08-23T17:30:00Z" },
+  chelsea: { opponent: "Liverpool", venue: "Home", kickoffUtc: "2099-08-24T14:00:00Z" },
+  liverpool: { opponent: "Chelsea", venue: "Away", kickoffUtc: "2099-08-24T14:00:00Z" },
+  "crystal-palace": { opponent: "Man City", venue: "Home", kickoffUtc: "2099-08-24T16:30:00Z" },
+  "man-city": { opponent: "Crystal Palace", venue: "Away", kickoffUtc: "2099-08-24T16:30:00Z" },
+};
+
+function formatKickoff(kickoffUtc?: string | null) {
+  if (!kickoffUtc || Number.isNaN(Date.parse(kickoffUtc))) return null;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(kickoffUtc));
+}
 
 export function MakePick() {
+  const isDevPreview =
+    import.meta.env.DEV && new URLSearchParams(window.location.search).get("devPreview") === "1";
   const [leagueId, setLeagueId] = useState<string>(
-    () => localStorage.getItem("active_league_id") || ""
+    () => (isDevPreview ? DEV_PREVIEW_LEAGUE.id : localStorage.getItem("active_league_id") || "")
   );
   const [league, setLeague] = useState<any>(null);
   const [round, setRound] = useState<any>(null);
@@ -28,7 +95,11 @@ export function MakePick() {
   const [usedTeamIds, setUsedTeamIds] = useState<Set<string>>(new Set());
   const [usedByRound, setUsedByRound] = useState<Record<string, number>>({});
   const [currentPick, setCurrentPick] = useState<any>(null);
-  const [opponentByTeamId, setOpponentByTeamId] = useState<OpponentMap>({});
+  const [fixtureByTeamId, setFixtureByTeamId] = useState<FixtureMap>({});
+  const [fplTeamCodeByShortName, setFplTeamCodeByShortName] = useState<Record<string, number>>({});
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [pickLocked, setPickLocked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [reloadTick, setReloadTick] = useState(0);
   const [authUserId, setAuthUserId] = useState<string>("");
@@ -39,10 +110,20 @@ export function MakePick() {
 
   const navigate = useNavigate();
   const toast = useToast();
+  const postSubmitNavigation = useRef<number | null>(null);
 
   const playerId = authUserId;
 
+  useEffect(() => () => {
+    if (postSubmitNavigation.current != null) window.clearTimeout(postSubmitNavigation.current);
+  }, []);
+
   useEffect(() => {
+    if (isDevPreview) {
+      setAuthUserId("dev-preview-player");
+      return;
+    }
+
     let mounted = true;
     const load = async () => {
       const uid = (await getEffectiveUserId()) ?? "";
@@ -53,9 +134,27 @@ export function MakePick() {
     return () => {
       mounted = false;
     };
-  }, [navigate]);
+  }, [isDevPreview, navigate]);
 
   useEffect(() => {
+    if (isDevPreview) {
+      setLeague(DEV_PREVIEW_LEAGUE);
+      setRound(DEV_PREVIEW_ROUND);
+      setTeams(DEV_PREVIEW_TEAMS);
+      setUsedTeamIds(new Set(["liverpool"]));
+      setUsedByRound({ liverpool: 2 });
+      setCurrentPick(null);
+      setFixtureByTeamId(DEV_PREVIEW_FIXTURES);
+      setSelectedTeamId("arsenal");
+      setPickLocked(false);
+      setViewerMembership({ player_id: "dev-preview-player", is_active: true });
+      setWinnerName("");
+      setInactiveMessage("");
+      setLoadError("");
+      setLoading(false);
+      return;
+    }
+
     if (!leagueId || !playerId) {
       setLeague(null);
       setRound(null);
@@ -63,7 +162,10 @@ export function MakePick() {
       setUsedTeamIds(new Set());
       setUsedByRound({});
       setCurrentPick(null);
-      setOpponentByTeamId({});
+      setFixtureByTeamId({});
+      setFplTeamCodeByShortName({});
+      setSelectedTeamId(null);
+      setPickLocked(false);
       setViewerMembership(null);
       setWinnerName("");
       setInactiveMessage("");
@@ -86,7 +188,10 @@ export function MakePick() {
           setUsedTeamIds(new Set());
           setUsedByRound({});
           setCurrentPick(null);
-          setOpponentByTeamId({});
+          setFixtureByTeamId({});
+          setFplTeamCodeByShortName({});
+          setSelectedTeamId(null);
+          setPickLocked(false);
           setViewerMembership(null);
           setWinnerName("");
           setInactiveMessage("");
@@ -103,20 +208,22 @@ export function MakePick() {
         setRound(roundState.round);
         setTeams(roundState.teams ?? []);
         setCurrentPick(roundState.viewerPick ?? null);
+        setSelectedTeamId(null);
+        setPickLocked(false);
         const elimination = myMembership
           ? getMemberElimination(myMembership, roundState.rounds, roundState.allLeaguePicks, leagueId)
           : null;
         if (activeLeague.status === "completed") {
           setUsedTeamIds(new Set());
           setUsedByRound({});
-          setOpponentByTeamId({});
+          setFixtureByTeamId({});
           setInactiveMessage("");
           return;
         }
         if (myMembership?.is_active === false) {
           setUsedTeamIds(new Set());
           setUsedByRound({});
-          setOpponentByTeamId({});
+          setFixtureByTeamId({});
           setInactiveMessage(
             elimination?.pick?.status === "no-pick"
               ? `No pick was submitted before the Round ${elimination.round.round_number} deadline.`
@@ -139,6 +246,20 @@ export function MakePick() {
 
         const leagueTeams = roundState.teams ?? [];
         setTeams(leagueTeams ?? []);
+
+        void fetchFplTeams()
+          .then((fplTeams) => {
+            const fplCodes = Object.fromEntries(
+              fplTeams
+                .filter((team) => Number.isInteger(team.code) && team.code > 0)
+                .map((team) => [team.short_name.trim().toUpperCase(), team.code])
+            );
+            setFplTeamCodeByShortName(fplCodes);
+          })
+          .catch(() => {
+            // Crests are decorative; retain initials/local fallback if FPL is unavailable.
+            setFplTeamCodeByShortName({});
+          });
 
         const used = await dataService.listUsedTeamIds(leagueId, playerId);
         setUsedTeamIds(used);
@@ -178,7 +299,7 @@ export function MakePick() {
             .from("fixtures")
             .select("*")
             .eq("round_id", currentRound.id);
-          const opp: OpponentMap = {};
+          const fixturesByTeam: FixtureMap = {};
           for (const f of roundFixtures ?? []) {
             const homeTeam = byTeamId.get(String(f.home_team_id));
             const awayTeam = byTeamId.get(String(f.away_team_id));
@@ -187,11 +308,19 @@ export function MakePick() {
             const away = awayTeam?.name ?? "";
 
             if (home && away) {
-              opp[String(f.home_team_id)] = `vs ${away} (H)`;
-              opp[String(f.away_team_id)] = `vs ${home} (A)`;
+              fixturesByTeam[String(f.home_team_id)] = {
+                opponent: away,
+                venue: "Home",
+                kickoffUtc: f.kickoff_utc,
+              };
+              fixturesByTeam[String(f.away_team_id)] = {
+                opponent: home,
+                venue: "Away",
+                kickoffUtc: f.kickoff_utc,
+              };
             }
           }
-          if ((roundFixtures?.length ?? 0) > 0 && Object.keys(opp).length === 0) {
+          if ((roundFixtures?.length ?? 0) > 0 && Object.keys(fixturesByTeam).length === 0) {
             console.warn("[MakePick] Fixtures loaded but no team-opponent mappings were built", {
               leagueId,
               roundId: currentRound.id,
@@ -199,9 +328,9 @@ export function MakePick() {
               teamCount: leagueTeams?.length ?? 0,
             });
           }
-          setOpponentByTeamId(opp);
+          setFixtureByTeamId(fixturesByTeam);
         } catch {
-          setOpponentByTeamId({});
+          setFixtureByTeamId({});
         }
       } catch (err: any) {
         setLoadError(err?.message ?? "Failed to load picks");
@@ -209,7 +338,7 @@ export function MakePick() {
         setLoading(false);
       }
     })();
-  }, [leagueId, playerId, reloadTick]);
+  }, [isDevPreview, leagueId, playerId, reloadTick]);
 
   const timeLeft = useCountdown(round?.pick_deadline_utc);
   const isTestMode = !!league?.is_test;
@@ -232,11 +361,36 @@ export function MakePick() {
       a.name.localeCompare(b.name, "en", { sensitivity: "base" })
     );
   }, [teams]);
+  const selectedTeam = teamsAZ.find((team) => String(team.id) === String(selectedTeamId)) ?? null;
+  const currentPickTeam = teamsAZ.find((team) => String(team.id) === String(currentPick?.team_id)) ?? null;
 
-  async function pick(teamId: string) {
+  function getFplTeamCode(team?: { code?: string; fplTeamCode?: number }) {
+    if (!team) return undefined;
+    if (Number.isInteger(team.fplTeamCode) && Number(team.fplTeamCode) > 0) return team.fplTeamCode;
+    return fplTeamCodeByShortName[String(team.code ?? "").trim().toUpperCase()];
+  }
+
+  function selectTeam(teamId: string) {
+    if (locked || submitting || usedTeamIds.has(teamId)) return;
+    setSelectedTeamId(teamId);
+  }
+
+  async function submitPick() {
     try {
-      if (!league || !round || !playerId) return;
-      if (locked) return;
+      if (!league || !round || !playerId || !selectedTeamId || submitting || pickLocked) return;
+      if (locked || usedTeamIds.has(selectedTeamId)) return;
+
+      if (isDevPreview) {
+        setSubmitting(true);
+        postSubmitNavigation.current = window.setTimeout(() => {
+          setSubmitting(false);
+          setPickLocked(true);
+          postSubmitNavigation.current = null;
+        }, 500);
+        return;
+      }
+
+      const teamId = selectedTeamId;
       const isUpdatingPick = !!currentPick && currentPick.team_id !== teamId;
       const isFirstPickForLeague = !currentPick && usedTeamIds.size === 0;
 
@@ -244,6 +398,7 @@ export function MakePick() {
         const ok = confirm("Replace your existing pick with this team?");
         if (!ok) return;
       }
+      setSubmitting(true);
       const res = await postJsonWithAuth("/api/submit-pick", {
         league_id: league.id,
         round_id: round.id,
@@ -265,9 +420,12 @@ export function MakePick() {
         );
       }
       toast(isUpdatingPick ? "Pick updated" : "Pick submitted", { variant: "success" });
-      navigate("/leaderboard");
+      setPickLocked(true);
+      postSubmitNavigation.current = window.setTimeout(() => navigate("/leaderboard"), 560);
     } catch (e: any) {
       toast(e?.message ?? "Could not save pick.", { variant: "error" });
+    } finally {
+      if (!isDevPreview) setSubmitting(false);
     }
   }
 
@@ -319,15 +477,20 @@ export function MakePick() {
         className="min-h-[calc(100vh-4rem)] grid place-items-center"
       >
         <div className="flex flex-col items-center gap-3">
-          <GameSelector
-            value={leagueId}
-            label="Viewing game"
-            onChange={(id) => {
-              setLeagueId(id);
-              setReloadTick((x) => x + 1);
-            }}
-          />
-          <div className="text-slate-500 text-sm">{message}</div>
+          {!isDevPreview && (
+            <GameSelector
+              value={leagueId}
+              label="Viewing game"
+              onChange={(id) => {
+                setLeagueId(id);
+                setReloadTick((x) => x + 1);
+              }}
+            />
+          )}
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            {!loadError && <Spinner size={18} />}
+            <span>{message}</span>
+          </div>
         </div>
       </div>
     );
@@ -399,19 +562,25 @@ export function MakePick() {
   return (
     <div data-testid="make-pick-page" className="container-page py-6">
       <ManagedLeagueHero league={league} theme={managedTheme} />
-      <div className="mb-4 flex justify-end">
-        <GameSelector
-          value={leagueId}
-          label="Viewing game"
-          onChange={(id) => {
-            setLeagueId(id);
-            setReloadTick((x) => x + 1);
-          }}
-        />
-      </div>
+      {isDevPreview ? (
+        <div className="mb-4 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100">
+          DEVELOPMENT PREVIEW: in-memory sample data only. Submission is simulated and never calls the pick API.
+        </div>
+      ) : (
+        <div className="mb-4 flex justify-end">
+          <GameSelector
+            value={leagueId}
+            label="Viewing game"
+            onChange={(id) => {
+              setLeagueId(id);
+              setReloadTick((x) => x + 1);
+            }}
+          />
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
-        <div className="card p-6 sm:p-7">
+        <div className="card min-w-0 p-6 sm:p-7">
           <div className="mb-4">
             <h1 className="text-2xl font-bold">
               Round {round.round_number} - Make your pick
@@ -438,68 +607,127 @@ export function MakePick() {
           </div>
 
           {currentPick && (
-            <div className="mb-5 rounded-xl bg-teal-50 border border-teal-100 px-4 py-3 text-sm text-teal-900 flex items-center justify-between gap-3">
-              <div>
-                <div className="font-semibold text-sm">Current pick</div>
-                <div className="text-sm">
-                  {teamsAZ.find((t) => t.id === currentPick.team_id)?.name ?? "—"}
+            <div className="pick-current-card mb-5 flex items-center gap-3 px-4 py-3 text-sm">
+              <TeamBadge
+                code={currentPickTeam?.code}
+                logoUrl={currentPickTeam?.logo_url}
+                fplTeamCode={getFplTeamCode(currentPickTeam)}
+                name={currentPickTeam?.name ?? "Current pick"}
+                size="sm"
+              />
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-300">Current pick</div>
+                <div className="truncate text-sm font-semibold text-white">
+                  {currentPickTeam?.name ?? "—"}
                 </div>
-                <div className="text-[11px] text-teal-800 mt-0.5">
+                <div className="mt-0.5 text-[11px] text-emerald-100/65">
                   You can change it any time before the deadline.
                 </div>
               </div>
             </div>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-2.5" aria-label="Choose a team">
             {teamsAZ.map((t) => {
               const alreadyUsed = usedTeamIds.has(t.id);
-              const disabled = alreadyUsed || locked;
+              const unavailable = alreadyUsed || locked;
+              const disabled = unavailable || submitting || pickLocked;
               const usedRound = usedByRound[String(t.id)];
-              const opp = opponentByTeamId[String(t.id)];
+              const fixture = fixtureByTeamId[String(t.id)];
+              const isSelected = String(selectedTeamId) === String(t.id);
+              const isCurrentPick = String(currentPick?.team_id) === String(t.id);
+              const kickoff = formatKickoff(fixture?.kickoffUtc);
 
               return (
-                <div
+                <button
                   key={t.id}
-                  className="flex flex-wrap items-center gap-2 sm:gap-3"
+                  data-testid="team-select-btn"
+                  type="button"
+                  onClick={() => selectTeam(t.id)}
+                  disabled={disabled}
+                  aria-pressed={isSelected}
+                  className={[
+                    "pick-team-row w-full text-left",
+                    isSelected ? "pick-team-row-selected" : "",
+                    unavailable ? "pick-team-row-unavailable" : "",
+                  ].join(" ")}
                 >
-                  <button
-                    data-testid="save-pick-btn"
-                    type="button"
-                    onClick={() => pick(t.id)}
-                    disabled={disabled}
-                    className={[
-                      "btn flex-1 justify-between sm:flex-none sm:min-w-[210px]",
-                      disabled
-                        ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
-                        : "btn-ghost",
-                    ].join(" ")}
-                  >
-                    <span className="font-medium">{t.name}</span>
-                  </button>
-
-                  <span className="text-xs px-3 py-1 rounded-full border bg-slate-50 text-slate-700">
-                    {opp ?? `Fixture unavailable for Round ${round.round_number}`}
+                  <TeamBadge
+                    code={t.code}
+                    logoUrl={t.logo_url}
+                    fplTeamCode={getFplTeamCode(t)}
+                    name={t.name}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="truncate text-sm font-bold text-white">{t.name}</span>
+                      {isCurrentPick && (
+                        <span className="pick-row-status bg-emerald-300/10 text-emerald-200">Current</span>
+                      )}
+                    </span>
+                    {fixture ? (
+                      <span className="pick-fixture-info mt-1 text-xs text-slate-300">
+                        <span className="pick-fixture-opponent">vs {fixture.opponent}</span>
+                        <span className="pick-venue">{fixture.venue === "Home" ? "H" : "A"}</span>
+                        {kickoff && <span className="pick-fixture-kickoff text-slate-400">{kickoff}</span>}
+                      </span>
+                    ) : (
+                      <span className="mt-1 block text-xs text-slate-400">Fixture unavailable for Round {round.round_number}</span>
+                    )}
                   </span>
-
-                  {alreadyUsed && (
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">
-                      {usedRound != null ? `Used R${usedRound}` : "Used"}
-                    </span>
-                  )}
-                  {locked && !alreadyUsed && (
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
-                      Locked
-                    </span>
-                  )}
-                </div>
+                  <span className="flex shrink-0 items-center gap-2">
+                    {alreadyUsed && (
+                      <span className="pick-row-status bg-rose-400/10 text-rose-200">
+                        {usedRound != null ? `Used R${usedRound}` : "Used"}
+                      </span>
+                    )}
+                    {locked && !alreadyUsed && <span className="pick-row-status bg-white/10 text-slate-300">Locked</span>}
+                    {!unavailable && (
+                      <span className={`pick-select-mark ${isSelected ? "pick-select-mark-selected" : ""}`} aria-hidden="true">
+                        {isSelected ? "✓" : ""}
+                      </span>
+                    )}
+                  </span>
+                </button>
               );
             })}
           </div>
 
+          <div className="pick-submit-panel mt-5">
+            {pickLocked ? (
+              <div className="pick-locked-confirmation" role="status" aria-live="polite">
+                <TeamBadge
+                  code={selectedTeam?.code}
+                  logoUrl={selectedTeam?.logo_url}
+                  fplTeamCode={getFplTeamCode(selectedTeam)}
+                  name={selectedTeam?.name ?? "Selected team"}
+                  size="sm"
+                />
+                <span className="pick-locked-line" aria-hidden="true" />
+                <span className="text-sm font-extrabold tracking-[0.14em] text-emerald-200">PICK LOCKED</span>
+              </div>
+            ) : (
+              <button
+                data-testid="save-pick-btn"
+                type="button"
+                className="btn btn-primary w-full py-3"
+                onClick={() => void submitPick()}
+                disabled={!selectedTeam || locked || submitting}
+              >
+                {submitting ? (
+                  <><Spinner size={16} /> Saving pick...</>
+                ) : selectedTeam ? (
+                  <>Submit pick: {selectedTeam.name}</>
+                ) : (
+                  "Select a team to continue"
+                )}
+              </button>
+            )}
+          </div>
+
         </div>
 
-        <aside className="card p-5 space-y-4">
+        <aside className="card min-w-0 p-5 space-y-4">
           <div>
             <div className="text-xs uppercase tracking-wide text-slate-500">
               Game

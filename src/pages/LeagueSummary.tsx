@@ -435,7 +435,7 @@ export function LeagueSummary() {
 
       {/* Premium Hero */}
       <div className="relative overflow-hidden rounded-3xl border shadow-sm">
-        <div className="absolute inset-0 bg-gradient-to-r from-teal-500 via-emerald-500 to-cyan-500 opacity-90" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#185744] via-[#16734f] to-[#103129] opacity-95" />
         <div className="relative p-5 md:p-7 text-white">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>

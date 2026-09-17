@@ -56,20 +56,32 @@ function AppInner() {
     return localStorage.getItem("dev_switcher") === "1";
   }, []);
 
-  // Routes that hide header/footer
+  const isMakePickDevPreview =
+    import.meta.env.DEV && new URLSearchParams(location.search).get("devPreview") === "1";
+  const isMyGamesDevPreview =
+    import.meta.env.DEV && new URLSearchParams(location.search).get("devPreview") === "1";
+  const isLeaderboardDevPreview =
+    import.meta.env.DEV && new URLSearchParams(location.search).get("devPreview") === "1";
+  const isDevPreview =
+    (location.pathname === "/make-pick" && isMakePickDevPreview) ||
+    (location.pathname === "/my-games" && isMyGamesDevPreview) ||
+    (location.pathname === "/leaderboard" && isLeaderboardDevPreview);
+
+  // The preview stays isolated from header data/auth work in local development.
   const noChromeRoutes = ["/login"];
-  const isNoChrome = noChromeRoutes.includes(location.pathname);
+  const isNoChrome = noChromeRoutes.includes(location.pathname) || isDevPreview;
 
   // Routes that are full-bleed (no container wrapper)
   const fullBleedRoutes = ["/", "/login"];
   const isFullBleed = fullBleedRoutes.includes(location.pathname);
+  const isAdminRoute = location.pathname === "/admin";
 
   return (
     <>
       {/* Header everywhere except no-chrome routes */}
       {!isNoChrome && <Header />}
 
-      <main className={isFullBleed ? "" : "container-page py-4"}>
+      <main className={isFullBleed ? "" : `app-main ${isAdminRoute ? "app-main-admin" : ""} container-page py-4 sm:py-6`}>
         <Routes>
           {/* Public */}
           <Route path="/" element={<LandingPage />} />
@@ -86,17 +98,25 @@ function AppInner() {
           <Route
             path="/my-games"
             element={
-              <RequireAuth>
+              isMyGamesDevPreview ? (
                 <MyGames />
-              </RequireAuth>
+              ) : (
+                <RequireAuth>
+                  <MyGames />
+                </RequireAuth>
+              )
             }
           />
           <Route
             path="/make-pick"
             element={
-              <RequireAuth>
+              isMakePickDevPreview ? (
                 <MakePick />
-              </RequireAuth>
+              ) : (
+                <RequireAuth>
+                  <MakePick />
+                </RequireAuth>
+              )
             }
           />
           <Route
@@ -148,8 +168,8 @@ function AppInner() {
 
       {/* Footer hidden on landing & /login */}
       {!isFullBleed && !isNoChrome && (
-        <footer className="border-t bg-white/80">
-          <div className="container-page py-3 text-xs text-slate-500 flex items-center justify-between">
+        <footer className="border-t border-emerald-300/10 bg-[#07100f] text-white/55">
+          <div className="container-page flex items-center justify-between py-4 text-xs">
             <span>© {new Date().getFullYear()} Fantasy Command Centre</span>
             {SWITCHER_ENABLED && (
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
@@ -161,7 +181,7 @@ function AppInner() {
       )}
 
       {/* Dev switcher visible on every route (incl. /login) */}
-      {SWITCHER_ENABLED && <DevUserSwitcher />}
+      {SWITCHER_ENABLED && !isDevPreview && <DevUserSwitcher />}
     </>
   );
 }

@@ -274,8 +274,8 @@ export function LiveGames() {
 
   return (
     <div className="container-page space-y-8 py-6">
-      <div className="relative overflow-hidden rounded-3xl border bg-gradient-to-r from-emerald-600 via-teal-600 to-sky-600 text-white shadow-sm">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_#ffffff33,_transparent_55%)] opacity-20" />
+      <div className="relative overflow-hidden rounded-3xl border border-emerald-300/20 bg-gradient-to-r from-[#164d3d] via-[#12352d] to-[#0a1c19] text-white shadow-[0_18px_38px_rgba(0,0,0,0.2)]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_#77dba255,_transparent_58%)] opacity-30" />
         <div className="relative flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between md:p-7">
           <div>
             <div className="inline-flex items-center rounded-full bg-black/20 px-3 py-1 text-xs font-semibold tracking-wide">
