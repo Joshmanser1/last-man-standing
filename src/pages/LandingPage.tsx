@@ -8,136 +8,76 @@ export default function LandingPage() {
 
   useEffect(() => {
     supa.auth.getSession().then(({ data }) => setAuthed(!!data.session?.user?.id));
-    const { data: sub } = supa.auth.onAuthStateChange((_e, session) =>
+    const { data: sub } = supa.auth.onAuthStateChange((_event, session) =>
       setAuthed(!!session?.user?.id)
     );
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Require login for both actions when not authed
+  // Hosting requires authentication; joining continues through the established code-entry hub.
   const hostHref = authed ? "/private" : "/login";
-  const exploreHref = authed ? "/my-games" : "/login";
+  const joinHref = "/private";
 
   return (
     <main className="fcc-landing-shell min-h-screen text-white">
-      {/* Hero */}
       <section className="relative overflow-hidden pt-8 md:pt-12">
-        <div className="mx-auto max-w-7xl px-4 py-20 md:py-28">
+        <div className="mx-auto max-w-6xl px-4 py-20 md:py-28">
           <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-emerald-300 text-xs">
-              <span>Beta</span>
-              <span className="opacity-60">Go-live checklist: final polish</span>
-            </div>
-
-            <h1 className="mt-6 text-4xl md:text-6xl font-extrabold tracking-tight leading-tight">
+            <p className="text-xs font-extrabold uppercase tracking-[0.24em] text-emerald-300/85">
               Last-Man-Standing
-              <span className="block text-emerald-400">Host. Join. Win.</span>
-            </h1>
-
-            <p className="mt-6 text-lg opacity-80">
-              Spin up a private LMS with mates, or enter public pots. Live scoring, smart eliminations,
-              and clean admin tools. Free tier to start — upgrade when you’re ready.
             </p>
-
+            <h1 className="mt-3 text-4xl font-extrabold leading-tight tracking-tight md:text-6xl">
+              Host. Join. <span className="text-emerald-400">Survive.</span>
+            </h1>
+            <p className="mt-6 max-w-2xl text-lg leading-relaxed text-emerald-50/80">
+              One team. Every round. Win and survive. Draw or lose and you&apos;re out.
+              Use a team once, and they&apos;re gone for good.
+            </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link
-                to={hostHref}
-                className="btn btn-primary px-6 py-3"
-              >
-                Host a private league
+              <Link to={hostHref} className="btn btn-primary px-6 py-3">
+                Host a league
               </Link>
-
               <Link
-                to={exploreHref}
+                to={joinHref}
                 className="btn btn-ghost border-emerald-300/35 px-6 py-3 text-emerald-100 hover:border-emerald-200 hover:bg-emerald-400/10"
               >
-                Explore public games
+                Join a league
               </Link>
             </div>
-
-            <p className="mt-4 text-sm opacity-70">No card required on Free. Upgrade anytime.</p>
           </div>
         </div>
       </section>
 
-      {/* Feature cards */}
-      <section id="features" className="border-t border-white/10/">
-        <div className="mx-auto max-w-7xl px-4 py-12 grid gap-6 md:grid-cols-3">
+      <section id="features" className="border-t border-white/10">
+        <div className="mx-auto grid max-w-6xl gap-6 px-4 py-12 md:grid-cols-3">
           {[
-            { t: "Private & Public", b: "Free tier: 1 hosted + 1 joined private league. Pro/Elite unlock public pots." },
-            { t: "Live Scoring", b: "Auto eliminations, fixtures awareness, and live status." },
-            { t: "Admin Tools", b: "One-click round setup, tie-breaks, badges, exports." },
-          ].map((f) => (
-            <div key={f.t} className="fcc-landing-panel rounded-2xl border border-white/10 p-6">
-              <h3 className="font-semibold">{f.t}</h3>
-              <p className="mt-2 opacity-80">{f.b}</p>
+            { t: "Run your competition", b: "Create a Last-Man-Standing league for your mates, community or audience." },
+            { t: "Make one pick", b: "Choose one team each round. Win and you move on; draw or lose and you're out." },
+            { t: "Let FCC run matchday", b: "Fixtures, eliminations and round progression stay clear for every player." },
+          ].map((feature) => (
+            <div key={feature.t} className="fcc-landing-panel rounded-2xl border border-white/10 p-6">
+              <h2 className="font-semibold">{feature.t}</h2>
+              <p className="mt-2 opacity-80">{feature.b}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Pricing */}
-      <section id="pricing" className="border-t border-white/10">
-        <div className="mx-auto max-w-7xl px-4 py-16">
-          <h2 className="text-3xl md:text-4xl font-bold text-center">Simple, tiered access</h2>
-          <p className="mt-3 text-center opacity-75">Start free. Upgrade for public games, bigger pots, and pro features.</p>
-          <div className="mt-10 grid gap-6 md:grid-cols-3">
-            <div className="fcc-landing-panel rounded-3xl border border-white/10 p-6 flex flex-col">
-              <h3 className="text-xl font-semibold">Free</h3>
-              <p className="mt-1 opacity-75">Best for casual groups</p>
-              <div className="mt-6 text-4xl font-bold">£0</div>
-              <ul className="mt-6 space-y-2 text-sm opacity-90">
-                <li>• Host 1 private league</li><li>• Join 1 private league</li><li>• No public league access</li>
-              </ul>
-              <Link to="/login" className="btn btn-primary mt-8 px-4 py-3 text-center">
-                Get started
-              </Link>
-            </div>
-
-            <div className="fcc-landing-panel rounded-3xl border border-emerald-400/30 p-6 flex flex-col relative">
-              <div className="absolute -top-3 right-4 text-xs rounded-full px-2 py-1 bg-emerald-500 text-slate-900 font-semibold">Popular</div>
-              <h3 className="text-xl font-semibold">Pro</h3>
-              <p className="mt-1 opacity-75">Unlock selected public games</p>
-              <div className="mt-6 text-4xl font-bold">£x/mo</div>
-              <ul className="mt-6 space-y-2 text-sm opacity-90">
-                <li>• All Free features</li><li>• Access selected public games</li><li>• Advanced admin & exports</li>
-              </ul>
-              <Link to="/login?plan=pro" className="btn btn-primary mt-8 px-4 py-3 text-center">
-                Upgrade to Pro
-              </Link>
-            </div>
-
-            <div className="fcc-landing-panel rounded-3xl border border-white/10 p-6 flex flex-col">
-              <h3 className="text-xl font-semibold">Elite</h3>
-              <p className="mt-1 opacity-75">All public pots & exclusives</p>
-              <div className="mt-6 text-4xl font-bold">£y/mo</div>
-              <ul className="mt-6 space-y-2 text-sm opacity-90">
-                <li>• All Pro features</li><li>• All public games (incl. higher pots)</li><li>• Priority support</li>
-              </ul>
-              <Link to="/login?plan=elite" className="btn btn-ghost mt-8 border-white/20 px-4 py-3 text-center">
-                Go Elite
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section id="faq" className="border-t border-white/10">
-        <div className="mx-auto max-w-5xl px-4 py-14 grid gap-6 md:grid-cols-2">
+      <section className="border-t border-white/10">
+        <div className="mx-auto grid max-w-5xl gap-6 px-4 py-14 md:grid-cols-2">
           <div className="fcc-landing-panel rounded-2xl border border-white/10 p-6">
-            <h3 className="font-semibold">Is it free to start?</h3>
-            <p className="mt-2 opacity-80">Yes. Host one private league and join one private league on the Free tier.</p>
+            <h2 className="font-semibold">How does Last-Man-Standing work?</h2>
+            <p className="mt-2 opacity-80">Pick a team to win each round. They win, you survive. They draw or lose, you&apos;re eliminated.</p>
           </div>
           <div className="fcc-landing-panel rounded-2xl border border-white/10 p-6">
-            <h3 className="font-semibold">Do you send marketing emails?</h3>
-            <p className="mt-2 opacity-80">Only if you opt in during signup. You can opt out anytime.</p>
+            <h2 className="font-semibold">What makes it tricky?</h2>
+            <p className="mt-2 opacity-80">Every team can only be used once. Keep surviving without running out of good options.</p>
           </div>
         </div>
       </section>
 
       <footer className="border-t border-white/10">
-        <div className="mx-auto max-w-7xl px-4 py-10 text-sm flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-10 text-sm md:flex-row">
           <p className="opacity-70">© {new Date().getFullYear()} Fantasy Command Centre</p>
           <div className="flex items-center gap-6">
             <Link to="/terms" className="opacity-80 hover:opacity-100">Terms</Link>

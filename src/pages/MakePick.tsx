@@ -384,6 +384,7 @@ export function MakePick() {
         setSubmitting(true);
         postSubmitNavigation.current = window.setTimeout(() => {
           setSubmitting(false);
+          setCurrentPick({ team_id: selectedTeamId });
           setPickLocked(true);
           postSubmitNavigation.current = null;
         }, 500);
@@ -420,8 +421,8 @@ export function MakePick() {
         );
       }
       toast(isUpdatingPick ? "Pick updated" : "Pick submitted", { variant: "success" });
+      setCurrentPick({ team_id: teamId });
       setPickLocked(true);
-      postSubmitNavigation.current = window.setTimeout(() => navigate("/leaderboard"), 560);
     } catch (e: any) {
       toast(e?.message ?? "Could not save pick.", { variant: "error" });
     } finally {
@@ -555,6 +556,56 @@ export function MakePick() {
             </button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (pickLocked && selectedTeam) {
+    const fixture = fixtureByTeamId[String(selectedTeam.id)];
+    const venue = fixture?.venue === "Home" ? "H" : fixture?.venue === "Away" ? "A" : null;
+
+    return (
+      <div data-testid="make-pick-page" className="container-page py-6">
+        <ManagedLeagueHero league={league} theme={managedTheme} />
+        <section className="pick-success-card mx-auto max-w-xl" role="status" aria-live="polite">
+          <div className="pick-success-confetti" aria-hidden="true">
+            <span /><span /><span /><span /><span /><span />
+          </div>
+          <div className="pick-success-check" aria-hidden="true">✓</div>
+          <p className="pick-success-eyebrow">Pick locked in!</p>
+          <div className="pick-success-team">
+            <TeamBadge
+              code={selectedTeam.code}
+              logoUrl={selectedTeam.logo_url}
+              fplTeamCode={getFplTeamCode(selectedTeam)}
+              name={selectedTeam.name}
+            />
+            <div>
+              <h1>{selectedTeam.name}</h1>
+              {fixture && <p>vs {fixture.opponent} ({venue})</p>}
+            </div>
+          </div>
+          <p className="pick-success-round">Round {round.round_number}</p>
+          <p className="pick-success-copy">Good luck this round.</p>
+          <p className="pick-success-rule">
+            You can&apos;t change your pick after the deadline, and you can&apos;t use {selectedTeam.name} again this season.
+          </p>
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <button className="btn btn-primary px-6 py-3" type="button" onClick={() => navigate("/my-games")}>
+              View My Games
+            </button>
+            <button
+              className="btn btn-ghost px-6 py-3"
+              type="button"
+              onClick={() => {
+                setPickLocked(false);
+                setSelectedTeamId(null);
+              }}
+            >
+              Back to Picks
+            </button>
+          </div>
+        </section>
       </div>
     );
   }
@@ -694,35 +745,21 @@ export function MakePick() {
           </div>
 
           <div className="pick-submit-panel mt-5">
-            {pickLocked ? (
-              <div className="pick-locked-confirmation" role="status" aria-live="polite">
-                <TeamBadge
-                  code={selectedTeam?.code}
-                  logoUrl={selectedTeam?.logo_url}
-                  fplTeamCode={getFplTeamCode(selectedTeam)}
-                  name={selectedTeam?.name ?? "Selected team"}
-                  size="sm"
-                />
-                <span className="pick-locked-line" aria-hidden="true" />
-                <span className="text-sm font-extrabold tracking-[0.14em] text-emerald-200">PICK LOCKED</span>
-              </div>
-            ) : (
-              <button
-                data-testid="save-pick-btn"
-                type="button"
-                className="btn btn-primary w-full py-3"
-                onClick={() => void submitPick()}
-                disabled={!selectedTeam || locked || submitting}
-              >
-                {submitting ? (
-                  <><Spinner size={16} /> Saving pick...</>
-                ) : selectedTeam ? (
-                  <>Submit pick: {selectedTeam.name}</>
-                ) : (
-                  "Select a team to continue"
-                )}
-              </button>
-            )}
+            <button
+              data-testid="save-pick-btn"
+              type="button"
+              className="btn btn-primary w-full py-3"
+              onClick={() => void submitPick()}
+              disabled={!selectedTeam || locked || submitting}
+            >
+              {submitting ? (
+                <><Spinner size={16} /> Saving pick...</>
+              ) : selectedTeam ? (
+                <>Submit pick: {selectedTeam.name}</>
+              ) : (
+                "Select a team to continue"
+              )}
+            </button>
           </div>
 
         </div>

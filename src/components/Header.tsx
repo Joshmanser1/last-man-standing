@@ -214,14 +214,8 @@ export function Header() {
                   <NavLink to="/league" className={linkCls}>
                     League
                   </NavLink>
-                  <NavLink to="/stats" className={linkCls}>
-                    Stats
-                  </NavLink>
                 </>
               )}
-              <NavLink to="/public" className={linkCls}>
-                Public
-              </NavLink>
               <NavLink to="/private" className={linkCls}>
                 Private
               </NavLink>
@@ -346,14 +340,12 @@ export function Header() {
                     <NavLink to="/make-pick" className={mobileLinkCls}>Make a Pick <span aria-hidden="true">›</span></NavLink>
                     <NavLink to="/leaderboard" className={mobileLinkCls}>Leaderboard <span aria-hidden="true">›</span></NavLink>
                     <NavLink to="/league" className={mobileLinkCls}>League <span aria-hidden="true">›</span></NavLink>
-                    <NavLink to="/stats" className={mobileLinkCls}>Stats <span aria-hidden="true">›</span></NavLink>
                   </>
                 )}
               </section>
 
               <section className="space-y-2">
                 <h2 className="px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300/65">Explore</h2>
-                <NavLink to="/public" className={mobileLinkCls}>Public games <span aria-hidden="true">›</span></NavLink>
                 <NavLink to="/private" className={mobileLinkCls}>Private leagues <span aria-hidden="true">›</span></NavLink>
               </section>
 
