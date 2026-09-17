@@ -20,7 +20,7 @@ export default function LandingPage() {
 
   return (
     <main className="fcc-landing-shell min-h-screen text-white">
-      <section className="relative overflow-hidden pt-8 md:pt-12">
+      <section className="fcc-landing-hero relative overflow-hidden pt-8 md:pt-12">
         <div className="mx-auto max-w-6xl px-4 py-20 md:py-28">
           <div className="max-w-3xl">
             <p className="text-xs font-extrabold uppercase tracking-[0.24em] text-emerald-300/85">

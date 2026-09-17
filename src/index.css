@@ -228,6 +228,31 @@
   background-position: 0 12rem, 0 12rem, 0 12rem, right 8rem top 2rem, right -9rem top 18rem, left -16rem bottom -14rem, right 15% bottom 14rem, right 15% bottom 14rem, left -4rem top 34rem, right -8rem top 68rem;
 }
 
+.fcc-landing-hero {
+  min-height: clamp(42rem, 100svh, 47rem);
+  isolation: isolate;
+  background-image:
+    linear-gradient(to bottom, rgba(3, 12, 10, 0.15) 0%, rgba(3, 12, 10, 0.04) 52%, var(--fcc-canvas-deep) 100%),
+    linear-gradient(90deg, rgba(2, 11, 9, 0.5) 0%, rgba(2, 11, 9, 0.22) 54%, rgba(2, 11, 9, 0.3) 100%),
+    url("./assets/fcc-lms-landing-bg.png");
+  background-repeat: no-repeat;
+  background-size: 100% 100%, 100% 100%, auto 100%;
+  background-position: center, center, center center;
+}
+
+.fcc-landing-hero > div {
+  position: relative;
+  z-index: 1;
+}
+
+@media (min-width: 768px) {
+  .fcc-landing-hero {
+    min-height: clamp(43rem, calc(100svh - 4rem), 50rem);
+    background-size: 100% 100%, 100% 100%, clamp(42rem, 52vw, 56rem) auto;
+    background-position: center, center, calc(50% + 13rem) 58%;
+  }
+}
+
 .fcc-landing-panel,
 .fcc-login-panel {
   border-color: rgba(145, 187, 169, 0.2) !important;
