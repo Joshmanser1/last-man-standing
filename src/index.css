@@ -70,32 +70,6 @@
     isolation: isolate;
   }
 
-  .app-main::before,
-  .fcc-landing-shell::before,
-  .fcc-login-shell::before,
-  .fcc-tactics-surface::before {
-    position: absolute;
-    z-index: 0;
-    inset: 0;
-    pointer-events: none;
-    content: "";
-    opacity: 0.64;
-    background-image:
-      radial-gradient(circle at 13% 22%, rgba(105, 217, 165, 0.2) 0 2px, transparent 2.7px),
-      radial-gradient(circle at 18% 29%, rgba(105, 217, 165, 0.16) 0 2px, transparent 2.7px),
-      radial-gradient(circle at 23% 36%, rgba(105, 217, 165, 0.13) 0 2px, transparent 2.7px),
-      linear-gradient(128deg, transparent 0 48%, rgba(105, 217, 165, 0.16) 48.2% 48.6%, transparent 48.8% 100%),
-      linear-gradient(90deg, transparent 0 73%, rgba(105, 217, 165, 0.14) 73.1% 73.4%, transparent 73.5% 100%),
-      radial-gradient(ellipse at 82% 15%, transparent 0 13%, rgba(105, 217, 165, 0.15) 13.15% 13.35%, transparent 13.5% 100%),
-      linear-gradient(45deg, transparent 47%, rgba(105, 217, 165, 0.14) 48% 52%, transparent 53%),
-      linear-gradient(-45deg, transparent 47%, rgba(105, 217, 165, 0.14) 48% 52%, transparent 53%),
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='250' viewBox='0 0 360 250'%3E%3Cg fill='none' stroke='%2369d9a5' stroke-width='2' opacity='.32'%3E%3Cpath d='M24 196 C104 208 112 58 246 76' stroke-dasharray='7 9'/%3E%3Cpath d='M238 62 l18 14 -20 9'/%3E%3Cpath d='M56 42 L176 116'/%3E%3Cpath d='M168 103 l13 15 -18 2'/%3E%3Ccircle cx='58' cy='42' r='7'/%3E%3Ccircle cx='246' cy='76' r='7'/%3E%3Cpath d='M286 154 l14 14 m0-14 -14 14'/%3E%3C/g%3E%3C/svg%3E"),
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='410' height='290' viewBox='0 0 410 290'%3E%3Cg fill='none' stroke='%2369d9a5' stroke-width='2' opacity='.25'%3E%3Cpath d='M10 155 H155' stroke-dasharray='4 8'/%3E%3Cpath d='M145 145 l16 10 -16 10'/%3E%3Cpath d='M248 24 a94 94 0 0 1 132 132'/%3E%3Cpath d='M36 239 l14 14 m0-14 -14 14'/%3E%3Ccircle cx='244' cy='202' r='8'/%3E%3Ccircle cx='318' cy='142' r='8'/%3E%3C/g%3E%3C/svg%3E");
-    background-size: 260px 260px, 260px 260px, 260px 260px, 520px 360px, 460px 460px, 620px 420px, 38px 38px, 38px 38px, 360px 250px, 410px 290px;
-    background-position: 0 18rem, 0 18rem, 0 18rem, right 8rem top 4rem, right -9rem top 20rem, left -16rem bottom -14rem, right 15% bottom 14rem, right 15% bottom 14rem, left -4rem top 38rem, right -8rem top 74rem;
-    background-repeat: no-repeat;
-  }
-
   .app-main::after,
   .fcc-landing-shell::after {
     position: absolute;
@@ -222,36 +196,6 @@
       display: inline;
     }
   }
-}
-
-.fcc-landing-shell::before {
-  background-position: 0 12rem, 0 12rem, 0 12rem, right 8rem top 2rem, right -9rem top 18rem, left -16rem bottom -14rem, right 15% bottom 14rem, right 15% bottom 14rem, left -4rem top 34rem, right -8rem top 68rem;
-}
-
-/* Sparse manager-notebook notes sit behind the LMS canvas, never inside product cards. */
-.app-main:not(.app-main-admin),
-.fcc-landing-shell {
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='440' viewBox='0 0 560 440'%3E%3Cg fill='none' stroke='%2369d9a5' stroke-width='2.2' opacity='.34'%3E%3Cpath d='M46 105 C118 76 148 126 204 156' stroke-dasharray='7 9'/%3E%3Cpath d='M190 142 l16 13 -19 5'/%3E%3Cpath d='M324 274 C376 234 425 239 479 186' stroke-dasharray='5 8'/%3E%3Cpath d='M465 181 l14 5 -8 13'/%3E%3Ccircle cx='87' cy='91' r='7'/%3E%3Ccircle cx='314' cy='280' r='8'/%3E%3Cpath d='M252 64 l14 14 m0-14 -14 14'/%3E%3C/g%3E%3Cg font-family='Comic Sans MS, cursive' font-size='28' font-weight='700' fill='%23d3e6da' opacity='.42'%3E%3Ctext x='44' y='72' transform='rotate(-7 44 72)'%3EMCI%3C/text%3E%3Ctext x='187' y='190' transform='rotate(4 187 190)'%3ELIV%3C/text%3E%3Ctext x='395' y='322' transform='rotate(-5 395 322)'%3EARS%3C/text%3E%3C/g%3E%3Cg fill='none' stroke-linecap='round'%3E%3Cellipse cx='211' cy='180' rx='42' ry='22' stroke='%2369d9a5' stroke-width='3' opacity='.48' transform='rotate(-8 211 180)'/%3E%3Cpath d='M38 58 L105 77 M40 63 L107 82 M388 304 L455 327 M390 309 L457 332' stroke='%23cc7777' stroke-width='3' opacity='.45'/%3E%3C/g%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='470' viewBox='0 0 600 470'%3E%3Cg fill='none' stroke='%2369d9a5' stroke-width='2.1' opacity='.3'%3E%3Cpath d='M76 172 C144 126 201 148 250 94' stroke-dasharray='6 10'/%3E%3Cpath d='M239 89 l15 6 -7 14'/%3E%3Cpath d='M317 273 C365 319 428 306 489 345' stroke-dasharray='5 9'/%3E%3Ccircle cx='76' cy='172' r='8'/%3E%3Ccircle cx='486' cy='345' r='7'/%3E%3Cpath d='M104 318 l14 14 m0-14 -14 14'/%3E%3C/g%3E%3Cg font-family='Comic Sans MS, cursive' font-size='27' font-weight='700' fill='%23d3e6da' opacity='.4'%3E%3Ctext x='54' y='218' transform='rotate(-5 54 218)'%3ENEW%3C/text%3E%3Ctext x='228' y='116' transform='rotate(5 228 116)'%3ECHE%3C/text%3E%3Ctext x='370' y='292' transform='rotate(-7 370 292)'%3EAVL%3C/text%3E%3Ctext x='445' y='384' transform='rotate(4 445 384)'%3EBHA%3C/text%3E%3Ctext x='150' y='390' transform='rotate(-4 150 390)'%3ETOT%3C/text%3E%3C/g%3E%3Cg fill='none' stroke-linecap='round'%3E%3Cellipse cx='86' cy='208' rx='45' ry='21' stroke='%2369d9a5' stroke-width='3' opacity='.46' transform='rotate(8 86 208)'/%3E%3Cpath d='M219 97 L281 119 M221 102 L283 124' stroke='%23cc7777' stroke-width='3' opacity='.42'/%3E%3C/g%3E%3C/svg%3E"),
-    radial-gradient(circle at 50% -12rem, rgba(29, 121, 83, 0.3), transparent 42rem),
-    radial-gradient(circle at 96% 44rem, rgba(22, 99, 70, 0.14), transparent 34rem),
-    linear-gradient(140deg, var(--fcc-canvas) 0%, var(--fcc-canvas-deep) 72%);
-  background-repeat: no-repeat;
-  background-size: 560px 440px, 600px 470px, auto, auto, auto;
-  background-position: right -12rem top 7rem, left -17rem bottom 13rem, 50% -12rem, 96% 44rem, center;
-}
-
-.app-main:not(.app-main-admin):has(.my-games-shell) {
-  background-position: right -14rem top 6rem, left -15rem bottom 10rem, 50% -12rem, 96% 44rem, center;
-}
-
-.app-main:not(.app-main-admin):has([data-testid="make-pick-page"]) {
-  background-position: right -16rem top 15rem, left -15rem bottom 6rem, 50% -12rem, 96% 44rem, center;
-}
-
-.app-main:not(.app-main-admin):has(.leaderboard-board) {
-  background-position: right -15rem top 10rem, left -13rem bottom 17rem, 50% -12rem, 96% 44rem, center;
 }
 
 .fcc-landing-hero {
@@ -1192,27 +1136,44 @@
   }
 }
 
-/* Approved LMS notebook clusters: readable selection notes, not standalone icons. */
-.app-main:not(.app-main-admin),
-.fcc-landing-shell {
+/* Derived directly from the approved LMS hero: a sparse selection notebook, never a generic diagram. */
+.app-main:not(.app-main-admin)::before,
+.fcc-landing-shell::before,
+.fcc-tactics-surface::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  opacity: 0.16;
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='500' height='360' viewBox='0 0 500 360'%3E%3Cg font-family='Arial, sans-serif' font-size='25' font-weight='700' letter-spacing='2' fill='%23d3e6da' opacity='.3'%3E%3Ctext x='42' y='74' transform='rotate(-5 42 74)'%3EMCI%3C/text%3E%3Ctext x='235' y='174' transform='rotate(3 235 174)'%3ELIV%3C/text%3E%3C/g%3E%3Cg fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M34 59 L104 79 M37 64 L107 84' stroke='%23b85d61' stroke-width='3' opacity='.34'/%3E%3Cpath d='M104 104 C151 110 177 151 224 162' stroke='%2369d9a5' stroke-width='2.2' stroke-dasharray='7 9' opacity='.3'/%3E%3Cpath d='M211 151 l14 11 -17 5' stroke='%2369d9a5' stroke-width='2.2' opacity='.3'/%3E%3Cellipse cx='257' cy='164' rx='42' ry='21' stroke='%2369d9a5' stroke-width='3' opacity='.36' transform='rotate(-7 257 164)'/%3E%3Ccircle cx='340' cy='216' r='7' stroke='%23d3e6da' stroke-width='2' opacity='.28'/%3E%3Cpath d='M378 224 l13 13 m0-13 -13 13' stroke='%23d3e6da' stroke-width='2' opacity='.28'/%3E%3C/g%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='470' height='390' viewBox='0 0 470 390'%3E%3Cg font-family='Arial, sans-serif' font-size='24' font-weight='700' letter-spacing='2' fill='%23d3e6da' opacity='.3'%3E%3Ctext x='76' y='84' transform='rotate(-4 76 84)'%3EARS%3C/text%3E%3Ctext x='100' y='145' transform='rotate(3 100 145)'%3ECHE%3C/text%3E%3Ctext x='134' y='210' transform='rotate(-5 134 210)'%3ENEW%3C/text%3E%3Ctext x='246' y='294' transform='rotate(4 246 294)'%3EAVL%3C/text%3E%3Ctext x='320' y='342' transform='rotate(-3 320 342)'%3EBHA%3C/text%3E%3C/g%3E%3Cg fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M68 69 L138 88 M71 74 L141 93' stroke='%23b85d61' stroke-width='3' opacity='.34'/%3E%3Cpath d='M149 169 C195 180 208 202 250 220' stroke='%2369d9a5' stroke-width='2.2' stroke-dasharray='6 9' opacity='.3'/%3E%3Cpath d='M239 211 l13 9 -16 6' stroke='%2369d9a5' stroke-width='2.2' opacity='.3'/%3E%3Cellipse cx='159' cy='200' rx='43' ry='21' stroke='%2369d9a5' stroke-width='3' opacity='.36' transform='rotate(6 159 200)'/%3E%3Ccircle cx='270' cy='240' r='7' stroke='%23d3e6da' stroke-width='2' opacity='.28'/%3E%3Cpath d='M304 258 l13 13 m0-13 -13 13' stroke='%23d3e6da' stroke-width='2' opacity='.28'/%3E%3C/g%3E%3C/svg%3E"),
-    radial-gradient(circle at 50% -12rem, rgba(29, 121, 83, 0.3), transparent 42rem),
-    radial-gradient(circle at 96% 44rem, rgba(22, 99, 70, 0.14), transparent 34rem),
-    linear-gradient(140deg, var(--fcc-canvas) 0%, var(--fcc-canvas-deep) 72%);
-  background-size: 500px 360px, 470px 390px, auto, auto, auto;
-  background-position: right -10rem top 8rem, left -12rem bottom 13rem, 50% -12rem, 96% 44rem, center;
+    linear-gradient(90deg, var(--fcc-canvas-deep), transparent 34%, transparent 70%, var(--fcc-canvas-deep)),
+    url("./assets/fcc-lms-notebook-texture.jpg"),
+    url("./assets/fcc-lms-notebook-texture.jpg");
+  background-repeat: no-repeat;
+  background-size: 100% 100%, 31rem auto, 27rem auto;
+  background-position: center, right -19rem top 9rem, left -19rem top 58rem;
 }
 
-.app-main:not(.app-main-admin):has(.my-games-shell) {
-  background-position: right -12rem top 7rem, left -10rem bottom 10rem, 50% -12rem, 96% 44rem, center;
+.fcc-landing-shell::before {
+  opacity: 0.19;
+  background-position: center, right -18rem top 36rem, left -19rem top 70rem;
 }
 
-.app-main:not(.app-main-admin):has([data-testid="make-pick-page"]) {
-  background-position: right -12rem top 16rem, left -11rem bottom 7rem, 50% -12rem, 96% 44rem, center;
+.fcc-tactics-surface::before {
+  opacity: 0.08;
+  background-size: 100% 100%, 24rem auto, 0 0;
+  background-position: center, right -16rem top 7rem, 0 0;
 }
 
-.app-main:not(.app-main-admin):has(.leaderboard-board) {
-  background-position: right -11rem top 11rem, left -10rem bottom 16rem, 50% -12rem, 96% 44rem, center;
+@media (min-width: 768px) {
+  .app-main:not(.app-main-admin)::before,
+  .fcc-landing-shell::before {
+    background-size: 100% 100%, 34rem auto, 30rem auto;
+    background-position: center, right -15rem top 9rem, left -18rem top 56rem;
+  }
+
+  .fcc-landing-shell::before {
+    background-position: center, right -14rem top 38rem, left -18rem top 72rem;
+  }
 }
