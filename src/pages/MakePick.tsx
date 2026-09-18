@@ -27,6 +27,13 @@ type FixtureInfo = {
 
 type FixtureMap = Record<string, FixtureInfo>;
 
+function normaliseFplTeamKey(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
 const DEV_PREVIEW_LEAGUE = {
   id: "dev-make-pick-preview",
   name: "FCC Matchday Preview",
@@ -97,6 +104,7 @@ export function MakePick() {
   const [currentPick, setCurrentPick] = useState<any>(null);
   const [fixtureByTeamId, setFixtureByTeamId] = useState<FixtureMap>({});
   const [fplTeamCodeByShortName, setFplTeamCodeByShortName] = useState<Record<string, number>>({});
+  const [fplTeamCodeByLeagueTeamId, setFplTeamCodeByLeagueTeamId] = useState<Record<string, number>>({});
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [pickLocked, setPickLocked] = useState(false);
@@ -164,6 +172,7 @@ export function MakePick() {
       setCurrentPick(null);
       setFixtureByTeamId({});
       setFplTeamCodeByShortName({});
+      setFplTeamCodeByLeagueTeamId({});
       setSelectedTeamId(null);
       setPickLocked(false);
       setViewerMembership(null);
@@ -190,6 +199,7 @@ export function MakePick() {
           setCurrentPick(null);
           setFixtureByTeamId({});
           setFplTeamCodeByShortName({});
+          setFplTeamCodeByLeagueTeamId({});
           setSelectedTeamId(null);
           setPickLocked(false);
           setViewerMembership(null);
@@ -255,10 +265,28 @@ export function MakePick() {
                 .map((team) => [team.short_name.trim().toUpperCase(), team.code])
             );
             setFplTeamCodeByShortName(fplCodes);
+
+            const fplCodeByKey = new Map<string, number>();
+            for (const team of fplTeams) {
+              if (!Number.isInteger(team.code) || team.code <= 0) continue;
+              fplCodeByKey.set(normaliseFplTeamKey(team.short_name), team.code);
+              fplCodeByKey.set(normaliseFplTeamKey(team.name), team.code);
+            }
+            setFplTeamCodeByLeagueTeamId(
+              Object.fromEntries(
+                leagueTeams.flatMap((team: any) => {
+                  const fplTeamCode =
+                    fplCodeByKey.get(normaliseFplTeamKey(team.code)) ??
+                    fplCodeByKey.get(normaliseFplTeamKey(team.name));
+                  return fplTeamCode ? [[String(team.id), fplTeamCode]] : [];
+                })
+              )
+            );
           })
           .catch(() => {
             // Crests are decorative; retain initials/local fallback if FPL is unavailable.
             setFplTeamCodeByShortName({});
+            setFplTeamCodeByLeagueTeamId({});
           });
 
         const used = await dataService.listUsedTeamIds(leagueId, playerId);
@@ -364,10 +392,13 @@ export function MakePick() {
   const selectedTeam = teamsAZ.find((team) => String(team.id) === String(selectedTeamId)) ?? null;
   const currentPickTeam = teamsAZ.find((team) => String(team.id) === String(currentPick?.team_id)) ?? null;
 
-  function getFplTeamCode(team?: { code?: string; fplTeamCode?: number }) {
+  function getFplTeamCode(team?: { id?: string; code?: string; fplTeamCode?: number }) {
     if (!team) return undefined;
     if (Number.isInteger(team.fplTeamCode) && Number(team.fplTeamCode) > 0) return team.fplTeamCode;
-    return fplTeamCodeByShortName[String(team.code ?? "").trim().toUpperCase()];
+    return (
+      fplTeamCodeByLeagueTeamId[String(team.id ?? "")] ??
+      fplTeamCodeByShortName[String(team.code ?? "").trim().toUpperCase()]
+    );
   }
 
   function selectTeam(teamId: string) {
