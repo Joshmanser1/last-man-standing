@@ -185,7 +185,7 @@
 }
 
 .fcc-landing-hero {
-  min-height: clamp(38rem, 87svh, 45rem);
+  min-height: clamp(44rem, 100svh, 52rem);
   isolation: isolate;
   z-index: 2 !important;
 }
