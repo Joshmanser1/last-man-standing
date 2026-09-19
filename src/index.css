@@ -185,7 +185,6 @@
 }
 
 .fcc-landing-hero {
-  min-height: clamp(44rem, 100svh, 52rem);
   isolation: isolate;
   z-index: 2 !important;
 }
@@ -196,8 +195,21 @@
 }
 
 @media (max-width: 767px) {
+  .fcc-landing-shell {
+    background-color: #081311;
+    background-image: url("./assets/fcc-mobile-landing.png");
+    background-repeat: no-repeat;
+    background-size: 100% auto;
+    background-position: top center;
+  }
+
+  .fcc-landing-hero {
+    min-height: 0;
+    aspect-ratio: 853 / 1844;
+  }
+
   .fcc-landing-hero > div {
-    padding-top: 7rem;
+    padding-top: 10rem;
   }
 }
 
