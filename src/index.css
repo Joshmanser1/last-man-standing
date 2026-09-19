@@ -185,7 +185,7 @@
 }
 
 .fcc-landing-hero {
-  min-height: clamp(33rem, 68svh, 36rem);
+  min-height: clamp(38rem, 87svh, 45rem);
   isolation: isolate;
   z-index: 2 !important;
 }
@@ -193,6 +193,12 @@
 .fcc-landing-hero > div {
   position: relative;
   z-index: 2;
+}
+
+@media (max-width: 767px) {
+  .fcc-landing-hero > div {
+    padding-top: 7rem;
+  }
 }
 
 @media (min-width: 768px) {
