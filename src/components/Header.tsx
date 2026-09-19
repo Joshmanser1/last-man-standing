@@ -1,5 +1,6 @@
 // src/components/Header.tsx
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
 import { GameSelector } from "./GameSelector";
@@ -36,6 +37,7 @@ export function Header() {
   const [admin, setAdmin] = useState<boolean>(isAdminNow());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawerCloseRef = useRef<HTMLButtonElement | null>(null);
+  const drawerNavRef = useRef<HTMLElement | null>(null);
   const playerName = localStorage.getItem("player_name") || "";
   const navigate = useNavigate();
 
@@ -145,20 +147,41 @@ export function Header() {
   useEffect(() => {
     if (!drawerOpen) return;
 
-    const previousOverflow = document.body.style.overflow;
+    const scrollY = window.scrollY;
+    const previousBodyStyles = {
+      overflow: document.body.style.overflow,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      left: document.body.style.left,
+      right: document.body.style.right,
+      width: document.body.style.width,
+    };
     const previousDocumentOverflow = document.documentElement.style.overflow;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setDrawerOpen(false);
     };
 
+    // Fix the document in place so iOS cannot move the page behind the viewport-fixed drawer.
     document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
     document.documentElement.style.overflow = "hidden";
+    drawerNavRef.current?.scrollTo({ top: 0 });
     window.addEventListener("keydown", onKeyDown);
     window.setTimeout(() => drawerCloseRef.current?.focus(), 0);
 
     return () => {
-      document.body.style.overflow = previousOverflow;
+      document.body.style.overflow = previousBodyStyles.overflow;
+      document.body.style.position = previousBodyStyles.position;
+      document.body.style.top = previousBodyStyles.top;
+      document.body.style.left = previousBodyStyles.left;
+      document.body.style.right = previousBodyStyles.right;
+      document.body.style.width = previousBodyStyles.width;
       document.documentElement.style.overflow = previousDocumentOverflow;
+      window.scrollTo(0, scrollY);
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [drawerOpen]);
@@ -287,7 +310,7 @@ export function Header() {
         </div>
       </div>
 
-      {authed && (
+      {authed && createPortal(
         <div
           className={`fixed inset-0 z-[70] transition ${drawerOpen ? "pointer-events-auto" : "pointer-events-none"}`}
           aria-hidden={!drawerOpen}
@@ -327,6 +350,7 @@ export function Header() {
             </div>
 
             <nav
+              ref={drawerNavRef}
               className="relative z-10 mt-5 min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 pb-5"
               onClick={(event) => {
                 if ((event.target as HTMLElement).closest("a")) setDrawerOpen(false);
@@ -365,7 +389,8 @@ export function Header() {
               Log out
             </button>
           </aside>
-        </div>
+        </div>,
+        document.body
       )}
     </header>
   );
