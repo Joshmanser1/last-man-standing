@@ -29,9 +29,8 @@ export default function LandingPage() {
             <h1 className="mt-3 text-4xl font-extrabold leading-tight tracking-tight md:text-6xl">
               Host. Join. <span className="text-emerald-400">Survive.</span>
             </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-relaxed text-emerald-50/80">
-              One team. Every round. Win and survive. Draw or lose and you&apos;re out.
-              Use a team once, and they&apos;re gone for good.
+            <p className="fcc-landing-description mt-6 max-w-2xl text-lg leading-relaxed text-emerald-50/80">
+              Pick one team each round. Win and survive. Draw or lose and you&apos;re out.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to={hostHref} className="btn btn-primary px-6 py-3">

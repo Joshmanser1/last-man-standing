@@ -228,6 +228,10 @@
     padding-top: 5rem;
     transform: translateX(1.5rem);
   }
+
+  .fcc-landing-description {
+    max-width: min(31rem, calc(100% - 6.5rem));
+  }
 }
 
 @media (min-width: 768px) {
