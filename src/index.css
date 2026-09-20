@@ -195,6 +195,20 @@
 }
 
 @media (max-width: 767px) {
+  .fcc-landing-hero::after {
+    position: absolute;
+    z-index: 1;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 40px;
+    pointer-events: none;
+    content: "";
+    background: linear-gradient(to bottom, transparent, rgba(4, 14, 12, 0.24));
+  }
+}
+
+@media (max-width: 767px) {
   .fcc-landing-hero {
     min-height: 0;
     aspect-ratio: 853 / 1844;
@@ -1106,11 +1120,13 @@
     left: 0;
     pointer-events: none;
     content: "";
-    background: url("./assets/fcc-bottom-landing.png") center top / cover no-repeat;
+    background:
+      linear-gradient(rgba(4, 14, 12, 0.23), rgba(4, 14, 12, 0.23)),
+      url("./assets/fcc-bottom-landing.png") center top / cover no-repeat;
   }
 
   .fcc-landing-hero {
-    background-image: url("./assets/fcc-mobile-landing.png");
+    background-image: url("./assets/fcc-landing-top.png");
     background-repeat: no-repeat;
     background-size: 108% auto;
     background-position: right top;
