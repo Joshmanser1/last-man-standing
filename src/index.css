@@ -1121,8 +1121,8 @@
     pointer-events: none;
     content: "";
     background:
-      linear-gradient(rgba(4, 14, 12, 0.23), rgba(4, 14, 12, 0.23)),
-      url("./assets/fcc-bottom-landing.png") center top / cover no-repeat;
+      linear-gradient(rgba(4, 14, 12, 0.23), rgba(4, 14, 12, 0.23)) center top / 100% 100% no-repeat,
+      url("./assets/fcc-bottom-landing.png") center top / 100% auto repeat-y;
   }
 
   .fcc-landing-hero {
