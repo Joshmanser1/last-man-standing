@@ -195,21 +195,14 @@
 }
 
 @media (max-width: 767px) {
-  .fcc-landing-shell {
-    background-color: #081311;
-    background-image: url("./assets/fcc-mobile-landing.png");
-    background-repeat: no-repeat;
-    background-size: 100% auto;
-    background-position: top center;
-  }
-
   .fcc-landing-hero {
     min-height: 0;
     aspect-ratio: 853 / 1844;
   }
 
   .fcc-landing-hero > div {
-    padding-top: 10rem;
+    padding-top: 5rem;
+    transform: translateX(1.5rem);
   }
 }
 
@@ -1096,6 +1089,16 @@
   background-repeat: no-repeat, repeat-y;
   background-size: 100% 100%, 100% auto;
   background-position: top center;
+}
+
+@media (max-width: 767px) {
+  .fcc-landing-shell {
+    background-color: #081311;
+    background-image: url("./assets/fcc-mobile-landing.png");
+    background-repeat: no-repeat;
+    background-size: 108% auto;
+    background-position: right top;
+  }
 }
 
 .fcc-tactics-surface {
