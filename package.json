@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "tick:local": "node scripts/tick-local.mjs"
+    "tick:local": "node scripts/tick-local.mjs",
+    "test:marketing": "node scripts/test-marketing-consent.mjs"
   },
   "dependencies": {
     "@sentry/react": "^10.27.0",
@@ -21,6 +22,7 @@
     "react-router-dom": "^7.9.5"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@eslint/js": "^9.36.0",
     "@netlify/functions": "^5.1.0",
     "@playwright/test": "^1.58.2",

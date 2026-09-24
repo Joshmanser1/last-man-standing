@@ -1,4 +1,6 @@
 // src/pages/MakePick.tsx
+import { MarketingOptIn } from "../components/MarketingOptIn";
+import { marketingConsentDisabled } from "../lib/marketingPreferencesClient";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
@@ -637,6 +639,7 @@ export function MakePick() {
             </button>
           </div>
         </section>
+        {!isDevPreview && !marketingConsentDisabled() && <div className="mx-auto mt-4 max-w-xl rounded-2xl border border-slate-200 bg-white p-4"><MarketingOptIn /></div>}
       </div>
     );
   }

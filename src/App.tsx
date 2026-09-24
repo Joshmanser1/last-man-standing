@@ -1,5 +1,6 @@
 // src/App.tsx
-import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, Navigate, Link } from "react-router-dom";
+import { EmailPreferences } from "./pages/EmailPreferences";
 import { useEffect, useMemo } from "react";
 import { Header } from "./components/Header";
 import { ToastProvider } from "./components/Toast";
@@ -87,6 +88,7 @@ function AppInner() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/home" element={<Home />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/email-preferences" element={<RequireAuth><EmailPreferences /></RequireAuth>} />
           <Route path="/public" element={<LiveGames />} />
           <Route path="/live" element={<Navigate to="/public" replace />} />
           <Route path="/results" element={<Results />} />
@@ -171,6 +173,7 @@ function AppInner() {
         <footer className="border-t border-emerald-300/10 bg-[#07100f] text-white/55">
           <div className="container-page flex items-center justify-between py-4 text-xs">
             <span>© {new Date().getFullYear()} Fantasy Command Centre</span>
+            <Link to="/email-preferences" className="text-white/70 hover:underline">Email Preferences</Link>
             {SWITCHER_ENABLED && (
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
                 Dev mode
