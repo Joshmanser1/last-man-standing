@@ -1,14 +1,10 @@
+import { validDisplayName } from "./displayName";
 // src/lib/ensurePlayer.ts
 import { supa } from "../lib/supabaseClient";
 import { dataService } from "../data/service";
 
-const RESERVED_DISPLAY_NAMES = new Set(["you", "manager", "player", "user"]);
-
 function getStoredDisplayName(): string | null {
-  const local = localStorage.getItem("player_name");
-  const displayName = local?.trim() ?? "";
-  if (!displayName || RESERVED_DISPLAY_NAMES.has(displayName.toLowerCase())) return null;
-  return displayName;
+  return validDisplayName(localStorage.getItem("player_name"));
 }
 
 /**

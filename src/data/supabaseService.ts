@@ -1,3 +1,4 @@
+import { validDisplayName } from "../lib/displayName";
 // src/data/supabaseService.ts
 import { supa } from "../lib/supabaseClient";
 import type { League, Round, Team, Player, Membership, Pick, Fixture, ID } from "./types";
@@ -7,17 +8,6 @@ import { getEffectiveUserId } from "../lib/auth";
 import { getApiHeaders } from "../lib/apiAuth";
 import { postJsonWithAuth } from "../lib/apiAuth";
 import type { UpsertPlayerOptions } from "./service";
-
-const RESERVED_DISPLAY_NAMES = new Set(["you", "manager", "player", "user"]);
-
-function normaliseDisplayName(value: string): string {
-  const displayName = value.trim();
-  if (!displayName) throw new Error("Enter a display name.");
-  if (RESERVED_DISPLAY_NAMES.has(displayName.toLowerCase())) {
-    throw new Error("Choose a different display name.");
-  }
-  return displayName;
-}
 
 /** Helpers */
 function must<T>(val: T | null | undefined, msg = "Not found"): T {
@@ -114,12 +104,10 @@ const supabaseService: IDataService = {
 
   // Players & membership
   async upsertPlayer(display_name: string, options?: UpsertPlayerOptions): Promise<Player> {
-    const normalizedDisplayName = normaliseDisplayName(display_name);
     const { data: authData, error: authErr } = await supa.auth.getUser();
     if (authErr || !authData?.user?.id) throw new Error("You must be logged in.");
     const uid = authData.user.id;
     const email = authData.user.email ?? null;
-    console.log("upsertPlayer auth", { uid, email });
 
     const { data: existing, error: existingErr } = await supa
       .from("profiles")
@@ -127,15 +115,15 @@ const supabaseService: IDataService = {
       .eq("id", uid)
       .maybeSingle();
     if (existingErr) throw existingErr;
-    const existingDisplayName = String(existing?.display_name ?? "").trim();
+    const existingDisplayName = validDisplayName(existing?.display_name);
     if (existingDisplayName && options?.allowNameOverwrite !== true) {
       return { id: uid, display_name: existingDisplayName } as Player;
     }
-    console.log("upsertPlayer existing profile", { found: Boolean(existing), email: existing?.email ?? null });
 
+    const normalizedDisplayName = validDisplayName(display_name);
+    if (!normalizedDisplayName) throw new Error("Choose a valid display name.");
     const payload: Record<string, unknown> = { id: uid, display_name: normalizedDisplayName };
     if (!existing?.email && email) payload.email = email;
-    console.log("upsertPlayer payload", payload);
 
     const { data, error } = await supa
       .from("profiles")
@@ -143,7 +131,9 @@ const supabaseService: IDataService = {
       .select("*")
       .maybeSingle();
     if (error) throw error;
-    return must(data as Player, "Failed to upsert player");
+    const player = must(data as Player, "Failed to upsert player");
+    if (!validDisplayName(player.display_name)) throw new Error("Failed to save a valid display name.");
+    return player;
   },
 
   async ensureMembership(leagueId: ID, playerId: ID): Promise<Membership> {

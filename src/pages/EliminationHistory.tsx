@@ -1,3 +1,4 @@
+import { displayNameOrFallback } from "../lib/displayName";
 // src/pages/EliminationHistory.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -87,7 +88,7 @@ export function EliminationHistory() {
         return {
           roundNumber: r?.round_number ?? 0,
           playerName:
-            playersById[p.player_id]?.display_name ?? p.player_id.slice(0, 6),
+            displayNameOrFallback(playersById[p.player_id]?.display_name),
           teamName: teamName(p.team_id),
           reason: p.reason ?? (p.status === "no-pick" ? "no-pick" : "loss"),
           when: r?.pick_deadline_utc ?? "",

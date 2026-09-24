@@ -1,3 +1,5 @@
+import { dataService } from "../data/service";
+import { validDisplayName } from "../lib/displayName";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
@@ -62,7 +64,7 @@ export function Login() {
   const [formName, setFormName] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [otpCode, setOtpCode] = useState("");
-  const [stage, setStage] = useState<"request" | "verify">("request");
+  const [stage, setStage] = useState<"request" | "verify" | "profile">("request");
 
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -71,6 +73,7 @@ export function Login() {
   const [notice, setNotice] = useState<Notice>(null);
 
   const didPostAuthNavigate = useRef(false);
+  const resolvingProfile = useRef(false);
   const codeInputRef = useRef<HTMLInputElement | null>(null);
 
   function trackInviteAuthCompleted() {
@@ -103,35 +106,47 @@ export function Login() {
     }
   }, [stage]);
 
-  useEffect(() => {
-    let mounted = true;
-
-    const redirectOnce = () => {
-      if (!mounted || didPostAuthNavigate.current) return;
+  async function completeSignIn() {
+    if (didPostAuthNavigate.current || resolvingProfile.current) return;
+    resolvingProfile.current = true;
+    setChecking(true);
+    try {
+      const player = await dataService.upsertPlayer(sessionStorage.getItem(PENDING_DISPLAY_NAME_KEY) || "");
+      localStorage.setItem("player_name", player.display_name);
+      localStorage.setItem("player_id", player.id);
+      sessionStorage.removeItem(PENDING_DISPLAY_NAME_KEY);
       didPostAuthNavigate.current = true;
       trackInviteAuthCompleted();
       navigate(getRedirectTarget(location.search), { replace: true });
+    } catch {
+      setStage("profile");
+      setNotice({ tone: "error", text: "We couldn't confirm your saved display name. Enter a valid name and continue to retry." });
+    } finally {
+      resolvingProfile.current = false;
+      setChecking(false);
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    // Defer Supabase calls until outside its auth notification callback.
+    const scheduleCompletion = () => {
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        if (mounted) void completeSignIn();
+      }, 0);
+      timers.add(timer);
     };
-
-    const redirectIfAuthed = async () => {
-      const { data } = await supa.auth.getSession();
-      if (!mounted) return;
-      if (data.session?.user?.id) {
-        redirectOnce();
-      }
-    };
-
-    void redirectIfAuthed();
-
-    const { data: sub } = supa.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) return;
-      if (session?.user?.id) {
-        redirectOnce();
-      }
+    void supa.auth.getSession().then(({ data }) => {
+      if (mounted && data.session?.user?.id) scheduleCompletion();
     });
-
+    const { data: sub } = supa.auth.onAuthStateChange((_event, session) => {
+      if (mounted && session?.user?.id) scheduleCompletion();
+    });
     return () => {
       mounted = false;
+      timers.forEach(clearTimeout);
       sub.subscription.unsubscribe();
     };
   }, [location.search, navigate]);
@@ -146,7 +161,7 @@ export function Login() {
       setNotice({ tone: "error", text: "Enter your email address." });
       return;
     }
-    if (!name) {
+    if (!validDisplayName(name)) {
       setNotice({ tone: "error", text: "Enter your display name." });
       return;
     }
@@ -222,11 +237,7 @@ export function Login() {
         return;
       }
 
-      if (!didPostAuthNavigate.current) {
-        didPostAuthNavigate.current = true;
-        trackInviteAuthCompleted();
-        navigate(getRedirectTarget(location.search), { replace: true });
-      }
+      await completeSignIn();
     } catch (error) {
       setNotice({ tone: "error", text: getFriendlyAuthError(error, "verify") });
     } finally {
@@ -247,11 +258,7 @@ export function Login() {
       const { data } = await supa.auth.getSession();
       const hasSupa = !!data.session?.user?.id;
       if (hasSupa) {
-        if (!didPostAuthNavigate.current) {
-          didPostAuthNavigate.current = true;
-          trackInviteAuthCompleted();
-          navigate(getRedirectTarget(location.search), { replace: true });
-        }
+        await completeSignIn();
       } else {
         setNotice({ tone: "error", text: "No active session found. Request a new code to continue." });
       }
@@ -266,6 +273,7 @@ export function Login() {
     } catch {}
     localStorage.removeItem("player_id");
     localStorage.removeItem("player_name");
+    sessionStorage.removeItem(PENDING_DISPLAY_NAME_KEY);
     localStorage.removeItem("is_admin");
     navigate("/login", { replace: true });
   }
@@ -298,6 +306,7 @@ export function Login() {
         <p className="text-sm text-slate-300/80 text-center mb-6">
           {stage === "verify"
             ? `We've sent a six-digit code to ${formEmail.trim()}.`
+            : stage === "profile" ? "Choose your display name to finish signing in."
             : "Use your email to receive a six-digit sign-in code."}
         </p>
 
@@ -314,7 +323,24 @@ export function Login() {
           </div>
         )}
 
-        {stage === "request" ? (
+        {stage === "profile" ? (
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            if (!validDisplayName(formName)) {
+              setNotice({ tone: "error", text: "Choose a valid display name." });
+              return;
+            }
+            sessionStorage.setItem(PENDING_DISPLAY_NAME_KEY, formName.trim());
+            void completeSignIn();
+          }} className="space-y-3">
+            <label className="label text-slate-200" htmlFor="profile-name">Your display name</label>
+            <input id="profile-name" className="input w-full bg-white/5 border-white/10 text-slate-100"
+              value={formName} onChange={(e) => setFormName(e.target.value)} autoComplete="name" autoFocus />
+            <button type="submit" className="btn btn-primary w-full" disabled={checking}>
+              {checking ? "Saving..." : "Continue"}
+            </button>
+          </form>
+        ) : stage === "request" ? (
           <form onSubmit={sendCode} className="space-y-3">
             <div>
               <label className="label text-slate-200">Your display name</label>

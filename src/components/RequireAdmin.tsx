@@ -1,3 +1,4 @@
+import { RequireAuth } from "./RequireAuth";
 import React, { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
@@ -57,7 +58,7 @@ export function RequireAdmin({ children }: RequireAdminProps) {
   }, [retryCount]);
 
   if (loading) return null;
-  if (access === "allowed") return children;
+  if (access === "allowed") return <RequireAuth>{children}</RequireAuth>;
 
   if (access === "unauthenticated") {
     const next = `${loc.pathname}${loc.search}${loc.hash}`;

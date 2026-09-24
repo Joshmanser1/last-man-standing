@@ -1,3 +1,4 @@
+import { displayNameOrFallback as resolveDisplayName } from "../lib/displayName";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import * as htmlToImage from "html-to-image";
@@ -71,15 +72,6 @@ type LeaderboardPreviewState = {
   playersById: Map<ID, Player>;
   viewerId: ID;
 };
-
-const RESERVED_LEGACY_DISPLAY_NAMES = new Set(["you", "manager", "player", "user", "name"]);
-
-function resolveDisplayName(value: unknown): string {
-  const displayName = typeof value === "string" ? value.trim() : "";
-  return displayName && !RESERVED_LEGACY_DISPLAY_NAMES.has(displayName.toLowerCase())
-    ? displayName
-    : "Unknown";
-}
 
 function PlayerName({ name, isViewer }: { name: string; isViewer: boolean }) {
   return (

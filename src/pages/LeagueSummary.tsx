@@ -1,3 +1,4 @@
+import { displayNameOrFallback } from "../lib/displayName";
 // src/pages/LeagueSummary.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -297,7 +298,7 @@ export function LeagueSummary() {
     const rows = visibleRoundPicks
       .map((p: any) => ({
         player:
-          playersById[p.player_id]?.display_name ?? p.player_id.slice(0, 6),
+          displayNameOrFallback(playersById[p.player_id]?.display_name),
         team: byTeamId.get(p.team_id)?.name ?? "\u2014",
         status: p.status as "pending" | "through" | "eliminated" | "no-pick",
         reason: p.reason ?? "",

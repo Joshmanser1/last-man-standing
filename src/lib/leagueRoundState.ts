@@ -1,3 +1,4 @@
+import { displayNameOrFallback } from "./displayName";
 import { getEffectiveUserId } from "./auth";
 import { postJsonWithAuth } from "./apiAuth";
 
@@ -301,7 +302,7 @@ export async function loadLeagueRoundState(
   const winnerEntry = survivingEntries.length === 1 ? survivingEntries[0] : null;
   const winnerPlayerId = typeof winnerEntry?.player_id === "string" ? winnerEntry.player_id : null;
   const winnerName = winnerPlayerId
-    ? playersById[winnerPlayerId]?.display_name ?? winnerPlayerId
+    ? displayNameOrFallback(playersById[winnerPlayerId]?.display_name)
     : null;
 
   return {

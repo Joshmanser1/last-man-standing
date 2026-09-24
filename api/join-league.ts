@@ -1,3 +1,4 @@
+import { validDisplayName } from "../src/lib/displayName";
 import { createClient } from "@supabase/supabase-js";
 
 type Req = {
@@ -12,7 +13,6 @@ type Res = {
   end: (body: string) => void;
 };
 
-const RESERVED_DISPLAY_NAMES = new Set(["you", "manager", "player", "user"]);
 
 function sendJson(res: Res, status: number, body: unknown): void {
   res.statusCode = status;
@@ -116,7 +116,7 @@ export default async function handler(req: Req, res: Res) {
     const authenticatedUserId = authenticatedUser.id;
     const submittedDisplayName =
       typeof payload?.display_name === "string" ? payload.display_name.trim() : "";
-    if (submittedDisplayName && RESERVED_DISPLAY_NAMES.has(submittedDisplayName.toLowerCase())) {
+    if (submittedDisplayName && !validDisplayName(submittedDisplayName)) {
       return sendJson(res, 422, {
         error: "Choose a different display name before joining this league.",
         code: "invalid_display_name",
@@ -137,7 +137,7 @@ export default async function handler(req: Req, res: Res) {
       });
     }
 
-    if (!String(profile?.display_name ?? "").trim()) {
+    if (!validDisplayName(profile?.display_name)) {
       const displayName = submittedDisplayName;
       if (!displayName) {
         return sendJson(res, 422, {

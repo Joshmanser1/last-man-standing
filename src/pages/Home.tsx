@@ -1,3 +1,4 @@
+import { validDisplayName } from "../lib/displayName";
 // src/pages/Home.tsx
 import { useEffect, useState } from "react";
 import { dataService, subscribeStore } from "../data/service";
@@ -8,7 +9,6 @@ import { NotificationCentre } from "../components/NotificationCentre";
 
 const STORE_KEY = "lms_store_v1";
 const DEFAULT_LEAGUE_NAME = "English Premier League LMS";
-const RESERVED_DISPLAY_NAMES = new Set(["you", "manager", "player", "user"]);
 
 type LeagueLite = {
   id: string;
@@ -127,7 +127,7 @@ export function Home() {
     const trimmedDisplayName = displayName.trim();
     if (!trimmedDisplayName)
       return toast("Enter your name.", { variant: "error" });
-    if (RESERVED_DISPLAY_NAMES.has(trimmedDisplayName.toLowerCase())) {
+    if (!validDisplayName(trimmedDisplayName)) {
       return toast("Choose a different display name.", { variant: "error" });
     }
 

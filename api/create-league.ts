@@ -1,3 +1,4 @@
+import { validDisplayName } from "../src/lib/displayName";
 import { createClient } from "@supabase/supabase-js";
 
 const FPL_BASE = "https://fantasy.premierleague.com/api";
@@ -151,6 +152,15 @@ export default async function handler(req: Req, res: Res) {
 
     if (isPrivateUserLeague && !authenticatedUserId) {
       return sendJson(res, 401, { error: "You must be logged in to create a private league" });
+    }
+
+    if (authenticatedUserId) {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles").select("display_name").eq("id", authenticatedUserId).maybeSingle();
+      if (profileError) throw profileError;
+      if (!validDisplayName(profile?.display_name)) {
+        return sendJson(res, 422, { code: "profile_required", error: "Choose a display name before creating a league." });
+      }
     }
 
     if (!isPublic && joinCode) {

@@ -1,3 +1,4 @@
+import { validDisplayName } from "../src/lib/displayName";
 import { createClient } from "@supabase/supabase-js";
 
 type Req = {
@@ -172,6 +173,12 @@ async function fetchFplJson<T>(path: string): Promise<T> {
 }
 
 async function createFounderLeague(ctx: AuthedContext, payload: any, res: Res) {
+  const { data: profile, error: profileError } = await ctx.supabase
+    .from("profiles").select("display_name").eq("id", ctx.userId).maybeSingle<{ display_name: string | null }>();
+  if (profileError) throw profileError;
+  if (!validDisplayName(profile?.display_name)) {
+    return sendJson(res, 422, { code: "profile_required", error: "Choose a display name before creating a league." });
+  }
   const name = typeof payload?.name === "string" ? payload.name.trim() : "";
   const startDateUtc =
     typeof payload?.start_date_utc === "string" ? payload.start_date_utc.trim() : "";

@@ -1,3 +1,4 @@
+import { displayNameOrFallback } from "../lib/displayName";
 // src/pages/PrivateLeagueCreate.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -503,10 +504,10 @@ export function PrivateLeagueCreate() {
                       {membersForActive.map((m, i) => (
                         <li key={m.playerId + "-" + i} className="flex items-center gap-2">
                           <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-700">
-                            {(m.displayName || "User").slice(0, 2).toUpperCase()}
+                            {displayNameOrFallback(m.displayName).slice(0, 2).toUpperCase()}
                           </span>
                           <span className="truncate">
-                            {m.displayName || m.playerId.slice(0, 8)}
+                            {displayNameOrFallback(m.displayName)}
                           </span>
                           {m.playerId === activeLeague.ownerId && (
                             <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">

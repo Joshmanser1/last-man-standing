@@ -1,3 +1,4 @@
+import { validDisplayName } from "../lib/displayName";
 // src/components/RequireAuth.tsx
 import React, { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
@@ -15,16 +16,27 @@ export function RequireAuth({ children }: RequireAuthProps) {
   useEffect(() => {
     let mounted = true;
 
-    supa.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      const s = !!data.session?.user?.id;
-      setAuthed(s || (devOn() && localAuthed()));
+    let generation = 0;
+    const checkProfile = async (userId?: string) => {
+      const current = ++generation;
+      let allowed = devOn() && localAuthed();
+      try {
+        if (userId && !allowed) {
+          const { data, error } = await supa.from("profiles").select("display_name").eq("id", userId).maybeSingle();
+          allowed = !error && !!validDisplayName(data?.display_name);
+        }
+      } catch { allowed = false; }
+      if (!mounted || current !== generation) return;
+      setAuthed(allowed);
       setLoading(false);
-    });
-
-    const { data: sub } = supa.auth.onAuthStateChange((_e, s) => {
+    };
+    void supa.auth.getSession().then(({ data }) => checkProfile(data.session?.user?.id));
+    let timer: ReturnType<typeof setTimeout>;
+    const { data: sub } = supa.auth.onAuthStateChange((_e, session) => {
       if (!mounted) return;
-      setAuthed(!!s?.user?.id || (devOn() && localAuthed()));
+      setLoading(true);
+      clearTimeout(timer);
+      timer = setTimeout(() => void checkProfile(session?.user?.id), 0);
     });
 
     const onStore = () => {
@@ -37,6 +49,7 @@ export function RequireAuth({ children }: RequireAuthProps) {
 
     return () => {
       mounted = false;
+      clearTimeout(timer);
       sub.subscription.unsubscribe();
       window.removeEventListener("lms:store-updated", onStore as EventListener);
       window.removeEventListener("focus", onStore);
