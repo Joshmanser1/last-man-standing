@@ -685,25 +685,20 @@ export function Admin() {
       toast("Select at least one winning team.");
       return;
     }
-    const s = structuredClone(store) as Store;
-    const r = (s.rounds || []).find((x: any) => x.id === round.id);
-    const picksForRound = (s.picks || []).filter((p: any) => p.round_id === round.id);
-
-    picksForRound.forEach((p: any) => {
-      if (p.status === "no-pick") return;
-      if (winners.has(p.team_id)) {
-        p.status = "through";
-        p.reason = undefined;
-      } else {
-        p.status = "eliminated";
-        p.reason = "loss";
-      }
-    });
-
-    if (r) r.status = "completed";
-    writeStore(s);
-    toast("Results saved. Round completed.");
-    setRefreshTick((x) => x + 1);
+    setLoading(true);
+    try {
+      const response = await postJsonWithAuth("/api/admin", {
+        action: "finalize-round", league_id: league?.id, round_id: round.id, winners: [...winners],
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Finalisation failed");
+      toast(result.already_finalized ? "Round already finalised; results unchanged." : "Results saved. Round completed.");
+      setRefreshTick((x) => x + 1);
+    } catch (error: any) {
+      toast(error.message ?? String(error));
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function advanceNow() {

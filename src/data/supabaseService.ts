@@ -20,6 +20,17 @@ async function currentUserId(): Promise<string> {
   return uid;
 }
 
+async function finalizeAdminRound(roundId: ID, lockOnly = false) {
+  const { data, error } = await supa.from("rounds").select("league_id").eq("id", roundId).single();
+  if (error) throw error;
+  const response = await postJsonWithAuth("/api/admin", {
+    action: lockOnly ? "lock-round" : "finalize-round", league_id: data.league_id, round_id: roundId,
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error ?? "Round finalisation failed");
+  return result as { survivors: number };
+}
+
 /** Supabase-backed data service */
 const supabaseService: IDataService = {
   async seed() {/* no-op */},
@@ -165,6 +176,9 @@ const supabaseService: IDataService = {
 
   // Rounds (admin)
   async createNextRound(leagueId: ID, nextDeadlineISO?: string): Promise<Round> {
+    const current = await this.getCurrentRound(leagueId);
+    const final = await finalizeAdminRound(current.id);
+    if (final.survivors <= 1) throw new Error("No next round: competition has a winner or awaits zero-survivor rollover.");
     const { data: league, error: e1 } = await supa
       .from("leagues")
       .select("*")
@@ -173,6 +187,7 @@ const supabaseService: IDataService = {
       .maybeSingle();
     if (e1) throw e1;
 
+    if (league?.current_round !== current.round_number) throw new Error("Round changed; refresh before advancing.");
     const nextNum = (must(league as League).current_round as number) + 1;
     const deadline = nextDeadlineISO ?? new Date(Date.now() + 7 * 864e5).toISOString();
 
@@ -183,36 +198,26 @@ const supabaseService: IDataService = {
       .maybeSingle();
     if (error) throw error;
 
-    const u = await supa.from("leagues").update({ current_round: nextNum, status: "active" }).eq("id", leagueId);
+    const u = await supa.from("leagues").update({ current_round: nextNum, status: "active" })
+      .eq("id", leagueId).eq("current_round", current.round_number).select("id").single();
     if (u.error) throw u.error;
 
     return must(round as Round);
   },
 
   async lockRound(roundId: ID): Promise<void> {
-    const { error } = await supa.from("rounds").update({ status: "locked" }).eq("id", roundId);
-    if (error) throw error;
+    await finalizeAdminRound(roundId, true);
   },
 
-  async evaluateRound(_roundId: ID): Promise<void> {
-    // No-op here; Admin page has Auto-Evaluate via fixtures
-    return;
+  async evaluateRound(roundId: ID): Promise<void> {
+    await finalizeAdminRound(roundId);
   },
 
   async advanceRound(leagueId: ID): Promise<void> {
     const r = await this.getCurrentRound(leagueId);
-    const { data: survivors, error: e1 } = await supa
-      .from("picks")
-      .select("player_id")
-      .eq("round_id", r.id)
-      .eq("status", "through");
-    if (e1) throw e1;
-
-    if ((survivors ?? []).length <= 1) {
-      const { error } = await supa.from("leagues").update({ status: "completed" }).eq("id", leagueId);
-      if (error) throw error;
-      return;
-    }
+    const { survivors } = await finalizeAdminRound(r.id);
+    // Zero survivors remains a rollover hold, never a normal winner/completion.
+    if (survivors <= 1) return;
     await this.createNextRound(leagueId);
   },
 
@@ -294,13 +299,13 @@ const supabaseService: IDataService = {
         away_team_id: away.id,
         kickoff_utc: fx.kickoff ?? undefined,
         result,
-        winning_team_id: result === "home_win" ? home.id : result === "away_win" ? away.id : undefined,
+        winning_team_id: result === "home_win" ? home.id : result === "away_win" ? away.id : null,
       });
     }
 
     if (rows.length) {
       const { error } = await supa.from("fixtures").upsert(rows as any, {
-        ignoreDuplicates: true,
+        ignoreDuplicates: false,
         onConflict: "round_id,home_team_id,away_team_id",
       });
       if (error) throw error;
@@ -310,58 +315,7 @@ const supabaseService: IDataService = {
   },
 
   async evaluateFromFixtures(roundId: ID): Promise<void> {
-    const { data: fixtures, error: e1 } = await supa.from("fixtures").select("*").eq("round_id", roundId);
-    if (e1) throw e1;
-
-    const outcome = new Map<ID, "win" | "loss" | "draw">();
-    for (const F of (fixtures ?? []) as Fixture[]) {
-      if (F.result === "home_win") {
-        outcome.set(F.home_team_id, "win");
-        outcome.set(F.away_team_id, "loss");
-      } else if (F.result === "away_win") {
-        outcome.set(F.home_team_id, "loss");
-        outcome.set(F.away_team_id, "win");
-      } else if (F.result === "draw") {
-        outcome.set(F.home_team_id, "draw");
-        outcome.set(F.away_team_id, "draw");
-      }
-    }
-
-    const { data: pending, error: e2 } = await supa
-      .from("picks")
-      .select("*")
-      .eq("round_id", roundId)
-      .eq("status", "pending");
-    if (e2) throw e2;
-
-    const updates = (pending ?? [])
-      .map((p: any) => {
-        const o = outcome.get(p.team_id as ID);
-        if (!o) return null;
-        return {
-          id: p.id as string,
-          status: o === "win" ? "through" : "eliminated",
-          reason: o === "draw" ? "draw" : o === "loss" ? "loss" : null,
-        };
-      })
-      .filter(Boolean) as Array<{ id: string; status: Pick["status"]; reason: Pick["reason"] }>;
-
-    for (const u of updates) {
-      const { error } = await supa.from("picks").update({ status: u.status, reason: u.reason }).eq("id", u.id);
-      if (error) throw error;
-    }
-
-    const { count, error: e3 } = await supa
-      .from("picks")
-      .select("*", { count: "exact", head: true })
-      .eq("round_id", roundId)
-      .eq("status", "pending");
-    if (e3) throw e3;
-
-    if ((count ?? 0) === 0) {
-      const { error } = await supa.from("rounds").update({ status: "completed" }).eq("id", roundId);
-      if (error) throw error;
-    }
+    await finalizeAdminRound(roundId);
   },
 };
 

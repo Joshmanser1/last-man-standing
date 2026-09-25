@@ -1,3 +1,4 @@
+import { loadLeaguePicks } from "../server/leaguePicks.js";
 import { createClient } from "@supabase/supabase-js";
 
 type Req = {
@@ -114,19 +115,7 @@ export default async function handler(req: Req, res: Res) {
       }
     }
 
-    const { data, error } = await supabase
-      .from("picks")
-      .select("id, league_id, round_id, player_id, team_id, status, reason")
-      .eq("league_id", leagueId);
-
-    if (error) {
-      return sendJson(res, 502, {
-        error: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
-      });
-    }
+    const data = await loadLeaguePicks(supabase, leagueId);
 
     return sendJson(res, 200, data ?? []);
   } catch (err: any) {

@@ -114,18 +114,18 @@ export default async function handler(req: Req, res: Res) {
       }
     }
 
-    const { data: memberships, error: membershipError } = await supabase
-      .from("memberships")
-      .select("league_id, player_id, joined_at, role, is_active")
-      .eq("league_id", leagueId);
-
-    if (membershipError) {
-      return sendJson(res, 502, {
-        error: membershipError.message,
-        code: membershipError.code,
-        details: membershipError.details,
-        hint: membershipError.hint,
-      });
+    const memberships: any[] = [];
+    let after: string | undefined;
+    for (;;) {
+      let query = supabase.from("memberships")
+        .select("league_id, player_id, joined_at, role, is_active")
+        .eq("league_id", leagueId).order("player_id", { ascending: true }).limit(500);
+      if (after) query = query.gt("player_id", after);
+      const { data, error } = await query;
+      if (error) throw error;
+      if (!data?.length) break;
+      memberships.push(...data);
+      after = data[data.length - 1].player_id;
     }
 
     const playerIds = Array.from(
@@ -133,11 +133,11 @@ export default async function handler(req: Req, res: Res) {
     );
 
     let profilesById = new Map<string, string>();
-    if (playerIds.length > 0) {
+    for (let offset = 0; offset < playerIds.length; offset += 100) {
       const { data: profiles, error: profileError } = await supabase
         .from("profiles")
         .select("id, display_name")
-        .in("id", playerIds);
+        .in("id", playerIds.slice(offset, offset + 100));
 
       if (profileError) {
         return sendJson(res, 502, {
@@ -148,9 +148,7 @@ export default async function handler(req: Req, res: Res) {
         });
       }
 
-      profilesById = new Map(
-        (profiles ?? []).map((p: any) => [p.id as string, p.display_name as string])
-      );
+      for (const profile of profiles ?? []) profilesById.set(profile.id, profile.display_name);
     }
 
     const rows = (memberships ?? []).map((m: any) => ({

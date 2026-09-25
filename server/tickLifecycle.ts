@@ -1,3 +1,5 @@
+import { finalizeRound } from "./roundFinalization.js";
+
 export type TickAction = Record<string, unknown>;
 
 type TickLeague = {
@@ -43,8 +45,7 @@ async function ingestFplRoundFixtures(args: {
     ]);
 
     if (!bootstrapRes.ok || !eventFixturesRes.ok || leagueTeamsRes.error) {
-      actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_skipped", event: eventNumber });
-      return { readyForEvaluation: false };
+      throw new Error(leagueTeamsRes.error?.message ?? "FPL fixtures unavailable");
     }
 
     const bootstrap = (await bootstrapRes.json()) as any;
@@ -103,7 +104,7 @@ async function ingestFplRoundFixtures(args: {
       .upsert(fixtureUpserts as any, { onConflict: "round_id,home_team_id,away_team_id" });
     if (fixtureUpsertError) {
       actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_error", error: fixtureUpsertError.message });
-      return { readyForEvaluation: false };
+      throw new Error(fixtureUpsertError.message);
     }
 
     actions.push({
@@ -119,7 +120,7 @@ async function ingestFplRoundFixtures(args: {
     };
   } catch (ingestError: any) {
     actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_ingest_error", error: ingestError?.message ?? "Fixture ingest failed" });
-    return { readyForEvaluation: false };
+    throw ingestError;
   }
 }
 
@@ -130,12 +131,16 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
 
   if (insertResult.error) {
     if (insertResult.error.code === "23505") {
+      const previous = await supabase.from("tick_runs").select("status").eq("run_key", runKey).maybeSingle();
+      if (previous.error) throw new Error(previous.error.message);
+      if (previous.data?.status !== "ok") throw new Error("Previous league tick failed or is still running; retry next tick window");
       return { alreadyRan: true, runKey };
     }
     throw new Error(insertResult.error.message ?? "Failed to insert league tick run");
   }
 
   const tickRunId = insertResult.data.id as string;
+  let failure: unknown;
   try {
     const currentRoundNumber = league.current_round ?? null;
     if (currentRoundNumber == null) {
@@ -151,8 +156,7 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
       .maybeSingle();
 
     if (roundResult.error) {
-      actions.push({ league_id: leagueId, step: "round_lookup_error", error: roundResult.error.message });
-      return { alreadyRan: false, runKey };
+      throw new Error(roundResult.error.message);
     }
 
     if (!roundResult.data) {
@@ -164,7 +168,8 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
     let roundStatus = (roundResult.data.status as string | null) ?? "upcoming";
     const pickDeadline = roundResult.data.pick_deadline_utc ? new Date(roundResult.data.pick_deadline_utc) : null;
     if (league.status === "upcoming" && (roundStatus === "locked" || roundStatus === "completed")) {
-      await supabase.from("leagues").update({ status: "active" }).eq("id", leagueId).eq("status", "upcoming");
+      const activate = await supabase.from("leagues").update({ status: "active" }).eq("id", leagueId).eq("status", "upcoming");
+      if (activate.error) throw new Error(activate.error.message);
     }
 
     if (
@@ -178,7 +183,7 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
         .select("id", { count: "exact", head: true })
         .eq("round_id", roundId);
       if (fixturesResult.error) {
-        actions.push({ league_id: leagueId, round_id: roundId, step: "fixture_schedule_lookup_error", error: fixturesResult.error.message });
+        throw new Error(fixturesResult.error.message);
       } else if ((fixturesResult.count ?? 0) === 0) {
         const eventNumber = league.fpl_start_event + currentRoundNumber - 1;
         await ingestFplRoundFixtures({
@@ -193,48 +198,14 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
     }
 
     if (roundStatus === "upcoming" && pickDeadline && pickDeadline.getTime() <= now.getTime()) {
-      const lockRound = await supabase.from("rounds").update({ status: "locked" }).eq("id", roundId).eq("status", "upcoming");
-
-      if (lockRound.error) {
-        actions.push({ league_id: leagueId, round_id: roundId, step: "lock_failed", error: lockRound.error.message });
-      } else {
-        roundStatus = "locked";
-        await supabase.from("leagues").update({ status: "active" }).eq("id", leagueId).eq("status", "upcoming");
-        const membersResult = await supabase
-          .from("memberships")
-          .select("player_id")
-          .eq("league_id", leagueId)
-          .eq("is_active", true);
-        const picksForRound = await supabase.from("picks").select("player_id").eq("round_id", roundId);
-
-        if (membersResult.error) {
-          actions.push({ league_id: leagueId, round_id: roundId, step: "memberships_error", error: membersResult.error.message });
-        } else if (picksForRound.error) {
-          actions.push({ league_id: leagueId, round_id: roundId, step: "picks_error", error: picksForRound.error.message });
-        } else {
-          const pickedIds = new Set<string>((picksForRound.data ?? []).map((p: any) => p.player_id).filter((id: any) => typeof id === "string"));
-          const missingPlayerIds = (membersResult.data ?? [])
-            .map((m: any) => m.player_id)
-            .filter((id: any) => typeof id === "string" && !pickedIds.has(id));
-
-          if (missingPlayerIds.length > 0) {
-            const { error: deactivateError } = await supabase
-              .from("memberships")
-              .update({ is_active: false })
-              .eq("league_id", leagueId)
-              .in("player_id", missingPlayerIds);
-            if (deactivateError) {
-              actions.push({ league_id: leagueId, round_id: roundId, step: "no_pick_deactivate_failed", error: deactivateError.message });
-            } else {
-              actions.push({ league_id: leagueId, round_id: roundId, step: "no_pick_members_eliminated", count: missingPlayerIds.length });
-            }
-          }
-        }
-        actions.push({ league_id: leagueId, round_id: roundId, step: "lock" });
-      }
+      await finalizeRound(supabase, leagueId, roundId, { lockOnly: true });
+      roundStatus = "locked";
+      actions.push({ league_id: leagueId, round_id: roundId, step: "lock" });
     }
 
     if (roundStatus === "locked") {
+      // Retry missed-pick elimination even if a legacy tick partially locked this round.
+      await finalizeRound(supabase, leagueId, roundId, { lockOnly: true });
       let fplFixturesReadyForEvaluation = typeof league.fpl_start_event !== "number";
       if (typeof league.fpl_start_event === "number") {
         const eventNumber = league.fpl_start_event + currentRoundNumber - 1;
@@ -256,8 +227,7 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
 
       const fixturesResult = await supabase.from("fixtures").select("id, result, winning_team_id").eq("round_id", roundId);
       if (fixturesResult.error) {
-        actions.push({ league_id: leagueId, round_id: roundId, step: "fixtures_error", error: fixturesResult.error.message });
-        return { alreadyRan: false, runKey };
+        throw new Error(fixturesResult.error.message);
       }
 
       const fixtures = fixturesResult.data ?? [];
@@ -273,67 +243,19 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
         });
 
         if (!unresolved) {
-          const winners = new Set<string>();
-          for (const fixture of fixtures) {
-            if (fixture.winning_team_id) winners.add(fixture.winning_team_id as string);
-          }
-
-          const picksResult = await supabase.from("picks").select("id, team_id, status, player_id").eq("round_id", roundId);
-          if (picksResult.error) {
-            actions.push({ league_id: leagueId, round_id: roundId, step: "picks_error", error: picksResult.error.message });
-            return { alreadyRan: false, runKey };
-          }
-
-          let survivors = 0;
-          const eliminatedPlayerIds = new Set<string>();
-          const noPickPlayerIds = new Set<string>();
-          for (const pick of picksResult.data ?? []) {
-            if (pick.status === "no-pick") {
-              if (pick.player_id) noPickPlayerIds.add(pick.player_id as string);
-              continue;
-            }
-            const teamId = pick.team_id as string | null;
-            if (teamId && winners.has(teamId)) {
-              await supabase.from("picks").update({ status: "through", reason: null }).eq("id", pick.id);
-              survivors += 1;
-            } else {
-              await supabase.from("picks").update({ status: "eliminated", reason: "loss" }).eq("id", pick.id);
-              if (pick.player_id) eliminatedPlayerIds.add(pick.player_id as string);
-            }
-          }
-
-          const deactivateIds = new Set<string>([...Array.from(eliminatedPlayerIds), ...Array.from(noPickPlayerIds)]);
-          if (deactivateIds.size > 0) {
-            const { error: membershipError } = await supabase
-              .from("memberships")
-              .update({ is_active: false })
-              .eq("league_id", leagueId)
-              .in("player_id", Array.from(deactivateIds));
-            if (membershipError) {
-              actions.push({ league_id: leagueId, round_id: roundId, step: "deactivate_failed", error: membershipError.message });
-            }
-          }
-
-          await supabase.from("rounds").update({ status: "completed" }).eq("id", roundId).eq("status", "locked");
+          const result = await finalizeRound(supabase, leagueId, roundId);
           roundStatus = "completed";
-          actions.push({ league_id: leagueId, round_id: roundId, step: "evaluate_complete", survivors });
+          actions.push({ league_id: leagueId, round_id: roundId, step: "evaluate_complete", survivors: result.survivors });
         }
       }
     }
 
     if (roundStatus === "completed") {
-      const survivorsResult = await supabase.from("picks").select("id", { count: "exact", head: true }).eq("round_id", roundId).eq("status", "through");
-      if (survivorsResult.error) {
-        actions.push({ league_id: leagueId, round_id: roundId, step: "survivor_count_error", error: survivorsResult.error.message });
-        return { alreadyRan: false, runKey };
-      }
-
-      const survivors = survivorsResult.count ?? 0;
+      // Reconcile legacy completed rounds before trusting their persisted outcome.
+      const final = await finalizeRound(supabase, leagueId, roundId);
+      const survivors = final.survivors;
       if (survivors === 1) {
-        const winnerResult = await supabase.from("picks").select("player_id").eq("round_id", roundId).eq("status", "through").limit(1).maybeSingle();
-        const winnerPlayerId = winnerResult.data?.player_id ?? null;
-        await supabase.from("leagues").update({ status: "completed" }).eq("id", leagueId);
-        actions.push({ league_id: leagueId, step: "winner", winner_player_id: winnerPlayerId });
+        actions.push({ league_id: leagueId, step: "winner", winner_player_id: final.winner_player_id });
       } else if (survivors === 0) {
         actions.push({ league_id: leagueId, step: "rollover_zero_survivors" });
       } else {
@@ -342,7 +264,7 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
         let canAdvance = false;
 
         if (nextRoundCheck.error) {
-          actions.push({ league_id: leagueId, step: "next_round_lookup_error", error: nextRoundCheck.error.message });
+          throw new Error(nextRoundCheck.error.message);
         } else if (!nextRoundCheck.data) {
           let nextDeadlineUtc = league.is_test === true
             ? new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
@@ -384,7 +306,7 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
               name: `Round ${nextRoundNumber}`, status: "upcoming", pick_deadline_utc: nextDeadlineUtc,
             });
             if (insertRoundError) {
-              actions.push({ league_id: leagueId, step: "next_round_create_failed", error: insertRoundError.message, next_round: nextRoundNumber });
+              throw new Error(insertRoundError.message);
             } else {
               canAdvance = true;
             }
@@ -394,8 +316,10 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
         }
 
         if (canAdvance) {
-          await supabase.from("leagues").update({ current_round: nextRoundNumber }).eq("id", leagueId);
-          actions.push({ league_id: leagueId, step: "advance", next_round: nextRoundNumber });
+          const advance = await supabase.from("leagues").update({ current_round: nextRoundNumber })
+            .eq("id", leagueId).eq("current_round", currentRoundNumber).select("id");
+          if (advance.error) throw new Error(advance.error.message);
+          if (advance.data?.length) actions.push({ league_id: leagueId, step: "advance", next_round: nextRoundNumber });
         }
       }
     }
@@ -403,11 +327,13 @@ export async function runLeagueLifecycle({ supabase, league, now, actions }: Run
     return { alreadyRan: false, runKey };
   } catch (error: any) {
     actions.push({ league_id: leagueId, step: "league_error", error: error?.message ?? "League tick failed" });
-    return { alreadyRan: false, runKey };
+    failure = error;
+    throw error;
   } finally {
-    await supabase
-      .from("tick_runs")
-      .update({ status: "ok", completed_at: new Date().toISOString() })
-      .eq("id", tickRunId);
+    const report = await supabase.from("tick_runs").update({
+      status: failure ? "error" : "ok", completed_at: new Date().toISOString(),
+      ...(failure ? { error: failure instanceof Error ? failure.message : String(failure) } : {}),
+    }).eq("id", tickRunId);
+    if (report.error) throw new Error("Failed to record league tick result: " + report.error.message);
   }
 }

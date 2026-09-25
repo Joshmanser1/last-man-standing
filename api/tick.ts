@@ -86,6 +86,9 @@ export default async function handler(req: Req, res: Res) {
 
   let supabase: any | null = null;
   let tickRunId: string | null = null;
+  const actions: TickAction[] = [];
+  let processedLeagues = 0;
+  let dbConnectionCheck = false;
 
   try {
     supabase = createClient<any>(supabaseUrl, serviceRoleKey, {
@@ -100,6 +103,9 @@ export default async function handler(req: Req, res: Res) {
     if (insertResult.error) {
       const message = insertResult.error.message ?? "Failed to insert tick run";
       if (insertResult.error.code === "23505") {
+        const previous = await supabase.from("tick_runs").select("status").eq("run_key", runKey).maybeSingle();
+        if (previous.error) throw new Error(previous.error.message);
+        if (previous.data?.status !== "ok") throw new Error("Previous tick failed or is still running; retry next tick window");
         return sendJson(res, 200, {
           ok: true, env_check: envCheck, db_connection_check: true, round_count: null, timestamp,
           duration_ms: Date.now() - started, actions: [], processed_leagues: 0,
@@ -114,54 +120,27 @@ export default async function handler(req: Req, res: Res) {
 
     tickRunId = insertResult.data.id;
     const connectionTest = await supabase.from("rounds").select("id", { head: true }).limit(1);
-    const dbConnectionCheck = !connectionTest.error;
-    if (!dbConnectionCheck) {
-      await supabase.from("tick_runs").update({
-        status: "error", completed_at: new Date().toISOString(),
-        error: connectionTest.error?.message ?? "DB connectivity check failed",
-      }).eq("id", tickRunId);
-      return sendJson(res, 502, {
-        ok: false, env_check: envCheck, db_connection_check: false, round_count: null, timestamp,
-        duration_ms: Date.now() - started, actions: [], processed_leagues: 0,
-        error: connectionTest.error?.message ?? "DB connectivity check failed",
-      });
-    }
+    dbConnectionCheck = !connectionTest.error;
+    if (!dbConnectionCheck) throw new Error(connectionTest.error?.message ?? "DB connectivity check failed");
 
     const countResult = await supabase.from("rounds").select("id", { head: true, count: "exact" });
-    if (countResult.error) {
-      await supabase.from("tick_runs").update({
-        status: "error", completed_at: new Date().toISOString(), error: countResult.error.message,
-      }).eq("id", tickRunId);
-      return sendJson(res, 502, {
-        ok: false, env_check: envCheck, db_connection_check: dbConnectionCheck, round_count: null, timestamp,
-        duration_ms: Date.now() - started, actions: [], processed_leagues: 0, error: countResult.error.message,
-      });
-    }
+    if (countResult.error) throw new Error(countResult.error.message);
 
-    const actions: TickAction[] = [];
-    let processedLeagues = 0;
     const leaguesResult = await supabase
       .from("leagues")
       .select("id, status, current_round, fpl_start_event, is_test")
       .eq("automation_enabled", true)
       .not("is_test", "is", true)
       .is("deleted_at", null);
-    if (leaguesResult.error) {
-      await supabase.from("tick_runs").update({
-        status: "error", completed_at: new Date().toISOString(), error: leaguesResult.error.message,
-      }).eq("id", tickRunId);
-      return sendJson(res, 502, {
-        ok: false, env_check: envCheck, db_connection_check: dbConnectionCheck,
-        round_count: countResult.count ?? 0, timestamp, duration_ms: Date.now() - started,
-        actions, processed_leagues: processedLeagues, error: leaguesResult.error.message,
-      });
-    }
+    if (leaguesResult.error) throw new Error(leaguesResult.error.message);
 
+    let leagueFailed = false;
     for (const league of (leaguesResult.data ?? []).filter(isEligibleForTick)) {
       processedLeagues += 1;
       try {
         await runLeagueLifecycle({ supabase, league, now, actions });
       } catch (leagueError: any) {
+        leagueFailed = true;
         actions.push({
           league_id: league.id,
           step: "league_error",
@@ -170,7 +149,9 @@ export default async function handler(req: Req, res: Res) {
       }
     }
 
-    await supabase.from("tick_runs").update({ status: "ok", completed_at: new Date().toISOString() }).eq("id", tickRunId);
+    if (leagueFailed) throw new Error("One or more leagues failed; see league tick runs");
+    const report = await supabase.from("tick_runs").update({ status: "ok", completed_at: new Date().toISOString() }).eq("id", tickRunId);
+    if (report.error) throw new Error(report.error.message);
     return sendJson(res, 200, {
       ok: true, env_check: envCheck, db_connection_check: dbConnectionCheck,
       round_count: countResult.count ?? 0, timestamp, duration_ms: Date.now() - started,
@@ -179,14 +160,15 @@ export default async function handler(req: Req, res: Res) {
   } catch (error: any) {
     if (supabase && tickRunId) {
       try {
-        await supabase.from("tick_runs").update({
+        const report = await supabase.from("tick_runs").update({
           status: "error", completed_at: new Date().toISOString(), error: error?.message ?? "DB check failed",
         }).eq("id", tickRunId);
-      } catch {}
+        if (report.error) console.error("Failed to record tick failure", report.error);
+      } catch (reportError) { console.error("Failed to record tick failure", reportError); }
     }
     return sendJson(res, 502, {
-      ok: false, env_check: envCheck, db_connection_check: false, round_count: null, timestamp,
-      duration_ms: Date.now() - started, actions: [], processed_leagues: 0,
+      ok: false, env_check: envCheck, db_connection_check: dbConnectionCheck, round_count: null, timestamp,
+      duration_ms: Date.now() - started, actions, processed_leagues: processedLeagues,
       error: error?.message ?? "DB check failed",
     });
   }

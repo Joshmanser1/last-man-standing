@@ -586,6 +586,19 @@ export default async function handler(req: Req, res: Res) {
       return sendJson(res, 404, { error: "League not found" });
     }
 
+    if (action === "lock-round" || action === "finalize-round") {
+      const roundId = typeof payload?.round_id === "string" ? payload.round_id : "";
+      if (!roundId || (payload.winners !== undefined && (!Array.isArray(payload.winners) ||
+          payload.winners.some((id: unknown) => typeof id !== "string")))) {
+        return sendJson(res, 400, { error: "Invalid round or winners" });
+      }
+      const { finalizeRound } = await import("../server/roundFinalization.js");
+      const result = await finalizeRound(ctx.supabase, leagueId, roundId, {
+        lockOnly: action === "lock-round", winners: payload.winners,
+      });
+      return sendJson(res, 200, { ok: true, ...result });
+    }
+
     if (action === "run-league-tick") {
       // Keep lifecycle code out of routine admin requests such as site-admin-status.
       const { isEligibleForTick, runLeagueLifecycle } = await import("../server/tickLifecycle.js");

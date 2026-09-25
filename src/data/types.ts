@@ -82,5 +82,5 @@ export type Fixture = {
   away_team_id: ID;
   kickoff_utc?: string;
   result: "home_win" | "away_win" | "draw" | "not_set";
-  winning_team_id?: ID;
+  winning_team_id?: ID | null;
 };

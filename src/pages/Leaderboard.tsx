@@ -1,3 +1,5 @@
+import { subscribeStore } from "../data/service";
+import { indexPlayerRoundPicks } from "../lib/pickIndex";
 import { displayNameOrFallback as resolveDisplayName } from "../lib/displayName";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -220,6 +222,7 @@ export function Leaderboard() {
   const [viewerId, setViewerId] = useState(() => previewState?.viewerId ?? "");
   const [loading, setLoading] = useState<boolean>(() => !isDevPreview);
   const [exporting, setExporting] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
   const [fplTeamCodes, setFplTeamCodes] = useState<Record<string, number>>({});
   const [showOverflowCue, setShowOverflowCue] = useState(false);
   const [leagueId, setLeagueId] = useState(
@@ -231,6 +234,14 @@ export function Leaderboard() {
   const guidance = useFirstPickGuidance(isDevPreview ? undefined : leagueId);
   const managedTheme = useMemo(() => resolveManagedLeagueTheme(league as any), [league]);
   const isManagedLeague = !!managedTheme?.enabled;
+
+  useEffect(() => {
+    if (isDevPreview) return;
+    const refresh = () => setReloadTick(value => value + 1);
+    const unsubscribe = subscribeStore(refresh);
+    window.addEventListener("focus", refresh);
+    return () => { unsubscribe(); window.removeEventListener("focus", refresh); };
+  }, [isDevPreview]);
 
   function changeView(next: ViewMode) {
     setView(next);
@@ -249,10 +260,12 @@ export function Leaderboard() {
   useEffect(() => {
     if (isDevPreview) return;
 
+    let cancelled = false;
     (async () => {
       setLoading(true);
       try {
         const uid = (await getEffectiveUserId()) || "";
+        if (cancelled) return;
         setViewerId(uid);
         let nextLeagueId = leagueId;
         if (!nextLeagueId && uid) {
@@ -263,6 +276,7 @@ export function Leaderboard() {
           });
           if (resp.ok) {
             const visible = (await resp.json()) as Array<any>;
+            if (cancelled) return;
             nextLeagueId = visible[0]?.id ?? "";
             if (nextLeagueId) {
               localStorage.setItem("active_league_id", nextLeagueId);
@@ -283,6 +297,7 @@ export function Leaderboard() {
         const leagueStateResp = await postJsonWithAuth("/api/league-state", {
           league_id: nextLeagueId,
         });
+        if (cancelled) return;
         if (!leagueStateResp.ok) {
           setLeague(null);
           setRounds([]);
@@ -297,6 +312,7 @@ export function Leaderboard() {
           rounds?: Round[];
           teams?: Team[];
         };
+        if (cancelled) return;
         if (!leagueState.league) {
           setLeague(null);
           setRounds([]);
@@ -306,7 +322,7 @@ export function Leaderboard() {
           setPlayersById(new Map());
           return;
         }
-        setLeague(leagueState.league);
+
 
         const [picksResp, memberResp] = await Promise.all([
           postJsonWithAuth("/api/league-picks", { league_id: nextLeagueId }),
@@ -317,6 +333,8 @@ export function Leaderboard() {
         const memberRows = (await memberResp.json()) as Array<any>;
         const pickRows = (await picksResp.json()) as Pick[];
 
+        if (cancelled) return;
+        setLeague(leagueState.league);
         setRounds((leagueState.rounds ?? []) as Round[]);
         setTeams((leagueState.teams ?? []) as Team[]);
         setMemberships(
@@ -337,11 +355,17 @@ export function Leaderboard() {
           }
         });
         setPlayersById(map);
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Failed to load competition results", error);
+          setLeague(null); setPicks([]); setMemberships([]);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
-  }, [isDevPreview, leagueId]);
+    return () => { cancelled = true; };
+  }, [isDevPreview, leagueId, reloadTick]);
 
   useEffect(() => {
     if (isDevPreview) return;
@@ -391,21 +415,10 @@ export function Leaderboard() {
     return [...picks, ...synthetic].filter((pick) => byRound.has(pick.round_id));
   }, [leagueId, league, memberships, picks, rounds]);
 
-  const picksByPlayerByRound = useMemo(() => {
-    const map = new Map<ID, Map<number, Pick>>();
-    if (!league) return map;
-    const leaguePicks = effectivePicks.filter((p) => p.league_id === league.id);
-    const roundById = new Map<ID, Round>();
-    for (const r of rounds) roundById.set(r.id, r);
-
-    for (const p of leaguePicks) {
-      const r = roundById.get(p.round_id);
-      if (!r) continue;
-      if (!map.has(p.player_id)) map.set(p.player_id, new Map());
-      map.get(p.player_id)!.set(r.round_number, p);
-    }
-    return map;
-  }, [effectivePicks, league, rounds]);
+  const picksByPlayerByRound = useMemo(
+    () => indexPlayerRoundPicks(league?.id ?? leagueId, rounds, effectivePicks),
+    [effectivePicks, league, leagueId, rounds]
+  );
 
   const rows = useMemo(() => {
     const membershipByPlayerId = new Map<ID, Membership>();
