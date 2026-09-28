@@ -11,7 +11,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "tick:local": "node scripts/tick-local.mjs",
-    "test:marketing": "node scripts/test-marketing-consent.mjs"
+    "test:marketing": "node scripts/test-marketing-consent.mjs",
+    "test:service-emails": "node scripts/test-service-emails.mjs"
   },
   "dependencies": {
     "@sentry/react": "^10.27.0",
@@ -19,7 +20,8 @@
     "html-to-image": "^1.11.13",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "react-router-dom": "^7.9.5"
+    "react-router-dom": "^7.9.5",
+    "resend": "^6.30.0"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

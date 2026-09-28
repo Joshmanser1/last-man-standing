@@ -167,6 +167,7 @@ function evaluatePicksFromFixtures(roundId: ID) {
   }
 
   for (const p of s.picks.filter(p => p.round_id === roundId && p.status === "pending")) {
+    if (!p.team_id) continue;
     const o = outcome.get(p.team_id);
     if (!o) continue;
     if (o === "win") {
@@ -312,7 +313,7 @@ const mockService = {
     return new Set(
       load()
         .picks.filter(p => p.league_id === leagueId && p.player_id === playerId)
-        .map(p => p.team_id)
+        .flatMap(p => p.team_id ? [p.team_id] : [])
     );
   },
 

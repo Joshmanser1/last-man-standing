@@ -110,7 +110,11 @@ const supabaseService: IDataService = {
       .eq("league_id", leagueId)
       .eq("player_id", playerId);
     if (error) throw error;
-    return new Set((data ?? []).map((r: any) => r.team_id as ID));
+    return new Set<ID>(
+      (data ?? []).flatMap((row: any) =>
+        typeof row.team_id === "string" && row.team_id ? [row.team_id as ID] : []
+      )
+    );
   },
 
   // Players & membership

@@ -16,6 +16,7 @@ import { isRoundRevealable, shouldHidePickForViewer } from "../lib/roundReveal";
 import { buildRoundEntries } from "../lib/leagueRoundState";
 import { TeamBadge } from "../components/TeamBadge";
 import { fetchFplTeams } from "../lib/fpl";
+import { activateLeagueFromSearch } from "../lib/leagueRoute";
 
 type ID = string;
 
@@ -49,7 +50,7 @@ type Pick = {
   league_id: ID;
   round_id: ID;
   player_id: ID;
-  team_id: ID;
+  team_id: ID | null;
   status: "pending" | "through" | "eliminated" | "no-pick";
   reason?: "loss" | "draw" | "no-pick";
 };
@@ -226,7 +227,7 @@ export function Leaderboard() {
   const [fplTeamCodes, setFplTeamCodes] = useState<Record<string, number>>({});
   const [showOverflowCue, setShowOverflowCue] = useState(false);
   const [leagueId, setLeagueId] = useState(
-    () => previewState?.league.id ?? localStorage.getItem("active_league_id") ?? ""
+    () => previewState?.league.id ?? activateLeagueFromSearch(window.location.search)
   );
 
   const exportRef = useRef<HTMLDivElement>(null);
@@ -256,6 +257,12 @@ export function Leaderboard() {
       setView(q);
     }
   }, [location.search]);
+
+  useEffect(() => {
+    if (isDevPreview) return;
+    const requestedLeagueId = activateLeagueFromSearch(location.search);
+    if (requestedLeagueId && requestedLeagueId !== leagueId) setLeagueId(requestedLeagueId);
+  }, [isDevPreview, leagueId, location.search]);
 
   useEffect(() => {
     if (isDevPreview) return;
@@ -499,7 +506,7 @@ export function Leaderboard() {
       .filter((p) => p.status === "eliminated" || p.status === "no-pick")
       .map((p) => {
         const round = byRound.get(p.round_id);
-        const team = teamsById.get(p.team_id);
+        const team = p.team_id ? teamsById.get(p.team_id) : undefined;
         return {
           playerId: p.player_id,
           roundNumber: round?.round_number ?? 0,
@@ -545,7 +552,7 @@ export function Leaderboard() {
 
   function symbolForPick(p?: Pick) {
     if (!p) return "";
-    const team = teamsById.get(p.team_id);
+    const team = p.team_id ? teamsById.get(p.team_id) : undefined;
     const code = team?.code?.trim().toUpperCase() || (team ? teamShort(team.name) : "");
     if (p.status === "through") return `${code} \u2713`;
     if (p.status === "eliminated" || p.status === "no-pick") return `${code} \u2715`;

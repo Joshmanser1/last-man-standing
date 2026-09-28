@@ -2,7 +2,7 @@
 import { MarketingOptIn } from "../components/MarketingOptIn";
 import { marketingConsentDisabled } from "../lib/marketingPreferencesClient";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { dataService } from "../data/service";
 import { useCountdown } from "../hooks/useCountdown";
 import { GameSelector } from "../components/GameSelector";
@@ -20,6 +20,7 @@ import {
   getInviteAttributionForLeague,
   trackInviteEventOnce,
 } from "../lib/analytics";
+import { activateLeagueFromSearch } from "../lib/leagueRoute";
 
 type FixtureInfo = {
   opponent: string;
@@ -93,10 +94,11 @@ function formatKickoff(kickoffUtc?: string | null) {
 }
 
 export function MakePick() {
+  const location = useLocation();
   const isDevPreview =
     import.meta.env.DEV && new URLSearchParams(window.location.search).get("devPreview") === "1";
   const [leagueId, setLeagueId] = useState<string>(
-    () => (isDevPreview ? DEV_PREVIEW_LEAGUE.id : localStorage.getItem("active_league_id") || "")
+    () => (isDevPreview ? DEV_PREVIEW_LEAGUE.id : activateLeagueFromSearch(window.location.search))
   );
   const [league, setLeague] = useState<any>(null);
   const [round, setRound] = useState<any>(null);
@@ -117,6 +119,12 @@ export function MakePick() {
   const [winnerName, setWinnerName] = useState<string>("");
   const [inactiveMessage, setInactiveMessage] = useState<string>("");
   const [loadError, setLoadError] = useState<string>("");
+
+  useEffect(() => {
+    if (isDevPreview) return;
+    const requestedLeagueId = activateLeagueFromSearch(location.search);
+    if (requestedLeagueId && requestedLeagueId !== leagueId) setLeagueId(requestedLeagueId);
+  }, [isDevPreview, leagueId, location.search]);
 
   const navigate = useNavigate();
   const toast = useToast();

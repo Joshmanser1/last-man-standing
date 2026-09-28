@@ -1370,7 +1370,9 @@ export function Admin() {
                   : "—"}
               </div>
               <div>
-                Picks this round: <b>{roundPicks.length}</b> • Survivors (marked):{" "}
+                Picks this round:{" "}
+                <b>{roundPicks.filter((pick: any) => pick.status !== "no-pick" && pick.team_id).length}</b>{" "}
+                • Survivors (marked):{" "}
                 <b>{survivors}</b>
               </div>
               {mappedFplEvent != null && (

@@ -1,0 +1,121 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { build } from 'esbuild';
+import { PGlite } from '@electric-sql/pglite';
+
+async function load(entry) {
+  const result = await build({ entryPoints: [entry], bundle: true, write: false, platform: 'node', format: 'esm', logLevel: 'silent' });
+  return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
+}
+const { processServiceEmails } = await load('server/email/serviceEmailProcessor.ts');
+const { reminderCandidates, resultCandidates } = await load('server/email/eligibility.ts');
+const { activateLeagueFromSearch } = await load('src/lib/leagueRoute.ts');
+const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const now = new Date('2026-09-28T12:00:00Z');
+const baseRound = { id:id(2), league_id:id(1), round_number:1, status:'upcoming', pick_deadline_utc:'2026-09-29T12:00:00Z', finalized_at:null };
+const member = player => ({ player_id:player, is_active:true, joined_at:'2026-09-01T00:00:00Z' });
+const snapshot = (overrides={}) => ({
+  league:{id:id(1),name:'FCC Saturday Club',current_round:1}, rounds:[baseRound], memberships:[member(id(10))], picks:[],
+  teams:[{id:id(20),name:'Arsenal'},{id:id(21),name:'Chelsea'}], ...overrides,
+});
+const reminder = reminderCandidates(snapshot(), id(2))[0];
+const resultCandidate = (outcome='through') => ({ ...reminder, eventType:'round_result', outcome,
+  teamName:outcome==='eliminated_no_pick'?null:'Arsenal', survivorsRemaining:3 });
+
+function harness(candidates, options={}) {
+  const state = new Map(), sent=[];
+  let claims=0, recheck=options.recheck ?? (()=>true), failOnce=options.failOnce ?? false;
+  const repository = {
+    async discover(){ return {candidates,zeroSurvivorRoundsSkipped:options.zeroRounds??0,
+      ambiguousMissedPickResultsSkipped:options.ambiguousMissedPicks??0}; },
+    async resolveAuthEmail(playerId){ if(options.authError)throw Error('auth unavailable'); return options.missingEmail ? null : `${playerId.slice(-2)}@example.test`; },
+    async claim(candidate){
+      const key=[candidate.leagueId,candidate.roundId,candidate.playerId,candidate.eventType].join(':');
+      const existing=state.get(key); if(existing==='sent'||existing==='processing')return null;
+      state.set(key,'processing'); claims++; return {id:key,claimToken:'token-'+claims,attemptCount:claims};
+    },
+    async recheck(candidate){ return recheck(candidate); },
+    async complete(claim){ state.set(claim.id,'sent'); },
+    async fail(claim){ state.set(claim.id,'failed'); },
+    async release(claim){ state.delete(claim.id); },
+  };
+  const transport={async send(message){ sent.push(message); if(failOnce){failOnce=false;throw Error('provider down');} return{id:'msg-'+sent.length}; }};
+  const run=(extra={})=>processServiceEmails({enabled:true,appOrigin:'https://lms.fantasycommandcentre.co.uk',now,pilotAllowlist:'',repository,transport,...extra});
+  return {run,sent,state,get claims(){return claims;},setRecheck(value){recheck=value;}};
+}
+
+// Reminder eligibility and delivery.
+assert.equal(reminderCandidates(snapshot(),id(2)).length,1);
+assert.equal(reminderCandidates(snapshot({picks:[{round_id:id(2),player_id:id(10),team_id:id(20),status:'pending'}]}),id(2)).length,0);
+assert.equal(reminderCandidates(snapshot({league:{id:id(1),name:'FCC Saturday Club',current_round:2}}),id(2)).length,0);
+const storage={value:'old-league',getItem(){return this.value;},setItem(_key,value){this.value=value;}};
+assert.equal(activateLeagueFromSearch(`?league_id=${id(1)}`,storage),id(1));
+assert.equal(storage.value,id(1),'email route activates its explicit league before page loading');
+assert.equal(activateLeagueFromSearch('',storage),id(1));
+let h=harness([reminder]); let summary=await h.run();
+assert.equal(summary.remindersSent,1); assert.equal(h.sent.length,1); assert.match(h.sent[0].subject,/due tomorrow/);
+assert.match(h.sent[0].text,/\/make-pick\?league_id=/);
+await h.run(); assert.equal(h.sent.length,1,'duplicate reminder invocation');
+
+// A pick arriving after discovery/claim is rechecked before provider send and releases the claim.
+h=harness([reminder],{recheck:()=>false}); summary=await h.run();
+assert.equal(h.sent.length,0); assert.equal(summary.ineligibleAfterClaim,1); assert.equal(h.state.size,0);
+
+// Finalisation is required, and each stored result maps to the correct email outcome.
+assert.equal(resultCandidates(snapshot(),id(2)).candidates.length,0);
+const finalRound={...baseRound,status:'completed',finalized_at:'2026-09-28T11:00:00Z'};
+let final=resultCandidates(snapshot({rounds:[finalRound],memberships:[member(id(10)),member(id(11)),member(id(12)),member(id(13)),member(id(14))],picks:[
+  {round_id:id(2),player_id:id(10),team_id:id(20),status:'through',reason:null},
+  {round_id:id(2),player_id:id(11),team_id:id(21),status:'eliminated',reason:'loss'},
+  {round_id:id(2),player_id:id(12),team_id:id(21),status:'eliminated',reason:'draw'},
+  {round_id:id(2),player_id:id(14),team_id:null,status:'no-pick',reason:'no-pick'},
+]}),id(2));
+assert.deepEqual(final.candidates.map(c=>c.outcome),['through','eliminated_loss','eliminated_draw','eliminated_no_pick']);
+assert.equal(final.ambiguousMissedPicks,1,'missing current-round pick is ambiguous and skipped');
+h=harness(final.candidates); summary=await h.run(); assert.equal(summary.resultsSent,4); assert.equal(h.sent.length,4);
+assert.match(h.sent[0].text,/WON\. YOU SURVIVED/); assert.match(h.sent[1].text,/LOST\. YOU'RE OUT/);
+assert.match(h.sent[2].text,/DREW\. YOU'RE OUT/); assert.match(h.sent[3].text,/MISSED THE DEADLINE/);
+assert.match(h.sent[1].text,/\/leaderboard\?view=eliminations&league_id=/);
+assert.ok(h.sent.every(message=>message.text.includes('https://lms.fantasycommandcentre.co.uk/')));
+await h.run(); assert.equal(h.sent.length,4,'duplicate results invocation');
+h=harness([],{ambiguousMissedPicks:1}); summary=await h.run(); assert.equal(summary.ambiguousMissedPickResultsSkipped,1); assert.equal(h.sent.length,0);
+
+// Zero survivors suppress every normal result email.
+final=resultCandidates(snapshot({rounds:[finalRound],picks:[{round_id:id(2),player_id:id(10),team_id:id(20),status:'eliminated',reason:'loss'}]}),id(2));
+assert.equal(final.zeroSurvivors,true); assert.equal(final.candidates.length,0);
+h=harness([],{zeroRounds:1}); summary=await h.run(); assert.equal(summary.zeroSurvivorRoundsSkipped,1); assert.equal(h.sent.length,0);
+
+// Master switch, pilot safety, missing Auth email and retryable provider failure.
+h=harness([reminder]); summary=await h.run({enabled:false}); assert.equal(summary.disabled,true); assert.equal(h.sent.length,0); assert.equal(h.claims,0);
+h=harness([reminder]); summary=await h.run({pilotAllowlist:'pilot@example.test'}); assert.equal(summary.pilotBlocked,1); assert.equal(h.claims,0); assert.equal(h.state.size,0);
+summary=await h.run({pilotAllowlist:'10@example.test'}); assert.equal(summary.remindersSent,1,'pilot-blocked recipient was not consumed');
+h=harness([reminder],{missingEmail:true}); summary=await h.run(); assert.equal(summary.missingAuthEmail,1); assert.equal(h.claims,0);
+h=harness([reminder],{authError:true}); summary=await h.run(); assert.equal(summary.failed,1); assert.equal(summary.missingAuthEmail,0); assert.equal(h.claims,0);
+h=harness([reminder],{failOnce:true}); summary=await h.run(); assert.equal(summary.failed,1); assert.equal([...h.state.values()][0],'failed');
+summary=await h.run(); assert.equal(summary.remindersSent,1); assert.equal(h.sent.length,2,'failed send is retryable');
+
+// Concurrent processors share an atomic claim; only one reaches the provider.
+h=harness([reminder]); await Promise.all([h.run(),h.run()]); assert.equal(h.sent.length,1);
+
+// Exercise the real ledger migration against disposable PostgreSQL.
+const db=new PGlite();
+try {
+  await db.exec(`create role anon; create role authenticated; create role service_role; create schema auth;
+    create table auth.users(id uuid primary key); create table public.leagues(id uuid primary key);
+    create table public.rounds(id uuid primary key); insert into auth.users values('${id(10)}');
+    insert into leagues values('${id(1)}'); insert into rounds values('${id(2)}');`);
+  await db.exec(await readFile('sql/2026-09-28-service-email-deliveries.sql','utf8'));
+  const claim=async()=> (await db.query("select claim_service_email_delivery($1,$2,$3,'pick_reminder',null) value",[id(1),id(2),id(10)])).rows[0].value;
+  const first=await claim(); assert.ok(first.id && first.claim_token);
+  assert.equal(await claim(),null,'fresh concurrent claim is rejected');
+  assert.equal((await db.query('select count(*)::int count from service_email_deliveries')).rows[0].count,1);
+  assert.equal((await db.query('select fail_service_email_delivery($1,$2,$3) value',[first.id,first.claim_token,'provider down'])).rows[0].value,true);
+  const retry=await claim(); assert.equal(retry.attempt_count,2);
+  assert.equal((await db.query('select complete_service_email_delivery($1,$2,$3) value',[retry.id,retry.claim_token,'resend-1'])).rows[0].value,true);
+  assert.equal(await claim(),null,'sent delivery cannot be reclaimed');
+  await db.exec('set role authenticated');
+  await assert.rejects(claim(),/permission denied/);
+  await db.exec('reset role');
+} finally { await db.close(); }
+
+console.log('PASS: service email eligibility, templates, switches, allowlist, recheck, retries, deduplication and atomic ledger claims');

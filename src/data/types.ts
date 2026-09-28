@@ -69,7 +69,7 @@ export type Pick = {
   league_id: ID;
   round_id: ID;
   player_id: ID;
-  team_id: ID;
+  team_id: ID | null;
   created_at: string;
   status: "pending" | "through" | "eliminated" | "no-pick";
   reason?: "loss" | "draw" | "no-pick";

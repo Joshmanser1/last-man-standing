@@ -15,10 +15,11 @@ await db.exec(`
   create table rounds (id uuid primary key, league_id uuid, round_number int, status text, pick_deadline_utc timestamptz);
   create table memberships (league_id uuid, player_id uuid, is_active boolean, primary key(league_id, player_id));
   create table fixtures (id uuid primary key, round_id uuid, home_team_id uuid, away_team_id uuid, result text, winning_team_id uuid);
-  create table picks (id uuid primary key, league_id uuid, round_id uuid, player_id uuid, team_id uuid, status pick_status, reason pick_reason,
+  create table picks (id uuid primary key default gen_random_uuid(), league_id uuid, round_id uuid, player_id uuid, team_id uuid, status pick_status, reason pick_reason,
     unique(round_id, player_id));
 `);
 await db.exec(await readFile('sql/2026-09-25-round-finalisation.sql', 'utf8'));
+await db.exec(await readFile('sql/2026-09-29-persist-no-pick-outcomes.sql', 'utf8'));
 async function seed() {
   await db.exec('truncate picks, fixtures, memberships, rounds, leagues');
   await db.query('insert into leagues values ($1,1,\'active\',null)', [league]);
@@ -46,15 +47,26 @@ try {
   await assert.rejects(finalize(), /Lock the round/);
   await finalize(true);
   assert.equal((await rows('memberships'))[4].is_active, false, 'missed pick persists inactive at lock');
+  let noPicks = (await rows('picks')).filter(p=>p.status==='no-pick');
+  assert.equal(noPicks.length,1);
+  assert.equal(noPicks[0].league_id,league);
+  assert.equal(noPicks[0].round_id,round);
+  assert.equal(noPicks[0].player_id,id(14));
+  assert.equal(noPicks[0].team_id,null,'no-pick is not a team selection');
+  assert.equal(noPicks[0].reason,'no-pick');
   const result = await finalize();
   assert.equal(result.survivors,2);
   const picks = await rows('picks');
-  assert.deepEqual(picks.map(p => [p.status,p.reason]), [['through',null],['eliminated','loss'],['eliminated','draw'],['through',null]]);
+  const picksByPlayer = new Map(picks.map(p=>[p.player_id,p]));
+  assert.deepEqual([10,11,12,13,14].map(n=>[picksByPlayer.get(id(n)).status,picksByPlayer.get(id(n)).reason]),
+    [['through',null],['eliminated','loss'],['eliminated','draw'],['through',null],['no-pick','no-pick']]);
+  assert.equal(picks.filter(p=>p.team_id!==null).length,4,'no-pick is excluded from real team history');
   assert.deepEqual((await rows('memberships')).map(m=>m.is_active),[true,false,false,true,false]);
   assert.equal((await rows('leagues'))[0].status,'active');
   const before = JSON.stringify(await rows('rounds'));
   assert.equal((await finalize()).already_finalized,true);
   assert.equal(JSON.stringify(await rows('rounds')),before,'repeat leaves finalisation time unchanged');
+  assert.equal((await rows('picks')).filter(p=>p.status==='no-pick').length,1,'repeat does not duplicate no-pick');
   await assert.rejects(db.query("update picks set team_id=$1 where id=$2",[id(21),id(40)]),/already finalised/);
   await assert.rejects(db.query('delete from picks where id=$1',[id(40)]),/locked/);
   await assert.rejects(db.query("update fixtures set result='draw',winning_team_id=null where id=$1",[id(30)]),/already finalised/);
@@ -66,7 +78,9 @@ try {
     if new.status = 'completed' then raise exception 'injected write failure'; end if; return new; end $$;
     create trigger fail_completion before update on rounds for each row execute function fail_completion();`);
   await assert.rejects(finalize(),/injected write failure/);
-  assert.ok((await rows('picks')).every(p=>p.status==='pending'));
+  const failedPicks = await rows('picks');
+  assert.ok(failedPicks.filter(p=>p.team_id!==null).every(p=>p.status==='pending'));
+  assert.equal(failedPicks.filter(p=>p.status==='no-pick').length,1);
   assert.deepEqual((await rows('memberships')).map(m=>m.is_active),[true,true,true,true,false]);
   assert.equal((await rows('rounds'))[0].status,'locked');
   assert.equal((await rows('rounds'))[0].finalized_at,null);
@@ -98,7 +112,9 @@ try {
 
   await seed(); await finalize(true);
   await assert.rejects(finalize(false,[id(20),id(21)]),/Both opponents/);
-  assert.ok((await rows('picks')).every(p=>p.status==='pending'));
+  const rejectedManualPicks = await rows('picks');
+  assert.ok(rejectedManualPicks.filter(p=>p.team_id!==null).every(p=>p.status==='pending'));
+  assert.equal(rejectedManualPicks.filter(p=>p.status==='no-pick').length,1);
   assert.equal((await finalize(false,[id(20)])).survivors,2,'manual uses same finaliser');
   await seed(); await finalize(true);
   await db.exec("update fixtures set result='not_set',winning_team_id=null");
@@ -149,8 +165,9 @@ try {
   assert.deepEqual(await loadLeaguePicks(pages,league),many,'loads beyond API row cap');
   const { indexPlayerRoundPicks }=await bundle('src/lib/pickIndex.ts');
   const rounds=[{id:round,league_id:league,round_number:1},{id:id(3),league_id:league,round_number:2}];
-  const submitted=[picks[0],picks[1],{...picks[0],id:id(60),round_id:id(3),team_id:id(23)}];
-  const indexed=indexPlayerRoundPicks(league,rounds,[...submitted,{...picks[0],id:'synthetic',synthetic:true,status:'no-pick'}, {...picks[0],league_id:id(99)}]);
+  const firstPick=picksByPlayer.get(id(10)), secondPick=picksByPlayer.get(id(11));
+  const submitted=[firstPick,secondPick,{...firstPick,id:id(60),round_id:id(3),team_id:id(23)}];
+  const indexed=indexPlayerRoundPicks(league,rounds,[...submitted,{...firstPick,id:'synthetic',synthetic:true,status:'no-pick'}, {...firstPick,league_id:id(99)}]);
   assert.equal(indexed.get(id(10)).get(1).id,id(40));
   assert.equal(indexed.get(id(11)).get(1).id,id(41));
   assert.equal(indexed.get(id(10)).get(2).team_id,id(23));
