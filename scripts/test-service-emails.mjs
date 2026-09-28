@@ -10,6 +10,7 @@ async function load(entry) {
 const { processServiceEmails } = await load('server/email/serviceEmailProcessor.ts');
 const { reminderCandidates, resultCandidates } = await load('server/email/eligibility.ts');
 const { activateLeagueFromSearch } = await load('src/lib/leagueRoute.ts');
+const { tickHandler } = await load('api/tick.ts');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const now = new Date('2026-09-28T12:00:00Z');
 const baseRound = { id:id(2), league_id:id(1), round_number:1, status:'upcoming', pick_deadline_utc:'2026-09-29T12:00:00Z', finalized_at:null };
@@ -96,6 +97,83 @@ summary=await h.run(); assert.equal(summary.remindersSent,1); assert.equal(h.sen
 
 // Concurrent processors share an atomic claim; only one reaches the provider.
 h=harness([reminder]); await Promise.all([h.run(),h.run()]); assert.equal(h.sent.length,1);
+
+// The existing tick endpoint owns orchestration without coupling email delivery
+// to successful competition-state processing.
+function tickDatabase(events) {
+  return {
+    from(table) {
+      let operation='select', payload=null, selectOptions=null;
+      const result=()=>{
+        if(table==='tick_runs' && operation==='insert') return {data:{id:'tick-1'},error:null};
+        if(table==='tick_runs' && operation==='update') { events.push(`tick:${payload.status}`); return {data:null,error:null}; }
+        if(table==='rounds') return {data:selectOptions?.head?null:[],count:selectOptions?.count==='exact'?1:null,error:null};
+        if(table==='leagues') return {data:[{id:id(1),status:'active',current_round:1,is_test:false}],error:null};
+        throw Error(`Unexpected tick table ${table}`);
+      };
+      const query={
+        insert(value){operation='insert';payload=value;return query;},
+        update(value){operation='update';payload=value;return query;},
+        select(_columns,options){selectOptions=options??null;return query;},
+        eq(){return query;},not(){return query;},is(){return query;},limit(){return query;},
+        single(){return Promise.resolve(result());},maybeSingle(){return Promise.resolve(result());},
+        then(resolve,reject){return Promise.resolve(result()).then(resolve,reject);},
+      };
+      return query;
+    },
+  };
+}
+function tickResponse() {
+  return {statusCode:0,headers:{},body:null,setHeader(name,value){this.headers[name]=value;},end(body){this.body=JSON.parse(body);}};
+}
+const savedTickEnv={
+  CRON_SECRET:process.env.CRON_SECRET,
+  SUPABASE_URL:process.env.SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY:process.env.SUPABASE_SERVICE_ROLE_KEY,
+  SERVICE_EMAILS_ENABLED:process.env.SERVICE_EMAILS_ENABLED,
+};
+Object.assign(process.env,{CRON_SECRET:'tick-secret',SUPABASE_URL:'https://unused.invalid',
+  SUPABASE_SERVICE_ROLE_KEY:'local-test-service-role-key',SERVICE_EMAILS_ENABLED:'true'});
+const emailSummary={disabled:false,remindersSent:1,resultsSent:0,skipped:0,failed:0,
+  zeroSurvivorRoundsSkipped:0,missingAuthEmail:0,pilotBlocked:0,ineligibleAfterClaim:0,ambiguousMissedPickResultsSkipped:0};
+try {
+  let events=[]; let database=tickDatabase(events); let response=tickResponse();
+  const dependencies={createClient:()=>database,
+    async runLeagueLifecycle(){events.push('lifecycle');},
+    async runServiceEmails(){events.push('email');return{status:200,body:emailSummary};}};
+  await tickHandler({method:'GET',headers:{authorization:'Bearer tick-secret'},query:{}},response,dependencies);
+  assert.equal(response.statusCode,200); assert.equal(response.body.ok,true);
+  assert.deepEqual(events,['lifecycle','tick:ok','email'],'normal tick completes lifecycle before email processing');
+  assert.deepEqual(response.body.service_emails,emailSummary);
+
+  events=[]; response=tickResponse();
+  const emailOnlyDependencies={createClient:()=>({from(){throw Error('email-only touched competition state');}}),
+    async runLeagueLifecycle(){events.push('lifecycle');},
+    async runServiceEmails(){events.push('email');return{status:200,body:emailSummary};}};
+  await tickHandler({method:'GET',headers:{authorization:'Bearer tick-secret'},query:{mode:'service-emails'}},response,emailOnlyDependencies);
+  assert.equal(response.statusCode,200); assert.deepEqual(response.body,emailSummary); assert.deepEqual(events,['email']);
+
+  events=[]; response=tickResponse();
+  await tickHandler({method:'GET',headers:{},query:{mode:'service-emails'}},response,emailOnlyDependencies);
+  assert.equal(response.statusCode,401); assert.deepEqual(events,[],'unauthorized requests invoke neither lifecycle nor email work');
+
+  events=[]; database=tickDatabase(events); response=tickResponse();
+  const originalConsoleError=console.error;
+  console.error=()=>{};
+  try {
+    await tickHandler({method:'GET',headers:{authorization:'Bearer tick-secret'},query:{}},response,{
+      createClient:()=>database,async runLeagueLifecycle(){events.push('lifecycle');},
+      async runServiceEmails(){events.push('email');throw Error('provider unavailable');},
+    });
+  } finally { console.error=originalConsoleError; }
+  assert.equal(response.statusCode,200); assert.equal(response.body.ok,true);
+  assert.deepEqual(events,['lifecycle','tick:ok','email']);
+  assert.deepEqual(response.body.service_emails,{error:'Service email processing failed.'});
+} finally {
+  for (const [key,value] of Object.entries(savedTickEnv)) {
+    if (value === undefined) delete process.env[key]; else process.env[key]=value;
+  }
+}
 
 // Exercise the real ledger migration against disposable PostgreSQL.
 const db=new PGlite();
