@@ -1,4 +1,55 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+type DbTable<Row, Insert = Partial<Row>, Update = Partial<Insert>> = {
+  Row: Row;
+  Insert: Insert;
+  Update: Update;
+  Relationships: [];
+};
+
+type PickRow = {
+  id: string;
+  league_id: string;
+  round_id: string;
+  player_id: string;
+  team_id: string | null;
+  status: "pending" | "through" | "eliminated" | "no-pick";
+  reason: "loss" | "draw" | "no-pick" | null;
+};
+
+type SubmitPickDatabase = {
+  public: {
+    Tables: {
+      site_admins: DbTable<{ user_id: string }>;
+      leagues: DbTable<{
+        id: string;
+        current_round: number | null;
+        status: string | null;
+        is_test: boolean;
+        deleted_at: string | null;
+      }>;
+      memberships: DbTable<{
+        id: string;
+        league_id: string;
+        player_id: string;
+        is_active: boolean;
+      }>;
+      rounds: DbTable<{
+        id: string;
+        league_id: string;
+        round_number: number;
+        pick_deadline_utc: string | null;
+        status: string | null;
+      }>;
+      teams: DbTable<{ id: string; league_id: string }>;
+      picks: DbTable<PickRow, Omit<PickRow, "id">>;
+    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
+  };
+};
 
 type Req = {
   method?: string;
@@ -54,7 +105,7 @@ async function getAuthenticatedUserId(req: Req): Promise<string | null> {
   return error || !user?.id ? null : user.id;
 }
 
-async function isSiteAdminUser(supabase: ReturnType<typeof createClient>, userId: string) {
+async function isSiteAdminUser(supabase: SupabaseClient<SubmitPickDatabase>, userId: string) {
   const { data, error } = await supabase
     .from("site_admins")
     .select("user_id")
@@ -92,7 +143,7 @@ export default async function handler(req: Req, res: Res) {
 
   try {
     const { supabaseUrl, serviceRoleKey } = getSupabaseServerEnv();
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+    const supabase = createClient<SubmitPickDatabase>(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
