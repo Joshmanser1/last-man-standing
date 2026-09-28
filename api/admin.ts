@@ -1,5 +1,90 @@
 import { validDisplayName } from "../src/lib/displayName";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+type DbTable<Row, Insert = Partial<Row>, Update = Partial<Insert>> = {
+  Row: Row;
+  Insert: Insert;
+  Update: Update;
+  Relationships: [];
+};
+
+type LeagueRow = {
+  id: string;
+  name: string;
+  created_by: string | null;
+  created_at: string;
+  is_public: boolean;
+  is_test: boolean;
+  join_code: string | null;
+  fpl_start_event: number | null;
+  start_date_utc: string | null;
+  current_round: number | null;
+  status: string | null;
+  managed_theme: Record<string, unknown> | null;
+  deleted_at: string | null;
+};
+
+type RoundRow = {
+  id: string;
+  league_id: string;
+  round_number: number;
+  name: string | null;
+  pick_deadline_utc: string | null;
+  status: string | null;
+  finalized_at: string | null;
+};
+
+type TeamRow = {
+  id: string;
+  league_id: string;
+  name: string;
+  code: string;
+  logo_url: string | null;
+};
+
+type FixtureRow = {
+  id: string;
+  round_id: string;
+  home_team_id: string;
+  away_team_id: string;
+  kickoff_utc: string | null;
+  result: "home_win" | "away_win" | "draw" | "not_set";
+  winning_team_id: string | null;
+};
+
+type PickRow = {
+  id: string;
+  league_id: string;
+  round_id: string;
+  player_id: string;
+  team_id: string | null;
+  status: "pending" | "through" | "eliminated" | "no-pick";
+  reason: "loss" | "draw" | "no-pick" | null;
+};
+
+type AdminDatabase = {
+  public: {
+    Tables: {
+      leagues: DbTable<LeagueRow, Partial<LeagueRow> & Pick<LeagueRow, "id" | "name">>;
+      profiles: DbTable<{ id: string; display_name: string | null }>;
+      memberships: DbTable<{
+        league_id: string;
+        player_id: string;
+        role: string;
+        is_active: boolean;
+      }>;
+      rounds: DbTable<RoundRow, Partial<RoundRow> & Pick<RoundRow, "id" | "league_id" | "round_number">>;
+      teams: DbTable<TeamRow, Partial<TeamRow> & Pick<TeamRow, "id" | "league_id" | "name" | "code">>;
+      fixtures: DbTable<FixtureRow, Partial<FixtureRow> & Pick<FixtureRow, "round_id" | "home_team_id" | "away_team_id">>;
+      picks: DbTable<PickRow>;
+      site_admins: DbTable<{ user_id: string }>;
+    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
+  };
+};
 
 type Req = {
   method?: string;
@@ -14,7 +99,7 @@ type Res = {
 };
 
 type AuthedContext = {
-  supabase: ReturnType<typeof createClient>;
+  supabase: SupabaseClient<AdminDatabase>;
   userId: string;
 };
 
@@ -468,7 +553,7 @@ async function authenticateUser(req: Req, res: Res): Promise<AuthedContext | nul
     return null;
   }
 
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
+  const supabase = createClient<AdminDatabase>(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -669,7 +754,7 @@ export default async function handler(req: Req, res: Res) {
                 .select("*")
                 .eq("league_id", leagueId)
                 .eq("round_number", currentRoundNumber)
-                .maybeSingle(),
+                .maybeSingle<RoundRow>(),
           ctx.supabase.from("teams").select("*").eq("league_id", leagueId).order("name"),
         ]);
 
