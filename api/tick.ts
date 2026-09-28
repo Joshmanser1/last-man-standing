@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { isEligibleForTick, runLeagueLifecycle, type TickAction } from "../server/tickLifecycle";
+import { isEligibleForTick, runLeagueLifecycle, type TickAction } from "../server/tickLifecycle.js";
 import { createResendTransport } from "../server/email/resendTransport.js";
 import { processServiceEmails } from "../server/email/serviceEmailProcessor.js";
 import { createSupabaseServiceEmailRepository } from "../server/email/supabaseServiceEmailRepository.js";
