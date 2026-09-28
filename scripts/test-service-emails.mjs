@@ -9,6 +9,7 @@ async function load(entry) {
 }
 const { processServiceEmails } = await load('server/email/serviceEmailProcessor.ts');
 const { reminderCandidates, resultCandidates } = await load('server/email/eligibility.ts');
+const { createSupabaseServiceEmailRepository } = await load('server/email/supabaseServiceEmailRepository.ts');
 const { activateLeagueFromSearch } = await load('src/lib/leagueRoute.ts');
 const { tickHandler } = await load('api/tick.ts');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -97,6 +98,38 @@ summary=await h.run(); assert.equal(summary.remindersSent,1); assert.equal(h.sen
 
 // Concurrent processors share an atomic claim; only one reaches the provider.
 h=harness([reminder]); await Promise.all([h.run(),h.run()]); assert.equal(h.sent.length,1);
+
+// Discovery can race a soft deletion: a round remains queryable while its
+// league is intentionally excluded by deleted_at IS NULL.
+function discoveryDatabase(leagueResult) {
+  return {
+    from(table) {
+      const filters=new Map();
+      const result=()=>{
+        if(table==='rounds') {
+          return {data:filters.get('status')==='upcoming'?[{id:id(2),league_id:id(1)}]:[],error:null};
+        }
+        if(table==='leagues') return leagueResult;
+        throw Error(`Snapshot data should not load for a missing league: ${table}`);
+      };
+      const query={
+        select(){return query;},eq(column,value){filters.set(column,value);return query;},
+        is(){return query;},not(){return query;},gte(){return query;},lte(){return query;},
+        order(){return query;},range(){return query;},maybeSingle(){return Promise.resolve(result());},
+        then(resolve,reject){return Promise.resolve(result()).then(resolve,reject);},
+      };
+      return query;
+    },
+  };
+}
+let discovery=await createSupabaseServiceEmailRepository(discoveryDatabase({data:null,error:null})).discover(now);
+assert.deepEqual(discovery,{candidates:[],zeroSurvivorRoundsSkipped:0,ambiguousMissedPickResultsSkipped:0},
+  'a round whose league was soft-deleted is skipped without aborting discovery');
+await assert.rejects(
+  createSupabaseServiceEmailRepository(discoveryDatabase({data:null,error:{message:'multiple league rows'}})).discover(now),
+  /League snapshot lookup failed: multiple league rows/,
+  'unexpected league cardinality includes query context'
+);
 
 // The existing tick endpoint owns orchestration without coupling email delivery
 // to successful competition-state processing.

@@ -2,30 +2,49 @@ import { reminderCandidates, resultCandidates, type LeagueEmailSnapshot } from "
 import type { CandidateDiscovery, ServiceEmailRepository } from "./serviceEmailProcessor.js";
 import type { DeliveryClaim, ServiceEmailCandidate } from "./types.js";
 
-async function requireData<T>(request: PromiseLike<{ data: T | null; error: any }>, message: string): Promise<T> {
+type QueryError = { message?: string | null } | null;
+
+async function requireData<T>(
+  request: PromiseLike<{ data: T | null; error: QueryError }>,
+  context: string
+): Promise<T> {
   const { data, error } = await request;
-  if (error) throw new Error(error.message ?? message);
-  if (data == null) throw new Error(message);
+  if (error) throw new Error(`${context}: ${error.message ?? "query failed"}`);
+  if (data == null) throw new Error(`${context}: query returned no data`);
   return data;
 }
 
-async function loadPages(makeQuery: (from: number, to: number) => PromiseLike<{ data: any[] | null; error: any }>) {
-  const rows: any[] = [];
+async function loadPages<T>(
+  context: string,
+  makeQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: QueryError }>
+) {
+  const rows: T[] = [];
   for (let from = 0;; from += 500) {
-    const page = await requireData(makeQuery(from, from + 499), "Failed to load lifecycle email data");
+    const page = await requireData(makeQuery(from, from + 499), context);
     rows.push(...page);
     if (page.length < 500) return rows;
   }
 }
 
 export function createSupabaseServiceEmailRepository(supabase: any): ServiceEmailRepository {
-  async function loadSnapshot(leagueId: string): Promise<LeagueEmailSnapshot> {
-    const league = await requireData<any>(supabase.from("leagues").select("id,name,current_round").eq("id", leagueId).is("deleted_at", null).single(), "League not found");
+  async function loadSnapshot(leagueId: string): Promise<LeagueEmailSnapshot | null> {
+    const leagueResult: { data: LeagueEmailSnapshot["league"] | null; error: QueryError } = await supabase.from("leagues")
+      .select("id,name,current_round").eq("id", leagueId).is("deleted_at", null)
+      .maybeSingle();
+    const { data: league, error: leagueError } = leagueResult;
+    if (leagueError) {
+      throw new Error(`League snapshot lookup failed: ${leagueError.message ?? "query failed"}`);
+    }
+    if (!league) return null;
     const [rounds, memberships, picks, teams] = await Promise.all([
-      loadPages((from, to) => supabase.from("rounds").select("id,league_id,round_number,status,pick_deadline_utc,finalized_at").eq("league_id", leagueId).order("round_number").range(from, to)),
-      loadPages((from, to) => supabase.from("memberships").select("player_id,is_active,joined_at").eq("league_id", leagueId).order("player_id").range(from, to)),
-      loadPages((from, to) => supabase.from("picks").select("round_id,player_id,team_id,status,reason").eq("league_id", leagueId).order("id").range(from, to)),
-      loadPages((from, to) => supabase.from("teams").select("id,name").eq("league_id", leagueId).order("id").range(from, to)),
+      loadPages<LeagueEmailSnapshot["rounds"][number]>("Round snapshot lookup failed", (from, to) =>
+        supabase.from("rounds").select("id,league_id,round_number,status,pick_deadline_utc,finalized_at").eq("league_id", leagueId).order("round_number").range(from, to)),
+      loadPages<LeagueEmailSnapshot["memberships"][number]>("Membership snapshot lookup failed", (from, to) =>
+        supabase.from("memberships").select("player_id,is_active,joined_at").eq("league_id", leagueId).order("player_id").range(from, to)),
+      loadPages<LeagueEmailSnapshot["picks"][number]>("Pick snapshot lookup failed", (from, to) =>
+        supabase.from("picks").select("round_id,player_id,team_id,status,reason").eq("league_id", leagueId).order("id").range(from, to)),
+      loadPages<LeagueEmailSnapshot["teams"][number]>("Team snapshot lookup failed", (from, to) =>
+        supabase.from("teams").select("id,name").eq("league_id", leagueId).order("id").range(from, to)),
     ]);
     return { league, rounds, memberships, picks, teams };
   }
@@ -34,23 +53,28 @@ export function createSupabaseServiceEmailRepository(supabase: any): ServiceEmai
     const reminderStart = new Date(now.getTime() + 20 * 60 * 60 * 1000).toISOString();
     const reminderEnd = new Date(now.getTime() + 28 * 60 * 60 * 1000).toISOString();
     const [reminderRounds, finalizedRounds] = await Promise.all([
-      loadPages((from, to) => supabase.from("rounds").select("id,league_id").eq("status", "upcoming")
+      loadPages<{ id: string; league_id: string }>("Reminder round discovery failed", (from, to) => supabase.from("rounds").select("id,league_id").eq("status", "upcoming")
         .is("finalized_at", null).gte("pick_deadline_utc", reminderStart).lte("pick_deadline_utc", reminderEnd)
         .order("id").range(from, to)),
-      loadPages((from, to) => supabase.from("rounds").select("id,league_id").eq("status", "completed")
+      loadPages<{ id: string; league_id: string }>("Finalized round discovery failed", (from, to) => supabase.from("rounds").select("id,league_id").eq("status", "completed")
         .not("finalized_at", "is", null).order("id").range(from, to)),
     ]);
-    const snapshots = new Map<string, Promise<LeagueEmailSnapshot>>();
+    const snapshots = new Map<string, Promise<LeagueEmailSnapshot | null>>();
     const snapshot = (leagueId: string) => {
       if (!snapshots.has(leagueId)) snapshots.set(leagueId, loadSnapshot(leagueId));
       return snapshots.get(leagueId)!;
     };
     const candidates: ServiceEmailCandidate[] = [];
-    for (const round of reminderRounds) candidates.push(...reminderCandidates(await snapshot(round.league_id), round.id));
+    for (const round of reminderRounds) {
+      const leagueSnapshot = await snapshot(round.league_id);
+      if (leagueSnapshot) candidates.push(...reminderCandidates(leagueSnapshot, round.id));
+    }
     let zeroSurvivorRoundsSkipped = 0;
     let ambiguousMissedPickResultsSkipped = 0;
     for (const round of finalizedRounds) {
-      const result = resultCandidates(await snapshot(round.league_id), round.id);
+      const leagueSnapshot = await snapshot(round.league_id);
+      if (!leagueSnapshot) continue;
+      const result = resultCandidates(leagueSnapshot, round.id);
       if (result.zeroSurvivors) zeroSurvivorRoundsSkipped++;
       else {
         candidates.push(...result.candidates);
@@ -80,6 +104,7 @@ export function createSupabaseServiceEmailRepository(supabase: any): ServiceEmai
     },
     async recheck(candidate, now) {
       const snapshot = await loadSnapshot(candidate.leagueId);
+      if (!snapshot) return false;
       if (candidate.eventType === "pick_reminder") {
         const round = snapshot.rounds.find(entry => entry.id === candidate.roundId);
         return !!round && Date.parse(round.pick_deadline_utc) > now.getTime()
