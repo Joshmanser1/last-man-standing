@@ -82,6 +82,30 @@ assert.ok(h.sent.every(message=>message.text.includes('https://lms.fantasycomman
 await h.run(); assert.equal(h.sent.length,4,'duplicate results invocation');
 h=harness([],{ambiguousMissedPicks:1}); summary=await h.run(); assert.equal(summary.ambiguousMissedPickResultsSkipped,1); assert.equal(h.sent.length,0);
 
+// Production regression: finalisation made the missed-pick member inactive and
+// persisted an authoritative null-team no-pick result, despite sparse prior history.
+const roundOne={id:id(101),league_id:id(1),round_number:1,status:'locked',pick_deadline_utc:'2026-09-10T12:00:00Z',finalized_at:null};
+const roundTwo={id:id(102),league_id:id(1),round_number:2,status:'locked',pick_deadline_utc:'2026-09-20T12:00:00Z',finalized_at:null};
+const roundThree={id:id(103),league_id:id(1),round_number:3,status:'completed',pick_deadline_utc:'2026-09-28T10:00:00Z',finalized_at:'2026-09-28T11:00:00Z'};
+const productionResult=resultCandidates(snapshot({
+  league:{id:id(1),name:'FCC Saturday Club',current_round:3},
+  rounds:[roundOne,roundTwo,roundThree],
+  memberships:[member(id(10)),{...member(id(14)),is_active:false}],
+  picks:[
+    {round_id:roundOne.id,player_id:id(10),team_id:id(20),status:'through',reason:null},
+    {round_id:roundTwo.id,player_id:id(10),team_id:id(21),status:'through',reason:null},
+    {round_id:roundThree.id,player_id:id(10),team_id:id(20),status:'through',reason:null},
+    {round_id:roundThree.id,player_id:id(14),team_id:null,status:'no-pick',reason:'no-pick'},
+  ],
+}),roundThree.id);
+const missedPickCandidates=productionResult.candidates.filter(candidate=>candidate.playerId===id(14));
+assert.equal(missedPickCandidates.length,1);
+assert.equal(missedPickCandidates[0].eventType,'round_result');
+assert.equal(missedPickCandidates[0].outcome,'eliminated_no_pick');
+h=harness(missedPickCandidates); summary=await h.run({pilotAllowlist:'14@example.test'});
+assert.equal(summary.resultsSent,1); assert.equal(h.sent.length,1); assert.match(h.sent[0].text,/MISSED THE DEADLINE/);
+await h.run({pilotAllowlist:'14@example.test'}); assert.equal(h.sent.length,1,'persisted no-pick result is not resent');
+
 // Zero survivors suppress every normal result email.
 final=resultCandidates(snapshot({rounds:[finalRound],picks:[{round_id:id(2),player_id:id(10),team_id:id(20),status:'eliminated',reason:'loss'}]}),id(2));
 assert.equal(final.zeroSurvivors,true); assert.equal(final.candidates.length,0);

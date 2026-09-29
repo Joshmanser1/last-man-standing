@@ -46,8 +46,9 @@ export function resultCandidates(snapshot: LeagueEmailSnapshot, roundId: string)
   const candidates: ServiceEmailCandidate[] = [];
   let ambiguousMissedPicks = 0;
   for (const member of snapshot.memberships) {
-    if (!enteredRound(snapshot, member.player_id, round)) continue;
     const pick = roundPicks.find(entry => entry.player_id === member.player_id);
+    const persistedNoPick = pick?.status === "no-pick" && pick.reason === "no-pick";
+    if (!persistedNoPick && !enteredRound(snapshot, member.player_id, round)) continue;
     let outcome: ServiceEmailOutcome;
     if (!pick) { ambiguousMissedPicks++; continue; }
     if (pick.status === "no-pick" && pick.reason === "no-pick") outcome = "eliminated_no_pick";
