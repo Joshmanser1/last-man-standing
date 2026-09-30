@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { MARKETING_CAPTURE_SOURCES, MARKETING_CONSENT_VERSION, marketingPreferenceState, type MarketingPreferenceRow } from "../src/lib/marketingConsent";
+import { MARKETING_CAPTURE_SOURCES, MARKETING_CONSENT_VERSION, marketingPreferenceState, type MarketingPreferenceRow } from "../src/lib/marketingConsent.js";
 
 type Req = { method?: string; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type Res = { statusCode: number; setHeader: (name: string, value: string) => void; end: (body: string) => void };
