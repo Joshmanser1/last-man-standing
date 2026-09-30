@@ -1,4 +1,4 @@
-import { validDisplayName } from "../src/lib/displayName";
+import { validDisplayName } from "../src/lib/displayName.js";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 type DbTable<Row, Insert = Partial<Row>, Update = Partial<Insert>> = {
