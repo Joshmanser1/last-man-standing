@@ -18,6 +18,7 @@
     }
   ],
   "rewrites": [
+    { "source": "/j/:slug", "destination": "/api/join-league?tracking_slug=:slug" },
     { "source": "/fpl/(.*)", "destination": "https://fantasy.premierleague.com/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]

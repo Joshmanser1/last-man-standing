@@ -1,10 +1,11 @@
-import { validDisplayName } from "../src/lib/displayName";
+import { validDisplayName } from "../src/lib/displayName.js";
 import { createClient } from "@supabase/supabase-js";
 
 type Req = {
   method?: string;
   headers: Record<string, string | string[] | undefined>;
   body?: unknown;
+  query?: Record<string, string | string[] | undefined>;
 };
 
 type Res = {
@@ -52,6 +53,84 @@ function createServiceRoleClient() {
   });
 }
 
+const ATTRIBUTION_VALUE_LENGTH = 160;
+
+function queryValue(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? "";
+}
+
+function cleanAttributionValue(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, ATTRIBUTION_VALUE_LENGTH) : null;
+}
+
+function attributionColumns(
+  prefix: "first" | "join",
+  value: unknown,
+  expectedJoinCode?: string
+): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const source = value as Record<string, unknown>;
+  if (prefix === "join") {
+    const attributedCode = cleanAttributionValue(source.joinCode)?.toUpperCase();
+    if (!expectedJoinCode || attributedCode !== expectedJoinCode.toUpperCase()) return {};
+  }
+
+  const result: Record<string, string> = {};
+  for (const key of ["source", "medium", "campaign", "content"] as const) {
+    const cleaned = cleanAttributionValue(source[key]);
+    if (cleaned) result[`${prefix}_utm_${key}`] = cleaned;
+  }
+  const capturedAt = cleanAttributionValue(source.capturedAt);
+  if (capturedAt && !Number.isNaN(Date.parse(capturedAt))) {
+    result[`${prefix}_attribution_at`] = new Date(capturedAt).toISOString();
+  }
+  return result;
+}
+
+async function resolveTrackingLink(req: Req, res: Res) {
+  const slug = queryValue(req.query?.tracking_slug).toLowerCase();
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/.test(slug)) {
+    res.statusCode = 302;
+    res.setHeader("Location", "/private/join");
+    res.setHeader("Cache-Control", "no-store");
+    return res.end("");
+  }
+
+  try {
+    const supabase = createServiceRoleClient();
+    const { data, error } = await supabase
+      .from("league_tracking_links")
+      .select("join_code, utm_source, utm_medium, utm_campaign, utm_content")
+      .eq("slug", slug)
+      .eq("active", true)
+      .maybeSingle();
+    if (error) throw error;
+
+    if (!data?.join_code) {
+      res.statusCode = 302;
+      res.setHeader("Location", "/private/join");
+      res.setHeader("Cache-Control", "no-store");
+      return res.end("");
+    }
+
+    const params = new URLSearchParams({ code: String(data.join_code) });
+    for (const key of ["source", "medium", "campaign", "content"] as const) {
+      const value = cleanAttributionValue(data[`utm_${key}`]);
+      if (value) params.set(`utm_${key}`, value);
+    }
+    res.statusCode = 302;
+    res.setHeader("Location", `/private/join?${params.toString()}`);
+    res.setHeader("Cache-Control", "no-store");
+    return res.end("");
+  } catch (error) {
+    return sendJson(res, 502, {
+      error: error instanceof Error ? error.message : "Failed to resolve tracking link",
+    });
+  }
+}
+
 async function getAuthenticatedUser(req: Req) {
   const { supabaseUrl, anonKey } = getSupabaseServerEnv();
   if (!anonKey) return null;
@@ -87,8 +166,9 @@ async function isSiteAdminUser(
 }
 
 export default async function handler(req: Req, res: Res) {
+  if (req.method === "GET") return resolveTrackingLink(req, res);
   if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
+    res.setHeader("Allow", "GET, POST");
     return sendJson(res, 405, { error: "Method Not Allowed" });
   }
 
@@ -296,10 +376,12 @@ export default async function handler(req: Req, res: Res) {
       : await supabase
           .from("memberships")
           .insert({
-          league_id: leagueId,
-          player_id: authenticatedUserId,
-          role: "player",
+            league_id: leagueId,
+            player_id: authenticatedUserId,
+            role: "player",
             is_active: true,
+            ...attributionColumns("first", payload?.firstAttribution),
+            ...attributionColumns("join", payload?.joinAttribution, joinCode),
           })
           .select("*")
           .maybeSingle();

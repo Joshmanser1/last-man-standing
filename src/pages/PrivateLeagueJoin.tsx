@@ -4,6 +4,7 @@ import { useToast } from "../components/Toast";
 import { supa } from "../lib/supabaseClient";
 import { dataService } from "../data/service";
 import { postJsonWithAuth } from "../lib/apiAuth";
+import { getAttributionForJoin } from "../lib/attribution";
 import {
   bindInviteAttributionToLeague,
   captureInviteAttribution,
@@ -194,6 +195,7 @@ export function PrivateLeagueJoin() {
       const joinRes = await postJsonWithAuth("/api/join-league", {
         join_code: trimmed,
         ...(displayName ? { display_name: displayName } : {}),
+        ...getAttributionForJoin(trimmed),
       });
 
       let body: any = null;

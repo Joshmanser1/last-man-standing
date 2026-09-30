@@ -6,6 +6,7 @@ import { Header } from "./components/Header";
 import { ToastProvider } from "./components/Toast";
 import { RequireAuth } from "./components/RequireAuth";
 import { RequireAdmin } from "./components/RequireAdmin";
+import { captureAttribution } from "./lib/attribution";
 
 // Pages
 import LandingPage from "./pages/LandingPage";
@@ -31,6 +32,10 @@ const DEV_FLAG =
 
 function AppInner() {
   const location = useLocation();
+
+  useEffect(() => {
+    captureAttribution(location.pathname, location.search);
+  }, [location.pathname, location.search]);
 
   // One-time: allow ?dev=1 to enable switcher for this browser and clean URL
   useEffect(() => {
