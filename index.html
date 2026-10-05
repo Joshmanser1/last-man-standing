@@ -4,80 +4,144 @@
     <!-- === Fonts === -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    >
+
     <style>
-      :root { --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial; }
-      html { font-family: var(--font-sans); }
+      :root {
+        --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system,
+          Segoe UI, Roboto, "Helvetica Neue", Arial;
+      }
+
+      html {
+        font-family: var(--font-sans);
+      }
     </style>
 
     <!-- === Core Meta & SEO === -->
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
     <title>Fantasy Command Centre | Last Man Standing</title>
 
     <meta
       name="description"
-      content="Run your own Last Man Standing league with friends, followers or your football community. FCC handles the picks, results, eliminations and leaderboard."
+      content="Run your own Last Man Standing football league with friends, followers or your community. FCC handles picks, results, eliminations and leaderboards."
     />
 
-    <link rel="canonical" href="https://www.fantasycommandcentre.co.uk/" />
+    <link
+      rel="canonical"
+      href="https://www.fantasycommandcentre.co.uk/"
+    />
 
     <meta
       name="keywords"
-      content="Fantasy Premier League, FPL tools, FPL analytics, live ranks, FPL mini leagues, FPL last man standing"
+      content="Last Man Standing football, football LMS, Premier League Last Man Standing, Last Man Standing league, football competition, FPL, fantasy football"
     />
 
     <!-- === Open Graph / Facebook / LinkedIn === -->
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://www.fantasycommandcentre.co.uk/" />
-    <meta property="og:title" content="Fantasy Command Centre | Last Man Standing" />
+
+    <meta
+      property="og:url"
+      content="https://www.fantasycommandcentre.co.uk/"
+    />
+
+    <meta
+      property="og:title"
+      content="Fantasy Command Centre | Last Man Standing"
+    />
+
     <meta
       property="og:description"
-      content="Run your own Last Man Standing league with friends, followers or your football community. FCC handles the picks, results, eliminations and leaderboard."
+      content="Run your own Last Man Standing football league with friends, followers or your community. FCC handles picks, results, eliminations and leaderboards."
     />
+
     <meta
       property="og:image"
       content="https://www.fantasycommandcentre.co.uk/social-preview.png"
     />
 
     <!-- === Twitter / X === -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Fantasy Command Centre | Last Man Standing" />
+    <meta
+      name="twitter:card"
+      content="summary_large_image"
+    />
+
+    <meta
+      name="twitter:title"
+      content="Fantasy Command Centre | Last Man Standing"
+    />
+
     <meta
       name="twitter:description"
-      content="Run your own Last Man Standing league with friends, followers or your football community. FCC handles the picks, results, eliminations and leaderboard."
+      content="Run your own Last Man Standing football league with friends, followers or your community. FCC handles picks, results, eliminations and leaderboards."
     />
+
     <meta
       name="twitter:image"
       content="https://www.fantasycommandcentre.co.uk/social-preview.png"
     />
 
     <!-- === Icons & Theme === -->
-    <link rel="icon" type="image/png" href="/logo-shield.png" />
-    <meta name="theme-color" content="#0f172a" />
+    <link rel="icon" href="/favicon.ico?v=2" sizes="any" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="/favicon-32.png?v=2"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="/favicon-16.png?v=2"
+    />
+    <link
+      rel="apple-touch-icon"
+      href="/fcc-logo.png?v=2"
+    />
+
+    <meta
+      name="theme-color"
+      content="#0f172a"
+    />
 
     <!-- === Analytics === -->
     <script>
       const isDevPreview =
         "%MODE%" === "development" &&
         new URLSearchParams(window.location.search).get("devPreview") === "1" &&
-        ["/make-pick", "/my-games", "/leaderboard"].includes(window.location.pathname);
+        ["/make-pick", "/my-games", "/leaderboard"].includes(
+          window.location.pathname
+        );
 
       if (!isDevPreview) {
         const tracker = document.createElement("script");
         tracker.defer = true;
         tracker.src = "https://cloud.umami.is/script.js";
-        tracker.dataset.websiteId = "ba69b2f0-2355-4dcf-a2dd-1069e3b5df3c";
+        tracker.dataset.websiteId =
+          "ba69b2f0-2355-4dcf-a2dd-1069e3b5df3c";
+
         document.head.appendChild(tracker);
       }
     </script>
 
     <!-- === PWA & Browser Compatibility === -->
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta
+      http-equiv="X-UA-Compatible"
+      content="IE=edge"
+    />
   </head>
 
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+
+    <script
+      type="module"
+      src="/src/main.tsx"
+    ></script>
   </body>
 </html>
