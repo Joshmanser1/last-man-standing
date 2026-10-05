@@ -18,6 +18,9 @@ type LeaguePreview = {
   current_round: number;
   pick_deadline_utc: string | null;
   managed_theme: ManagedThemePreview | null;
+  player_count: number;
+  round_one_picked_count: number | null;
+  round_one_joining_open: boolean;
 };
 
 type ManagedThemePreview = {
@@ -303,6 +306,12 @@ export function PrivateLeagueJoin() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current round</p><p className="mt-1 text-xl font-bold text-slate-900">Round {preview.current_round}</p></div>
               <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pick deadline</p><p className="mt-1 text-sm font-semibold text-slate-900">{formatDeadline(preview.pick_deadline_utc)}</p></div>
+            </div>
+            <div className="mt-4 flex items-center gap-6 text-sm text-slate-700">
+              <span><strong className="font-semibold text-slate-900">Players:</strong> {preview.player_count}</span>
+              {preview.round_one_joining_open && (
+                <span><strong className="font-semibold text-slate-900">Picked:</strong> {preview.round_one_picked_count ?? 0}</span>
+              )}
             </div>
             <div className="mt-5 border-t border-slate-100 pt-5">
               <h2 className="text-base font-bold text-slate-900">Last Man Standing</h2>

@@ -83,7 +83,7 @@ export default async function handler(req: Req, res: Res) {
 
     const { data: league, error } = await supabase
       .from("leagues")
-      .select("id, name, current_round, managed_theme")
+      .select("id, name, current_round, managed_theme, status")
       .eq("join_code", joinCode)
       .is("deleted_at", null)
       .maybeSingle();
@@ -107,13 +107,59 @@ export default async function handler(req: Req, res: Res) {
         : 1;
     const { data: round, error: roundError } = await supabase
       .from("rounds")
-      .select("round_number, pick_deadline_utc")
+      .select("id, round_number, pick_deadline_utc, status")
       .eq("league_id", league.id)
       .eq("round_number", currentRoundNumber)
       .maybeSingle();
 
     if (roundError) {
       return sendJson(res, 502, { error: "Failed to load league preview" });
+    }
+
+    const { data: roundOne, error: roundOneError } = currentRoundNumber === 1
+      ? { data: round, error: null }
+      : await supabase
+          .from("rounds")
+          .select("id, round_number, pick_deadline_utc, status")
+          .eq("league_id", league.id)
+          .eq("round_number", 1)
+          .maybeSingle();
+    if (roundOneError) {
+      return sendJson(res, 502, { error: "Failed to load league preview" });
+    }
+
+    const roundOneClosed =
+      roundOne?.status === "locked" ||
+      roundOne?.status === "completed" ||
+      (!!roundOne?.pick_deadline_utc && Date.parse(roundOne.pick_deadline_utc) <= Date.now());
+    const roundOneJoiningOpen = league.status !== "completed" && !roundOneClosed;
+
+    const { count: playerCount, error: playerCountError } = await supabase
+      .from("memberships")
+      .select("id", { count: "exact", head: true })
+      .eq("league_id", league.id);
+    if (playerCountError) {
+      return sendJson(res, 502, { error: "Failed to load league preview" });
+    }
+
+    let roundOnePickedCount: number | null = null;
+    if (roundOneJoiningOpen && roundOne?.id) {
+      const pickedPlayers = new Set<string>();
+      for (let from = 0;; from += 1000) {
+        const { data: roundOnePicks, error: roundOnePicksError } = await supabase
+          .from("picks")
+          .select("player_id")
+          .eq("league_id", league.id)
+          .eq("round_id", roundOne.id)
+          .not("team_id", "is", null)
+          .range(from, from + 999);
+        if (roundOnePicksError) {
+          return sendJson(res, 502, { error: "Failed to load league preview" });
+        }
+        for (const pick of roundOnePicks ?? []) pickedPlayers.add(pick.player_id);
+        if ((roundOnePicks ?? []).length < 1000) break;
+      }
+      roundOnePickedCount = pickedPlayers.size;
     }
 
     // This is deliberately the complete public contract for an invite landing page.
@@ -123,6 +169,9 @@ export default async function handler(req: Req, res: Res) {
         current_round: round?.round_number ?? currentRoundNumber,
         pick_deadline_utc: round?.pick_deadline_utc ?? null,
         managed_theme: toManagedThemePreview(league.managed_theme),
+        player_count: playerCount ?? 0,
+        round_one_picked_count: roundOnePickedCount,
+        round_one_joining_open: roundOneJoiningOpen,
       },
     });
   } catch (err: any) {
