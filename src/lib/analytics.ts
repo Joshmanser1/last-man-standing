@@ -4,7 +4,8 @@ type FunnelEvent =
   | "auth_started"
   | "auth_completed"
   | "league_joined"
-  | "first_pick_submitted";
+  | "first_pick_submitted"
+  | "outbound_telegram_click";
 
 type EventProperties = Record<string, string | number | boolean>;
 

@@ -22,6 +22,7 @@ import { Leaderboard } from "./pages/Leaderboard";
 import { LeagueSummary } from "./pages/LeagueSummary";
 import { PrivateLeagueCreate } from "./pages/PrivateLeagueCreate";
 import PrivateLeagueJoin from "./pages/PrivateLeagueJoin";
+import { OutboundRedirect } from "./pages/OutboundRedirect";
 
 // Dev-only switcher
 import { DevUserSwitcher } from "./components/DevUserSwitcher";
@@ -75,11 +76,12 @@ function AppInner() {
 
   // The preview stays isolated from header data/auth work in local development.
   const noChromeRoutes = ["/login"];
-  const isNoChrome = noChromeRoutes.includes(location.pathname) || isDevPreview;
+  const isOutboundRedirect = location.pathname.startsWith("/t/");
+  const isNoChrome = noChromeRoutes.includes(location.pathname) || isDevPreview || isOutboundRedirect;
 
   // Routes that are full-bleed (no container wrapper)
   const fullBleedRoutes = ["/", "/login"];
-  const isFullBleed = fullBleedRoutes.includes(location.pathname);
+  const isFullBleed = fullBleedRoutes.includes(location.pathname) || isOutboundRedirect;
   const isAdminRoute = location.pathname === "/admin";
 
   return (
@@ -93,6 +95,7 @@ function AppInner() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/home" element={<Home />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/t/:slug" element={<OutboundRedirect />} />
           <Route path="/email-preferences" element={<RequireAuth><EmailPreferences /></RequireAuth>} />
           <Route path="/public" element={<LiveGames />} />
           <Route path="/live" element={<Navigate to="/public" replace />} />
