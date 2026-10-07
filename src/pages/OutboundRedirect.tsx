@@ -17,6 +17,12 @@ const TELEGRAM_TRACKING_LINKS = {
     utm_campaign: "telegram_growth",
     utm_content: "results_post",
   },
+  "telegram-mark": {
+    utm_source: "mark",
+    utm_medium: "twitter",
+    utm_campaign: "telegram_growth",
+    utm_content: "final_golive_reply",
+  },
 } as const;
 
 export function OutboundRedirect() {
