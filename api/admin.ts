@@ -15,6 +15,7 @@ type LeagueRow = {
   created_at: string;
   is_public: boolean;
   is_test: boolean;
+  automation_enabled: boolean;
   join_code: string | null;
   fpl_start_event: number | null;
   start_date_utc: string | null;
@@ -306,6 +307,7 @@ async function createFounderLeague(ctx: AuthedContext, payload: any, res: Res) {
       fpl_start_event: fplStartEvent,
       is_public: isPublic,
       is_test: false,
+      automation_enabled: true,
       join_code: joinCode,
       created_by: ctx.userId,
       managed_theme: null,

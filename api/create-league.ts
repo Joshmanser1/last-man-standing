@@ -238,6 +238,7 @@ export default async function handler(req: Req, res: Res) {
         fpl_start_event: fplStartEvent,
         is_public: isPublic,
         is_test: isTest,
+        automation_enabled: !isTest,
         join_code: isPublic ? null : joinCode,
         ...(authenticatedUserId ? { created_by: authenticatedUserId } : {}),
       })
