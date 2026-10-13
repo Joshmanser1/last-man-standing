@@ -48,6 +48,21 @@ export function renderServiceEmail(candidate: ServiceEmailCandidate, origin: str
     };
   }
   if (candidate.outcome === "through") {
+    const nextRound = candidate.nextRound;
+    if (remaining > 1 && nextRound?.roundNumber === candidate.roundNumber + 1
+      && Number.isFinite(Date.parse(nextRound.deadlineUtc))) {
+      const date = new Date(nextRound.deadlineUtc);
+      const deadline = `${new Intl.DateTimeFormat("en-GB", {
+        weekday: "short", day: "numeric", month: "short", timeZone: "Europe/London",
+      }).format(date)} · ${new Intl.DateTimeFormat("en-GB", {
+        hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/London",
+      }).format(date)}`;
+      return { subject: "You're through! 🟢", ...shell({ origin, leagueName: league,
+        roundNumber: candidate.roundNumber, status: "YOU'RE THROUGH ✅",
+        bodyHtml: `<p><strong>${escapeHtml(team.toUpperCase())} WON. YOU SURVIVED.</strong></p><p>Round ${candidate.roundNumber} is complete.</p><p>${remaining} players remain.</p><p><strong>Round ${nextRound.roundNumber}</strong><br>Next deadline<br><strong>${escapeHtml(deadline)}</strong></p>`,
+        bodyText: `${team.toUpperCase()} WON. YOU SURVIVED.\n\nRound ${candidate.roundNumber} is complete.\n\n${remaining} players remain.\n\nRound ${nextRound.roundNumber}\nNext deadline\n${deadline}`,
+        cta: "MAKE YOUR PICK", url: `${cleanOrigin(origin)}/make-pick` }) };
+    }
     const url = competitionUrl(origin, candidate.leagueId);
     const bodyText = `${team.toUpperCase()} WON. YOU SURVIVED.\n\nYou're through Round ${candidate.roundNumber} of ${league}.\n\n${remaining} players remain.\n\nWe'll let you know when it's time to make your next pick.`;
     return { subject: "You're through! 🟢", ...shell({ origin, leagueName: league, roundNumber: candidate.roundNumber,

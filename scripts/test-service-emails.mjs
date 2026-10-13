@@ -10,6 +10,7 @@ async function load(entry) {
 const { processServiceEmails } = await load('server/email/serviceEmailProcessor.ts');
 const { reminderCandidates, resultCandidates } = await load('server/email/eligibility.ts');
 const { createSupabaseServiceEmailRepository } = await load('server/email/supabaseServiceEmailRepository.ts');
+const { renderServiceEmail } = await load('server/email/templates.ts');
 const { activateLeagueFromSearch } = await load('src/lib/leagueRoute.ts');
 const { tickHandler } = await load('api/tick.ts');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -81,6 +82,88 @@ assert.match(h.sent[1].text,/\/leaderboard\?view=eliminations&league_id=/);
 assert.ok(h.sent.every(message=>message.text.includes('https://lms.fantasycommandcentre.co.uk/')));
 await h.run(); assert.equal(h.sent.length,4,'duplicate results invocation');
 h=harness([],{ambiguousMissedPicks:1}); summary=await h.run(); assert.equal(summary.ambiguousMissedPickResultsSkipped,1); assert.equal(h.sent.length,0);
+
+// Survivor presentation uses the actual next round, without changing recipients.
+const nextRound={...baseRound,id:id(3),round_number:2,pick_deadline_utc:'2026-10-17T10:00:00Z'};
+const survivorSnapshot=snapshot({
+  league:{id:id(1),name:'FCC Saturday Club',current_round:2,status:'active'},
+  rounds:[finalRound,nextRound],memberships:[member(id(10)),member(id(11)),member(id(12))],
+  picks:[
+    {round_id:id(2),player_id:id(10),team_id:id(20),status:'through'},
+    {round_id:id(2),player_id:id(11),team_id:id(20),status:'through'},
+    {round_id:id(2),player_id:id(12),team_id:id(21),status:'eliminated',reason:'loss'},
+  ],
+});
+const origin='https://lms.fantasycommandcentre.co.uk';
+const candidatesFor=data=>resultCandidates(data,id(2),now).candidates;
+let survivorCandidates=candidatesFor(survivorSnapshot);
+assert.equal(survivorCandidates.length,3);
+assert.deepEqual(survivorCandidates[0].nextRound,{roundNumber:2,deadlineUtc:nextRound.pick_deadline_utc});
+h=harness(survivorCandidates); summary=await h.run(); assert.equal(summary.resultsSent,3);
+for(const message of h.sent.slice(0,2)) {
+  assert.match(message.text,/Round 1 is complete/);
+  assert.match(message.text,/Round 2\nNext deadline\nSat 17 Oct · 11:00/);
+  assert.match(message.html,/Round 2/); assert.match(message.html,/Sat 17 Oct · 11:00/);
+  assert.match(message.html,/<a href="https:\/\/lms\.fantasycommandcentre\.co\.uk\/make-pick"[^>]*>MAKE YOUR PICK<\/a>/);
+  assert.ok(message.text.includes(`MAKE YOUR PICK: ${origin}/make-pick`));
+}
+assert.doesNotMatch(h.sent[2].text,/MAKE YOUR PICK|Next deadline/);
+await h.run(); assert.equal(h.sent.length,3,'next-round presentation does not affect deduplication');
+
+// Elimination variants remain byte-for-byte unchanged, even with next-round data.
+for(const outcome of ['eliminated_loss','eliminated_draw','eliminated_no_pick']) {
+  const candidate=resultCandidate(outcome);
+  assert.deepEqual(renderServiceEmail({...candidate,nextRound:survivorCandidates[0].nextRound},origin),
+    renderServiceEmail(candidate,origin));
+}
+const withoutCta=data=>{
+  const candidates=candidatesFor(data);
+  assert.ok(candidates.length>0,'presentation guards must not suppress result recipients');
+  for(const candidate of candidates) {
+    assert.equal(candidate.nextRound,null);
+    const message=renderServiceEmail(candidate,origin);
+    assert.doesNotMatch(message.text,/MAKE YOUR PICK|Next deadline|Invalid Date|undefined/);
+    assert.doesNotMatch(message.html,/MAKE YOUR PICK|Next deadline|Invalid Date|undefined/);
+  }
+};
+withoutCta({...survivorSnapshot,league:{...survivorSnapshot.league,status:'completed'}});
+withoutCta({...survivorSnapshot,picks:survivorSnapshot.picks.filter(pick=>pick.player_id!==id(11))}); // sole survivor/winner
+withoutCta({...survivorSnapshot,rounds:[finalRound]});
+withoutCta({...survivorSnapshot,league:{...survivorSnapshot.league,current_round:1}});
+for(const overrides of [
+  {status:'locked'},{status:'completed'},{finalized_at:now.toISOString()},
+  {round_number:3},{league_id:id(99)},{pick_deadline_utc:'invalid'},
+  {pick_deadline_utc:null},{pick_deadline_utc:now.toISOString()},
+]) withoutCta({...survivorSnapshot,rounds:[finalRound,{...nextRound,...overrides}]});
+const winter=candidatesFor({...survivorSnapshot,rounds:[finalRound,{...nextRound,pick_deadline_utc:'2027-01-09T11:00:00Z'}]})[0];
+assert.match(renderServiceEmail(winter,origin+'/').text,/Sat 9 Jan · 11:00/,'UK formatting also handles GMT');
+assert.ok(renderServiceEmail(winter,origin+'/').text.includes(`MAKE YOUR PICK: ${origin}/make-pick`));
+
+// Read real repository snapshots and refresh presentation during the existing recheck.
+let emailSnapshot=survivorSnapshot;
+const emailDatabase={from(table){
+  let columns; const filters=new Map();
+  const result=()=>{
+    if(table==='leagues') { assert.equal(columns,'id,name,current_round,status'); return {data:emailSnapshot.league,error:null}; }
+    if(table==='rounds'&&columns==='id,league_id') return {data:filters.get('status')==='completed'?[finalRound]:[],error:null};
+    return {data:emailSnapshot[table],error:null};
+  };
+  const query={select(value){columns=value;return query;},eq(key,value){filters.set(key,value);return query;},
+    is(){return query;},not(){return query;},gte(){return query;},lte(){return query;},order(){return query;},range(){return query;},
+    maybeSingle(){return Promise.resolve(result());},then(resolve,reject){return Promise.resolve(result()).then(resolve,reject);}};
+  return query;
+}};
+const emailRepository=createSupabaseServiceEmailRepository(emailDatabase);
+survivorCandidates=(await emailRepository.discover(now)).candidates;
+assert.deepEqual(survivorCandidates[0].nextRound,{roundNumber:2,deadlineUtc:nextRound.pick_deadline_utc});
+emailSnapshot={...survivorSnapshot,rounds:[finalRound,{...nextRound,pick_deadline_utc:'2026-10-17T12:30:00Z'}]};
+h=harness([survivorCandidates[0]],{recheck:candidate=>emailRepository.recheck(candidate,now)});
+summary=await h.run(); assert.equal(summary.resultsSent,1);
+assert.match(h.sent[0].text,/Sat 17 Oct · 13:30/,'pre-send recheck refreshes the persisted deadline');
+emailSnapshot={...survivorSnapshot,league:{...survivorSnapshot.league,status:'completed'}};
+h=harness([survivorCandidates[1]],{recheck:candidate=>emailRepository.recheck(candidate,now)});
+summary=await h.run(); assert.equal(summary.resultsSent,1,'completion only affects presentation');
+assert.doesNotMatch(h.sent[0].text,/MAKE YOUR PICK|Next deadline/,'recheck clears stale next-round data');
 
 // Production regression: finalisation made the missed-pick member inactive and
 // persisted an authoritative null-team no-pick result, despite sparse prior history.

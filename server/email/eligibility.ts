@@ -1,7 +1,7 @@
 import type { ServiceEmailCandidate, ServiceEmailOutcome } from "./types.js";
 
 export type LeagueEmailSnapshot = {
-  league: { id: string; name: string; current_round: number };
+  league: { id: string; name: string; current_round: number; status?: string | null };
   rounds: Array<{ id: string; league_id: string; round_number: number; status: string; pick_deadline_utc: string; finalized_at?: string | null }>;
   memberships: Array<{ player_id: string; is_active: boolean; joined_at?: string | null }>;
   picks: Array<{ round_id: string; player_id: string; team_id?: string | null; status: string; reason?: string | null }>;
@@ -36,12 +36,20 @@ export function reminderCandidates(snapshot: LeagueEmailSnapshot, roundId: strin
     }));
 }
 
-export function resultCandidates(snapshot: LeagueEmailSnapshot, roundId: string) {
+export function resultCandidates(snapshot: LeagueEmailSnapshot, roundId: string, now: Date = new Date()) {
   const round = snapshot.rounds.find(entry => entry.id === roundId);
   if (!round?.finalized_at || round.status !== "completed") return { candidates: [], zeroSurvivors: false, ambiguousMissedPicks: 0 };
   const roundPicks = snapshot.picks.filter(pick => pick.round_id === round.id);
   const survivors = roundPicks.filter(pick => pick.status === "through").length;
   if (survivors === 0) return { candidates: [], zeroSurvivors: true, ambiguousMissedPicks: 0 };
+  // Presentation data only: use the persisted next round after lifecycle advancement.
+  const nextRound = survivors > 1 && snapshot.league.status !== "completed"
+    ? snapshot.rounds.find(entry => entry.league_id === snapshot.league.id
+      && entry.round_number === round.round_number + 1
+      && entry.round_number === snapshot.league.current_round
+      && entry.status === "upcoming" && !entry.finalized_at
+      && Date.parse(entry.pick_deadline_utc) > now.getTime())
+    : undefined;
   const teamNames = new Map(snapshot.teams.map(team => [team.id, team.name]));
   const candidates: ServiceEmailCandidate[] = [];
   let ambiguousMissedPicks = 0;
@@ -62,6 +70,9 @@ export function resultCandidates(snapshot: LeagueEmailSnapshot, roundId: string)
       eventType: "round_result", outcome, deadlineUtc: round.pick_deadline_utc,
       teamName: pick?.team_id ? teamNames.get(pick.team_id) ?? "Your team" : null,
       survivorsRemaining: survivors,
+      nextRound: outcome === "through" && nextRound
+        ? { roundNumber: nextRound.round_number, deadlineUtc: nextRound.pick_deadline_utc }
+        : null,
     });
   }
   return { candidates, zeroSurvivors: false, ambiguousMissedPicks };

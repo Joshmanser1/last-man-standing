@@ -29,7 +29,7 @@ async function loadPages<T>(
 export function createSupabaseServiceEmailRepository(supabase: any): ServiceEmailRepository {
   async function loadSnapshot(leagueId: string): Promise<LeagueEmailSnapshot | null> {
     const leagueResult: { data: LeagueEmailSnapshot["league"] | null; error: QueryError } = await supabase.from("leagues")
-      .select("id,name,current_round").eq("id", leagueId).is("deleted_at", null)
+      .select("id,name,current_round,status").eq("id", leagueId).is("deleted_at", null)
       .maybeSingle();
     const { data: league, error: leagueError } = leagueResult;
     if (leagueError) {
@@ -74,7 +74,7 @@ export function createSupabaseServiceEmailRepository(supabase: any): ServiceEmai
     for (const round of finalizedRounds) {
       const leagueSnapshot = await snapshot(round.league_id);
       if (!leagueSnapshot) continue;
-      const result = resultCandidates(leagueSnapshot, round.id);
+      const result = resultCandidates(leagueSnapshot, round.id, now);
       if (result.zeroSurvivors) zeroSurvivorRoundsSkipped++;
       else {
         candidates.push(...result.candidates);
@@ -110,9 +110,11 @@ export function createSupabaseServiceEmailRepository(supabase: any): ServiceEmai
         return !!round && Date.parse(round.pick_deadline_utc) > now.getTime()
           && reminderCandidates(snapshot, candidate.roundId).some(entry => entry.playerId === candidate.playerId);
       }
-      const result = resultCandidates(snapshot, candidate.roundId);
-      return !result.zeroSurvivors && result.candidates.some(entry =>
+      const result = resultCandidates(snapshot, candidate.roundId, now);
+      const refreshed = result.candidates.find(entry =>
         entry.playerId === candidate.playerId && entry.outcome === candidate.outcome);
+      candidate.nextRound = refreshed?.nextRound ?? null;
+      return !result.zeroSurvivors && !!refreshed;
     },
     async complete(claim, providerMessageId) {
       const { data, error } = await supabase.rpc("complete_service_email_delivery", {
