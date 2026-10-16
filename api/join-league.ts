@@ -254,7 +254,7 @@ export default async function handler(req: Req, res: Res) {
     if (!leagueId) {
       const { data: league, error: leagueErr } = await supabase
         .from("leagues")
-        .select("id, is_public, is_test, status, deleted_at")
+        .select("id, is_public, is_test, status, deleted_at, managed_theme")
         .eq("join_code", joinCode)
         .maybeSingle();
       if (leagueErr) {
@@ -273,7 +273,7 @@ export default async function handler(req: Req, res: Res) {
     } else {
       const { data: league, error: leagueErr } = await supabase
         .from("leagues")
-        .select("id, is_public, is_test, status, deleted_at")
+        .select("id, is_public, is_test, status, deleted_at, managed_theme")
         .eq("id", leagueId)
         .maybeSingle();
       if (leagueErr) {
@@ -338,7 +338,12 @@ export default async function handler(req: Req, res: Res) {
       });
     }
 
-    if (!existing && targetLeague?.is_test !== true && !isSiteAdmin) {
+    if (
+      !existing &&
+      targetLeague?.is_test !== true &&
+      !isSiteAdmin &&
+      targetLeague?.managed_theme?.managed !== true
+    ) {
       const { data: otherMemberships, error: otherErr } = await supabase
         .from("memberships")
         .select("league_id, role, leagues!inner(is_public)")
