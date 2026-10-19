@@ -46,7 +46,7 @@ export function PickConfirmationActions({ joinCode }: { joinCode?: string | null
   }
 
   return (
-    <div className="mt-6 space-y-5 border-t border-emerald-200/20 pt-5">
+    <div className="mt-4 space-y-4 border-t border-emerald-200/20 pt-4">
       <div>
         <button
           type="button"
@@ -57,14 +57,10 @@ export function PickConfirmationActions({ joinCode }: { joinCode?: string | null
           SHARE THIS LEAGUE
         </button>
         <p className="mt-2 text-sm text-emerald-50/75">Think your mates can beat you? Get them involved.</p>
-        {url ? (
-          <button type="button" className="btn btn-ghost mt-1 text-xs" onClick={() => void copyLink()}>
-            Copy league link
-          </button>
-        ) : (
+        {!url && (
           <p className="mt-2 text-sm text-emerald-50/75">This league has no invitation link available.</p>
         )}
-        <p role="status" className="mt-1 text-sm text-emerald-100">{message}</p>
+        <p role="status" className={message ? "mt-2 text-sm text-emerald-100" : "sr-only"}>{message}</p>
         {showLink && url && (
           <input
             aria-label="League invitation link"

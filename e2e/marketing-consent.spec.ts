@@ -133,9 +133,10 @@ for (const managed of [false, true]) {
       url: invite,
     });
     expect(await page.evaluate(() => (window as any).__copied)).toBeUndefined();
-    await page.getByRole('button', { name: 'Copy league link', exact: true }).click();
-    expect(await page.evaluate(() => (window as any).__copied)).toBe(invite);
-    await expect(page.getByText('League invitation link copied.', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Copy league link', exact: true })).toHaveCount(0);
+    await expect(page.locator('.pick-success-card').locator('button, a')).toHaveText([
+      'SHARE THIS LEAGUE', 'JOIN FCC TELEGRAM', 'View My Games', 'Back to Picks',
+    ]);
     const telegram = page.getByRole('link', { name: 'JOIN FCC TELEGRAM', exact: true });
     await expect(telegram).toHaveAttribute('href', 'https://lms.fantasycommandcentre.co.uk/t/telegram-fcc');
     await expect(telegram).toHaveAttribute('target', '_blank');

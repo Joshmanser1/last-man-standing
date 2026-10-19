@@ -633,7 +633,7 @@ export function MakePick() {
             You can&apos;t change your pick after the deadline, and you can&apos;t use {selectedTeam.name} again this season.
           </p>
           <PickConfirmationActions key={league.id} joinCode={league.join_code} />
-          <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center sm:gap-3">
             <button className="btn btn-primary px-6 py-3" type="button" onClick={() => navigate("/my-games")}>
               View My Games
             </button>
