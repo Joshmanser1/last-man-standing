@@ -2,8 +2,8 @@ import { test, expect, type Page } from "@playwright/test";
 import { MARKETING_CONSENT_WORDING, MARKETING_CONSENT_VERSION, type MarketingPreference } from "../src/lib/marketingConsent";
 
 const none: MarketingPreference = { has_preference: false, marketing_opt_in: false, eligible: false, email_changed: false, updated_at: null };
-async function setup(page: Page, initial = none, failMarketing = false, recording = false) {
-  const league = { id: 'consent-test-league', name: 'Consent Test Club', current_round: 1, status: 'active', is_public: false, managed_theme: null };
+async function setup(page: Page, initial = none, failMarketing = false, recording = false, leagueOverrides = {}) {
+  const league = { id: 'consent-test-league', name: 'Consent Test Club', current_round: 1, status: 'active', is_public: false, managed_theme: null, ...leagueOverrides };
   const round = { id: 'round-1', league_id: league.id, round_number: 1, status: 'upcoming', pick_deadline_utc: new Date(Date.now() + 86400000).toISOString() };
   const teams = [{ id: 'arsenal', name: 'Arsenal', code: 'ARS', league_id: league.id }, { id: 'everton', name: 'Everton', code: 'EVE', league_id: league.id }];
   const user = { id: '11111111-1111-4111-8111-111111111111', email: 'test@example.test', email_confirmed_at: new Date().toISOString(), aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {}, created_at: new Date().toISOString() };
@@ -107,4 +107,82 @@ test('recording context suppresses capture and preferences requests even with an
   await page.goto('/email-preferences');
   await expect(page.getByText('Email preferences are disabled in demo and test mode.')).toBeVisible();
   expect(calls.marketingReads).toBe(0); expect(calls.updates).toHaveLength(0);
+});
+
+for (const managed of [false, true]) {
+  test(`pick confirmation shares only the ${managed ? 'FCC-managed' : 'private'} league invitation`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'share', { configurable: true, value: async (data: ShareData) => {
+        (window as any).__shared = data;
+      } });
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => {
+        (window as any).__copied = text;
+      } } });
+    });
+    const joinCode = managed ? 'FCCLMS' : 'MATES&26';
+    const calls = await setup(page, none, false, false, {
+      join_code: joinCode,
+      managed_theme: managed ? { enabled: true, hostName: 'FCC', managed: true } : null,
+    });
+    const invite = `${new URL(page.url()).origin}/private/join?code=${encodeURIComponent(joinCode)}`;
+    await page.getByRole('button', { name: 'SHARE THIS LEAGUE', exact: true }).click();
+    expect(await page.evaluate(() => (window as any).__shared)).toEqual({
+      title: 'Join my Last Man Standing league',
+      text: 'Think your mates can beat you? Get them involved.',
+      url: invite,
+    });
+    expect(await page.evaluate(() => (window as any).__copied)).toBeUndefined();
+    await page.getByRole('button', { name: 'Copy league link', exact: true }).click();
+    expect(await page.evaluate(() => (window as any).__copied)).toBe(invite);
+    await expect(page.getByText('League invitation link copied.', { exact: true })).toBeVisible();
+    const telegram = page.getByRole('link', { name: 'JOIN FCC TELEGRAM', exact: true });
+    await expect(telegram).toHaveAttribute('href', 'https://lms.fantasycommandcentre.co.uk/t/telegram-fcc');
+    await expect(telegram).toHaveAttribute('target', '_blank');
+    await expect(telegram).toHaveAttribute('rel', 'noopener noreferrer');
+    await expect(page.locator('.pick-success-team')).toContainText('Arsenal');
+    await expect(page.locator('.pick-success-team')).toContainText('vs Everton (H)');
+    await expect(page.locator('.pick-success-round')).toHaveText('Round 1');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(calls.picks).toBe(1);
+    await page.getByRole('button', { name: 'View My Games', exact: true }).click();
+    await page.waitForURL('**/my-games');
+  });
+}
+
+for (const mode of ['unsupported', 'failed', 'cancelled', 'clipboard-denied'] as const) {
+  test(`pick confirmation handles sharing ${mode}`, async ({ page }) => {
+    await page.addInitScript((mode) => {
+      Object.defineProperty(navigator, 'share', { configurable: true, value:
+        mode === 'unsupported' || mode === 'clipboard-denied' ? undefined : async () => {
+          throw new DOMException('Share unavailable', mode === 'cancelled' ? 'AbortError' : 'NotAllowedError');
+        },
+      });
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => {
+        if (mode === 'clipboard-denied') throw new DOMException('Denied', 'NotAllowedError');
+        (window as any).__copied = text;
+      } } });
+    }, mode);
+    await setup(page, none, false, false, { join_code: ' PRIVATE26 ' });
+    await page.getByRole('button', { name: 'SHARE THIS LEAGUE', exact: true }).click();
+    const invite = `${new URL(page.url()).origin}/private/join?code=PRIVATE26`;
+    if (mode === 'clipboard-denied') {
+      await expect(page.getByRole('textbox', { name: 'League invitation link' })).toHaveValue(invite);
+    } else if (mode === 'cancelled') {
+      expect(await page.evaluate(() => (window as any).__copied)).toBeUndefined();
+    } else {
+      await expect(page.getByText('League invitation link copied.', { exact: true })).toBeVisible();
+      expect(await page.evaluate(() => (window as any).__copied)).toBe(invite);
+    }
+    await expect(page.getByRole('button', { name: 'SHARE THIS LEAGUE', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Back to Picks', exact: true }).click();
+    await expect(page.getByTestId('team-select-btn').first()).toBeVisible();
+  });
+}
+
+test('pick confirmation never invents an invitation when the league has no code', async ({ page }) => {
+  await setup(page);
+  await expect(page.getByRole('button', { name: 'SHARE THIS LEAGUE', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Copy league link', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'JOIN FCC TELEGRAM', exact: true })).toBeVisible();
 });

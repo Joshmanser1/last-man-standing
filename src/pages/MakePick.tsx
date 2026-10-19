@@ -1,5 +1,6 @@
 // src/pages/MakePick.tsx
 import { MarketingOptIn } from "../components/MarketingOptIn";
+import { PickConfirmationActions } from "../components/PickConfirmationActions";
 import { marketingConsentDisabled } from "../lib/marketingPreferencesClient";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -631,6 +632,7 @@ export function MakePick() {
           <p className="pick-success-rule">
             You can&apos;t change your pick after the deadline, and you can&apos;t use {selectedTeam.name} again this season.
           </p>
+          <PickConfirmationActions key={league.id} joinCode={league.join_code} />
           <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
             <button className="btn btn-primary px-6 py-3" type="button" onClick={() => navigate("/my-games")}>
               View My Games
