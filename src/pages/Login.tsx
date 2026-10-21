@@ -3,6 +3,7 @@ import { validDisplayName } from "../lib/displayName";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supa } from "../lib/supabaseClient";
+import { authorizePrivateJoin, cancelPrivateJoin, clearPendingPrivateJoin, retainPrivateJoin } from "../lib/pendingPrivateJoin";
 import {
   clearLegacyPendingAuthRedirect,
   consumePendingAuthRedirect,
@@ -112,7 +113,12 @@ export function Login() {
       rememberPendingAuthRedirect(next);
       captureInviteAttributionFromPath(next);
     }
-  }, [location.search]);
+    retainPrivateJoin(location.state?.pendingPrivateJoin, next);
+    return () => {
+      // StrictMode replays effects on /login; only cancel when actually leaving.
+      if (window.location.pathname !== "/login") cancelPrivateJoin(location.state?.pendingPrivateJoin);
+    };
+  }, [location.search, location.state]);
 
   useEffect(() => {
     if (stage === "verify") {
@@ -131,7 +137,9 @@ export function Login() {
       sessionStorage.removeItem(PENDING_DISPLAY_NAME_KEY);
       didPostAuthNavigate.current = true;
       trackInviteAuthCompleted();
-      navigate(getRedirectTarget(location.search), { replace: true });
+      const target = getRedirectTarget(location.search);
+      const pendingPrivateJoin = authorizePrivateJoin(location.state?.pendingPrivateJoin, target, player.id);
+      navigate(target, { replace: true, state: pendingPrivateJoin ? { pendingPrivateJoin } : null });
     } catch {
       setStage("profile");
       setNotice({ tone: "error", text: "We couldn't confirm your saved display name. Enter a valid name and continue to retry." });
@@ -284,6 +292,7 @@ export function Login() {
   }
 
   async function signOutEverywhere() {
+    clearPendingPrivateJoin();
     try {
       await supa.auth.signOut();
     } catch {}

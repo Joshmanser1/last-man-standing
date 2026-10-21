@@ -325,7 +325,7 @@ export default async function handler(req: Req, res: Res) {
 
     const { data: existing, error: existingErr } = await supabase
       .from("memberships")
-      .select("id")
+      .select("id, league_id, is_active")
       .eq("league_id", leagueId)
       .eq("player_id", authenticatedUserId)
       .maybeSingle();
@@ -336,6 +336,18 @@ export default async function handler(req: Req, res: Res) {
         details: existingErr.details,
         hint: existingErr.hint,
       });
+    }
+
+    // Invitation continuations must never reactivate an inactive membership.
+    // Keep other callers' existing joining behaviour unchanged.
+    if (existing && joinCode && !leagueIdInput && payload?.preserve_existing_membership === true) {
+      if (existing.is_active !== true) {
+        return sendJson(res, 409, {
+          error: "Your membership is inactive. You cannot rejoin this league.",
+          code: "inactive_membership",
+        });
+      }
+      return sendJson(res, 200, { ...existing, membership_created: false });
     }
 
     if (

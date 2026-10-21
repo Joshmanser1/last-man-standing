@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import { supa } from "../lib/supabaseClient";
 import { dataService } from "../data/service";
 import { postJsonWithAuth } from "../lib/apiAuth";
 import { getAttributionForJoin } from "../lib/attribution";
+import { clearPendingPrivateJoin, consumePrivateJoin, rememberPrivateJoin } from "../lib/pendingPrivateJoin";
 import {
   bindInviteAttributionToLeague,
   captureInviteAttribution,
@@ -69,7 +70,7 @@ function getInitials(value: string) {
 }
 
 export function PrivateLeagueJoin() {
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(() => (new URLSearchParams(window.location.search).get("code") || "").toUpperCase());
   const [preview, setPreview] = useState<LeaguePreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(true);
   const [joining, setJoining] = useState(false);
@@ -77,18 +78,16 @@ export function PrivateLeagueJoin() {
   const [profileName, setProfileName] = useState(readPendingDisplayName);
   const [profileRequired, setProfileRequired] = useState(false);
   const landingTrackedForCode = useRef<string>("");
+  const joinInFlight = useRef(false);
 
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setCode((params.get("code") || "").toUpperCase());
-  }, []);
 
   useEffect(() => {
     const trimmed = code.trim().toUpperCase();
     if (!trimmed) {
+      clearPendingPrivateJoin();
       setPreview(null);
       setLoadingPreview(false);
       setError("This invite link is missing a join code.");
@@ -115,6 +114,7 @@ export function PrivateLeagueJoin() {
         if (!active) return;
 
         if (!resp.ok || !body?.league?.name) {
+          clearPendingPrivateJoin();
           setPreview(null);
           setError(
             resp.status === 404
@@ -143,8 +143,12 @@ export function PrivateLeagueJoin() {
             })
           );
         }
+        const path = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        const resumeUserId = consumePrivateJoin(location.state?.pendingPrivateJoin, path, trimmed);
+        if (resumeUserId) void joinLeague(loadedPreview, trimmed, resumeUserId);
       } catch (err: any) {
         if (!active) return;
+        clearPendingPrivateJoin();
         setPreview(null);
         setError(err?.message || "Failed to load this invite.");
       } finally {
@@ -160,6 +164,7 @@ export function PrivateLeagueJoin() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (joinInFlight.current) return;
     setError(null);
 
     const trimmed = code.trim().toUpperCase();
@@ -173,31 +178,45 @@ export function PrivateLeagueJoin() {
       return;
     }
 
-    const attribution = captureInviteAttribution(window.location.search);
-    trackFunnelEvent(
-      "join_clicked",
-      inviteEventProperties(attribution, {
-        managed: !!preview.managed_theme,
-        current_round: preview.current_round,
-        ...(preview.managed_theme?.hostName
-          ? { host_name: preview.managed_theme.hostName }
-          : {}),
-        ...(preview.managed_theme?.displayName
-          ? { display_name: preview.managed_theme.displayName }
-          : {}),
-      })
-    );
+    try {
+      const attribution = captureInviteAttribution(window.location.search);
+      trackFunnelEvent(
+        "join_clicked",
+        inviteEventProperties(attribution, {
+          managed: !!preview.managed_theme,
+          current_round: preview.current_round,
+          ...(preview.managed_theme?.hostName
+            ? { host_name: preview.managed_theme.hostName }
+            : {}),
+          ...(preview.managed_theme?.displayName
+            ? { display_name: preview.managed_theme.displayName }
+            : {}),
+        })
+      );
+    } catch { /* Analytics storage must not block the explicit join action. */ }
 
+    await joinLeague(preview, trimmed);
+  }
+
+  async function joinLeague(leaguePreview: LeaguePreview, trimmed: string, resumeUserId?: string) {
+    if (joinInFlight.current) return;
+    joinInFlight.current = true;
+    setError(null);
     try {
       setJoining(true);
       const { data } = await supa.auth.getUser();
       const user = data.user;
+      if (resumeUserId && user?.id !== resumeUserId) {
+        throw new Error("Your sign-in could not be confirmed. Please click Join to try again.");
+      }
       if (!user?.id) {
         const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-        navigate(`/login?next=${encodeURIComponent(next)}`);
+        const pendingPrivateJoin = rememberPrivateJoin(next);
+        navigate(`/login?next=${encodeURIComponent(next)}`, { state: pendingPrivateJoin ? { pendingPrivateJoin } : null });
         return;
       }
 
+      clearPendingPrivateJoin();
       const displayName = profileName.trim();
       if (profileRequired && !displayName) {
         setError("Choose a display name to continue.");
@@ -205,6 +224,7 @@ export function PrivateLeagueJoin() {
       }
       const joinRes = await postJsonWithAuth("/api/join-league", {
         join_code: trimmed,
+        preserve_existing_membership: true,
         ...(displayName ? { display_name: displayName } : {}),
         ...getAttributionForJoin(trimmed),
       });
@@ -231,17 +251,19 @@ export function PrivateLeagueJoin() {
       }
 
       if (body?.membership_created === true) {
-        const boundAttribution = bindInviteAttributionToLeague(joinedLeagueId);
-        trackInviteEventOnce("league_joined", boundAttribution, {
-          managed: !!preview.managed_theme,
-          current_round: preview.current_round,
-          ...(preview.managed_theme?.hostName
-            ? { host_name: preview.managed_theme.hostName }
-            : {}),
-          ...(preview.managed_theme?.displayName
-            ? { display_name: preview.managed_theme.displayName }
-            : {}),
-        });
+        try {
+          const boundAttribution = bindInviteAttributionToLeague(joinedLeagueId);
+          trackInviteEventOnce("league_joined", boundAttribution, {
+            managed: !!leaguePreview.managed_theme,
+            current_round: leaguePreview.current_round,
+            ...(leaguePreview.managed_theme?.hostName
+              ? { host_name: leaguePreview.managed_theme.hostName }
+              : {}),
+            ...(leaguePreview.managed_theme?.displayName
+              ? { display_name: leaguePreview.managed_theme.displayName }
+              : {}),
+          });
+        } catch { /* A committed membership must not appear to fail because of analytics. */ }
       }
 
       sessionStorage.removeItem(PENDING_DISPLAY_NAME_KEY);
@@ -252,11 +274,12 @@ export function PrivateLeagueJoin() {
         // active league selection does not depend on current-round lookup succeeding
       }
 
-      toast(`Joined ${preview.name}`, { variant: "success" });
+      toast(`Joined ${leaguePreview.name}`, { variant: "success" });
       navigate("/make-pick", { replace: true });
     } catch (err: any) {
       setError(err?.message || "Failed to join league.");
     } finally {
+      joinInFlight.current = false;
       setJoining(false);
     }
   }

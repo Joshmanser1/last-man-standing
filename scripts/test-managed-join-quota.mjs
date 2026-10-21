@@ -207,6 +207,34 @@ for (const isActive of [false, true]) {
   });
 }
 
+for (const isActive of [false, true]) {
+  await check(`invitation continuation preserves existing membership (active: ${isActive})`, async () => {
+    const original = { id: 'membership-B', league_id: 'B', player_id: userId, role: 'player',
+      is_active: isActive, first_utm_source: 'original', join_utm_source: 'original-join' };
+    state.tables.memberships.push({ ...original });
+    const response = await call(join, { join_code: 'CODEB', preserve_existing_membership: true });
+    assert.equal(response.status, isActive ? 200 : 409);
+    if (isActive) {
+      assert.equal(response.body.league_id, 'B');
+      assert.equal(response.body.membership_created, false);
+    } else assert.equal(response.body.code, 'inactive_membership');
+    assert.deepEqual(state.tables.memberships[1], original);
+    assert.deepEqual(state.writes, []);
+  });
+}
+
+await check('invitation continuation still creates a new eligible managed membership', async () => {
+  const response = await call(join, { join_code: 'CODEB', preserve_existing_membership: true });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.membership_created, true);
+});
+
+await check('invitation continuation preserves the ordinary private league quota', async () => {
+  const response = await call(join, { join_code: 'CODEC', preserve_existing_membership: true });
+  assert.equal(response.status, 409);
+  assert.deepEqual(state.writes, []);
+});
+
 for (const closed of ['locked', 'completed', 'deadline', 'league-completed', 'deleted']) {
   await check(`closed managed league still rejects: ${closed}`, async () => {
     if (closed === 'deadline') state.tables.rounds[1].pick_deadline_utc = '2000-01-01T00:00:00Z';
@@ -216,6 +244,8 @@ for (const closed of ['locked', 'completed', 'deadline', 'league-completed', 'de
     const response = await call(join, { join_code: 'CODEB' });
     assert.equal(response.status, 409);
     assert.equal(response.body.error, 'Joining is closed because Round 1 has already started.');
+    assert.deepEqual(state.writes, []);
+    assert.equal((await call(join, { join_code: 'CODEB', preserve_existing_membership: true })).status, 409);
     assert.deepEqual(state.writes, []);
   });
 }
