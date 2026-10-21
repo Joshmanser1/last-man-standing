@@ -51,6 +51,14 @@ function formatDeadline(value: string | null) {
     : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+function formatUkDeadline(value: string | null) {
+  if (!value || Number.isNaN(Date.parse(value))) return "To be confirmed";
+  return `${new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London", weekday: "long", day: "numeric", month: "long",
+    hour: "numeric", minute: "2-digit", hour12: true,
+  }).format(new Date(value))} UK time`;
+}
+
 function getInitials(value: string) {
   return value
     .split(/\s+/)
@@ -257,7 +265,31 @@ export function PrivateLeagueJoin() {
   const primary = isHexColour(theme?.primaryColour, "#0f766e");
   const secondary = isHexColour(theme?.secondaryColour, "#0f172a");
   const title = theme?.displayName || preview?.name || "Private league";
-  const ctaLabel = theme?.hostName ? `JOIN ${theme.hostName.toUpperCase()}'S LEAGUE` : "JOIN LEAGUE";
+  // Scope by the successfully resolved invite code, never by a tracking slug.
+  const isFccLms = !!preview && code.trim().toUpperCase() === "FCCLMS";
+  const ctaLabel = isFccLms ? "PLAY FREE — MAKE YOUR PICK" : theme?.hostName ? `JOIN ${theme.hostName.toUpperCase()}'S LEAGUE` : "JOIN LEAGUE";
+  const joinForm = (
+    <form onSubmit={handleSubmit} className={isFccLms ? "mt-4 space-y-3" : "mt-6 space-y-3"}>
+      {profileRequired && (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <label className="label text-slate-900">Choose your display name</label>
+          <p className="mt-1 text-xs text-slate-600">This is how other players will see you in the league.</p>
+          <input
+            className="input mt-3 w-full"
+            value={profileName}
+            onChange={(e) => setProfileName(e.target.value)}
+            placeholder="Your display name"
+            autoComplete="nickname"
+            autoFocus
+          />
+        </div>
+      )}
+      <button type="submit" className="btn w-full border-0 bg-emerald-500 font-bold text-slate-950 hover:bg-emerald-400" disabled={joining}>
+        {joining ? "Joining..." : ctaLabel}
+      </button>
+      {error && <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
+    </form>
+  );
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-4 px-0 py-1 sm:py-4">
@@ -285,7 +317,7 @@ export function PrivateLeagueJoin() {
             className="overflow-hidden rounded-3xl border border-slate-200 shadow-sm"
             style={{ background: `linear-gradient(145deg, ${primary} 0%, ${secondary} 100%)` }}
           >
-            <div className="bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.22),_transparent_40%)] px-5 py-6 text-white sm:px-8 sm:py-8">
+            <div className={`bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.22),_transparent_40%)] px-5 text-white sm:px-8 sm:py-8 ${isFccLms ? "py-4" : "py-6"}`}>
               <div className="flex min-w-0 items-start gap-3">
                 {theme?.hostLogoUrl ? (
                   <img src={theme.hostLogoUrl} alt={`${theme.hostName} logo`} className="h-14 w-14 flex-none rounded-2xl border border-white/25 bg-white/10 object-cover" />
@@ -297,12 +329,25 @@ export function PrivateLeagueJoin() {
                   <p className="truncate text-lg font-bold tracking-wide">{theme?.hostName || "Fantasy Command Centre"}</p>
                 </div>
               </div>
-              <h1 className="mt-7 text-3xl font-bold uppercase leading-tight tracking-[0.04em] sm:text-4xl">{title}</h1>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-white/85 sm:text-base">{theme?.tagline || "One team. One win. Survive and go again."}</p>
+              <h1 className={`${isFccLms ? "mt-4" : "mt-7"} text-3xl font-bold uppercase leading-tight tracking-[0.04em] sm:text-4xl`}>{title}</h1>
+              {isFccLms ? (
+                <>
+                  <p className="mt-2 text-xs font-bold uppercase tracking-wide text-emerald-100">FREE TO ENTER · NO CARD REQUIRED</p>
+                  <p className="mt-2 text-sm text-white/85">Think you know Premier League football?</p>
+                  {joinForm}
+                  <p className="mt-3 text-sm text-white/85">
+                    {preview.current_round === 1 ? "First picks lock:" : "Picks lock:"}{" "}
+                    <span className="font-semibold">{formatUkDeadline(preview.pick_deadline_utc)}</span>
+                  </p>
+                </>
+              ) : (
+                <p className="mt-3 max-w-xl text-sm leading-6 text-white/85 sm:text-base">{theme?.tagline || "One team. One win. Survive and go again."}</p>
+              )}
             </div>
           </section>
 
           <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            {isFccLms && <p className="mb-4 text-sm leading-6 text-slate-600">{theme?.tagline || "One team. One win. Survive and go again."}</p>}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current round</p><p className="mt-1 text-xl font-bold text-slate-900">Round {preview.current_round}</p></div>
               <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pick deadline</p><p className="mt-1 text-sm font-semibold text-slate-900">{formatDeadline(preview.pick_deadline_utc)}</p></div>
@@ -317,26 +362,7 @@ export function PrivateLeagueJoin() {
               <h2 className="text-base font-bold text-slate-900">Last Man Standing</h2>
               <ul className="mt-2 space-y-1 text-sm leading-6 text-slate-600"><li>Pick one Premier League team each round.</li><li>Win and you survive.</li><li>Draw, lose or miss your pick and you're out.</li><li>You can't reuse a team.</li></ul>
             </div>
-            <form onSubmit={handleSubmit} className="mt-6 space-y-3">
-              {profileRequired && (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <label className="label text-slate-900">Choose your display name</label>
-                  <p className="mt-1 text-xs text-slate-600">This is how other players will see you in the league.</p>
-                  <input
-                    className="input mt-3 w-full"
-                    value={profileName}
-                    onChange={(e) => setProfileName(e.target.value)}
-                    placeholder="Your display name"
-                    autoComplete="nickname"
-                    autoFocus
-                  />
-                </div>
-              )}
-              <button type="submit" className="btn w-full border-0 bg-emerald-500 font-bold text-slate-950 hover:bg-emerald-400" disabled={joining}>
-                {joining ? "Joining..." : ctaLabel}
-              </button>
-              {error && <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
-            </form>
+            {!isFccLms && joinForm}
           </section>
         </>
       )}

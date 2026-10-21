@@ -84,6 +84,12 @@ const trackingLinks = {
     active: true,
   },
 };
+for (const creative of ["whiteboard", "original", "proveit"]) {
+  trackingLinks[`fcc-paid-${creative}`] = {
+    join_code: "FCCLMS", utm_source: "twitter", utm_medium: "paid",
+    utm_campaign: "fcc_100_oct26", utm_content: creative, active: true,
+  };
+}
 
 const client = {
   auth: {
@@ -163,6 +169,17 @@ assert.equal(redirectUrl.searchParams.get("code"), "REAL & CODE");
 assert.equal(redirectUrl.searchParams.get("utm_medium"), "creator partner");
 assert.equal(redirectUrl.searchParams.get("utm_content"), "launch/one");
 assert.equal((await call("GET", { query: { tracking_slug: "unknown" } })).headers.Location, "/private/join");
+for (const creative of ["whiteboard", "original", "proveit"]) {
+  const paidRedirect = await call("GET", { query: { tracking_slug: `fcc-paid-${creative}` } });
+  assert.equal(paidRedirect.status, 302);
+  assert.equal(paidRedirect.headers["Cache-Control"], "no-store");
+  const paidUrl = new URL(paidRedirect.headers.Location, "https://lms.fantasycommandcentre.co.uk");
+  assert.equal(paidUrl.pathname, "/private/join");
+  assert.deepEqual(Object.fromEntries(paidUrl.searchParams), {
+    code: "FCCLMS", utm_source: "twitter", utm_medium: "paid",
+    utm_campaign: "fcc_100_oct26", utm_content: creative,
+  });
+}
 
 const baseJoin = { join_code: "CODE" };
 insertedMembership = null;

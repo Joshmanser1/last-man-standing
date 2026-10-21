@@ -32,6 +32,18 @@ function normalizeOtp(value: string) {
   return value.replace(/\D/g, "").slice(0, 6);
 }
 
+function isFccLmsInvite(search: string) {
+  const next = getNextParamRedirect(search);
+  if (!next) return false;
+  try {
+    const url = new URL(next, window.location.origin);
+    return url.origin === window.location.origin && url.pathname === "/private/join" &&
+      url.searchParams.get("code")?.trim().toUpperCase() === "FCCLMS";
+  } catch {
+    return false;
+  }
+}
+
 function getFriendlyAuthError(error: unknown, action: "send" | "verify") {
   const message =
     error instanceof Error ? error.message.toLowerCase() : String(error || "").toLowerCase();
@@ -71,6 +83,8 @@ export function Login() {
   const [cooldown, setCooldown] = useState(0);
   const [checking, setChecking] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
+  const [hasSession, setHasSession] = useState<boolean | null>(null);
+  const isFccLms = isFccLmsInvite(location.search);
 
   const didPostAuthNavigate = useRef(false);
   const resolvingProfile = useRef(false);
@@ -139,9 +153,11 @@ export function Login() {
       timers.add(timer);
     };
     void supa.auth.getSession().then(({ data }) => {
+      if (mounted) setHasSession(!!data.session?.user?.id);
       if (mounted && data.session?.user?.id) scheduleCompletion();
     });
     const { data: sub } = supa.auth.onAuthStateChange((_event, session) => {
+      if (mounted) setHasSession(!!session?.user?.id);
       if (mounted && session?.user?.id) scheduleCompletion();
     });
     return () => {
@@ -302,11 +318,13 @@ export function Login() {
           </span>
         </div>
 
-        <h1 className="text-3xl font-bold text-center mb-2">Login</h1>
+        <h1 className="text-3xl font-bold text-center mb-2">{isFccLms ? "Join the £100 Last Man Standing" : "Login"}</h1>
+        {isFccLms && <p className="mb-3 text-center text-sm font-semibold text-emerald-200">Free entry. No card required.</p>}
         <p className="text-sm text-slate-300/80 text-center mb-6">
           {stage === "verify"
             ? `We've sent a six-digit code to ${formEmail.trim()}.`
             : stage === "profile" ? "Choose your display name to finish signing in."
+            : isFccLms ? "Enter your email and we'll send you a sign-in code. Then you can make your first pick."
             : "Use your email to receive a six-digit sign-in code."}
         </p>
 
@@ -418,7 +436,7 @@ export function Login() {
           </form>
         )}
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        {!(isFccLms && hasSession === false) && <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
           <button
             className="btn btn-ghost border-white/10 text-slate-100 hover:bg-white/10"
             onClick={continueIfSignedIn}
@@ -434,7 +452,7 @@ export function Login() {
           >
             Sign out
           </button>
-        </div>
+        </div>}
 
         <p className="mt-3 text-[11px] text-slate-300/70 text-center">
           Enter the code from your email here to finish signing in.
