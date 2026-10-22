@@ -222,6 +222,16 @@ export default async function handler(req: Req, res: Res) {
       return sendJson(res, 409, { error: "You have already used this team in this league." });
     }
 
+    // Reporting metadata only: never change whether a valid pick can be saved.
+    // Count all prior records, including no-picks, to match first-pick semantics.
+    let isFirstPick = false;
+    try {
+      const prior = await supabase.from("picks")
+        .select("id", { count: "exact", head: true })
+        .eq("league_id", leagueId).eq("player_id", playerId);
+      isFirstPick = !prior.error && prior.count === 0;
+    } catch { /* Fail closed for reporting, preserving pick submission. */ }
+
     const { data, error } = await supabase
       .from("picks")
       .upsert(
@@ -247,7 +257,11 @@ export default async function handler(req: Req, res: Res) {
       });
     }
 
-    return sendJson(res, 200, data);
+    const savedPick = data as PickRow | null;
+    return sendJson(res, 200, savedPick ? {
+      ...savedPick,
+      first_pick_submitted: isFirstPick && !!savedPick.id,
+    } : savedPick);
   } catch {
     return sendJson(res, 502, { error: "Failed to save pick" });
   }

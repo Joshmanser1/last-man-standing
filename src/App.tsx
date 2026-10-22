@@ -7,6 +7,8 @@ import { ToastProvider } from "./components/Toast";
 import { RequireAuth } from "./components/RequireAuth";
 import { RequireAdmin } from "./components/RequireAdmin";
 import { captureAttribution } from "./lib/attribution";
+import { AdvertisingConsent } from "./components/AdvertisingConsent";
+import { Privacy } from "./pages/Privacy";
 
 // Pages
 import LandingPage from "./pages/LandingPage";
@@ -95,6 +97,7 @@ function AppInner() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/home" element={<Home />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/privacy" element={<Privacy />} />
           <Route path="/t/:slug" element={<OutboundRedirect />} />
           <Route path="/email-preferences" element={<RequireAuth><EmailPreferences /></RequireAuth>} />
           <Route path="/public" element={<LiveGames />} />
@@ -202,6 +205,7 @@ export default function App() {
     <BrowserRouter>
       <ToastProvider>
         <AppInner />
+        <AdvertisingConsent />
       </ToastProvider>
     </BrowserRouter>
   );

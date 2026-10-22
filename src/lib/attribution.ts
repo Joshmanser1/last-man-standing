@@ -1,3 +1,5 @@
+import { readAdvertisingConsent } from "./advertisingConsent";
+
 export type AttributionSnapshot = {
   source?: string;
   medium?: string;
@@ -28,9 +30,11 @@ function clean(value: string | null): string | undefined {
 
 function readJson<T>(key: string): T | null {
   if (typeof window === "undefined") return null;
+  const consent = readAdvertisingConsent();
+  if (consent?.choice !== "accepted") return null;
   try {
     const value = JSON.parse(localStorage.getItem(key) ?? "null");
-    return value && typeof value === "object" ? value as T : null;
+    return value?.consentedAt === consent.updatedAt ? value.value as T : null;
   } catch {
     return null;
   }
@@ -38,7 +42,9 @@ function readJson<T>(key: string): T | null {
 
 function writeJson(key: string, value: unknown): void {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    const consent = readAdvertisingConsent();
+    if (consent?.choice !== "accepted") return;
+    localStorage.setItem(key, JSON.stringify({ value, consentedAt: consent.updatedAt }));
   } catch {
     // Attribution must never block navigation, authentication or joining.
   }
@@ -56,6 +62,7 @@ function readTrackedValues(search: string): Omit<AttributionSnapshot, "capturedA
 
 export function captureAttribution(pathname: string, search: string): void {
   if (typeof window === "undefined") return;
+  if (readAdvertisingConsent()?.choice !== "accepted") return;
   const values = readTrackedValues(search);
   if (!values) return;
 

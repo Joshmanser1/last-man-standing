@@ -22,6 +22,7 @@ import {
   trackInviteEventOnce,
 } from "../lib/analytics";
 import { activateLeagueFromSearch } from "../lib/leagueRoute";
+import { trackXFirstPick } from "../lib/xPixel";
 
 type FixtureInfo = {
   opponent: string;
@@ -455,6 +456,8 @@ export function MakePick() {
         } catch {}
         throw new Error(msg);
       }
+      // Optional reporting must never prevent confirmation of a saved pick.
+      try { void trackXFirstPick(await res.json()); } catch { /* Invalid/legacy response: skip X. */ }
       if (isFirstPickForLeague) {
         trackInviteEventOnce(
           "first_pick_submitted",

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { ADVERTISING_CONSENT_KEY, ADVERTISING_CONSENT_VERSION } from "../src/lib/advertisingConsent";
 
 test.use({ timezoneId: "America/New_York" });
 
@@ -13,26 +14,34 @@ const theme = {
 };
 const paidPath = (creative: string) => `/private/join?code=FCCLMS&utm_source=twitter&utm_medium=paid&utm_campaign=fcc_100_oct26&utm_content=${creative}`;
 
-async function setup(page: Page, code = "FCCLMS", deadline: string | null = "2026-10-23T17:30:00Z") {
+async function setup(page: Page, code = "FCCLMS", deadline: string | null = "2026-10-23T17:30:00Z", advertising: "accepted" | "rejected" | null = "accepted", mockUmami = true) {
   await page.clock.setFixedTime(new Date("2026-10-21T12:00:00Z"));
   let authenticated = false;
   const league = { id: "acquisition-league", name: code === "FCCLMS" ? "FCC £100 Last Man Standing" : "Other Club", join_code: code, current_round: 1, status: "active", is_public: false, managed_theme: theme };
   const round = { id: "round-1", league_id: league.id, round_number: 1, status: "upcoming", pick_deadline_utc: deadline };
   const teams = [{ id: "arsenal", name: "Arsenal", code: "ARS", league_id: league.id }, { id: "everton", name: "Everton", code: "EVE", league_id: league.id }];
   const members = [{ player_id: user.id, league_id: league.id, is_active: true, display_name: "Test Entrant", joined_at: "2026-10-01T12:00:00Z" }];
-  const calls = { joins: [] as Record<string, any>[], picks: 0, previews: [] as string[] };
-  const controls = { failOtp: false, joinFailure: "", previewUnavailable: false, existingActive: false };
-  await page.addInitScript(() => {
+  const calls = { joins: [] as Record<string, any>[], picks: 0, previews: [] as string[], advertisingRequests: [] as string[] };
+  const controls = { failOtp: false, joinFailure: "", previewUnavailable: false, existingActive: false, pickFailure: false, firstPick: true };
+  await page.addInitScript(({ key, version, choice, mockTracker }) => {
+    if (!sessionStorage.getItem("fcc-test-consent-seeded")) {
+      if (choice) localStorage.setItem(key, JSON.stringify({ version, choice, updatedAt: Date.now() }));
+      sessionStorage.setItem("fcc-test-consent-seeded", "1");
+    }
     (window as any).__events = [];
-    window.umami = { track: (event, properties) => { (window as any).__events.push({ event, properties }); } };
+    if (mockTracker) window.umami = { track: (event, properties) => { (window as any).__events.push({ event, properties }); } };
     // Vite adds this development-only toolbar; it is absent for paid visitors.
     document.addEventListener("DOMContentLoaded", () => {
       const style = document.createElement("style");
       style.textContent = ".fixed.bottom-3.right-3 { display: none !important; }";
       document.head.append(style);
     });
+  }, { key: ADVERTISING_CONSENT_KEY, version: ADVERTISING_CONSENT_VERSION, choice: advertising, mockTracker: mockUmami });
+  await page.route("https://**/*", route => {
+    const url = route.request().url();
+    if (/cloud\.umami\.is|ads-twitter\.com|analytics\.twitter\.com|ads-api\.twitter\.com|https:\/\/t\.co\//.test(url)) calls.advertisingRequests.push(url);
+    return route.abort();
   });
-  await page.route("https://**/*", route => route.abort());
   await page.route("**/j/*", route => {
     const creative = new URL(route.request().url()).pathname.split("/").pop()!.replace("fcc-paid-", "");
     return route.fulfill({ status: 302, headers: { Location: paidPath(creative) } });
@@ -44,6 +53,11 @@ async function setup(page: Page, code = "FCCLMS", deadline: string | null = "202
       authenticated = true;
       return route.fulfill({ json: { access_token: "mock-token", refresh_token: "mock-refresh", expires_in: 3600, token_type: "bearer", user } });
     }
+    // A full reload after withdrawal can recover/refresh the persisted session.
+    // Model the existing Supabase response, rather than returning an empty token.
+    if (path.endsWith("/token")) return route.fulfill({ status: authenticated ? 200 : 401, json: authenticated
+      ? { access_token: "mock-token", refresh_token: "mock-refresh", expires_in: 3600, token_type: "bearer", user }
+      : { message: "No session" } });
     if (path.endsWith("/user")) return route.fulfill({ status: authenticated ? 200 : 401, json: authenticated ? user : { message: "No session" } });
     return route.fulfill({ json: {} });
   });
@@ -65,7 +79,11 @@ async function setup(page: Page, code = "FCCLMS", deadline: string | null = "202
       if (controls.joinFailure) return route.fulfill({ status: 409, json: { error: controls.joinFailure } });
       return route.fulfill({ json: { league_id: league.id, membership_created: !controls.existingActive } });
     }
-    if (path === "/api/submit-pick") { calls.picks++; return route.fulfill({ json: { ok: true } }); }
+    if (path === "/api/submit-pick") {
+      calls.picks++;
+      if (controls.pickFailure) return route.fulfill({ status: 409, json: { error: "Pick rejected" } });
+      return route.fulfill({ json: { id: "saved-pick-1", first_pick_submitted: controls.firstPick } });
+    }
     return route.fulfill({ json: path === "/api/league-state" ? { league, rounds: [round], teams }
       : path === "/api/league-members" ? members : path === "/api/user-leagues" ? [league]
       : path === "/api/admin" ? { is_site_admin: false }
@@ -81,6 +99,51 @@ async function signIn(page: Page) {
   await page.getByRole("button", { name: "Send code", exact: true }).click();
   await page.getByPlaceholder("123456", { exact: true }).fill("123456");
   await page.getByRole("button", { name: "Verify code", exact: true }).click();
+}
+
+for (const outcome of ["first", "existing", "failed"] as const) {
+  test(`X conversion: OTP to pick ${outcome}, independent of Umami and no duplicate replay`, async ({ page }) => {
+    test.skip(!process.env.VITE_X_FIRST_PICK_EVENT_ID, "Requires an explicitly configured test event ID");
+    const calls = await setup(page, "FCCLMS", undefined, "accepted", false);
+    calls.controls.firstPick = outcome !== "existing";
+    calls.controls.pickFailure = outcome === "failed";
+    await page.route("https://static.ads-twitter.com/uwt.js", route => route.fulfill({
+      contentType: "application/javascript",
+      body: `window.pixelCalls = []; const q = window.twq.queue.slice();
+        window.twq.exe = (...args) => window.pixelCalls.push(args);
+        q.forEach(args => window.twq.exe(...args));`,
+    }));
+    await startJoin(page);
+    await signIn(page);
+    await page.waitForURL("**/make-pick");
+    await expect.poll(() => page.evaluate(() => (window as any).pixelCalls?.filter((c: any[]) => c[0] === "config").length)).toBe(1);
+    expect(await page.evaluate(() => (window as any).pixelCalls.filter((c: any[]) => c[0] === "event"))).toEqual([]);
+    await page.getByTestId("team-select-btn").filter({ has: page.getByText("Arsenal", { exact: true }) }).click();
+    await page.getByRole("button", { name: "Submit pick: Arsenal", exact: true }).click();
+    if (outcome === "failed") await expect(page.getByText("Pick rejected", { exact: true })).toBeVisible();
+    else await expect(page.locator(".pick-success-card")).toBeVisible();
+    const events = () => page.evaluate(() => (window as any).pixelCalls.filter((c: any[]) => c[0] === "event"));
+    if (outcome === "first") {
+      await expect.poll(events).toHaveLength(1);
+      const event = (await events())[0];
+      expect(event).toEqual(["event", process.env.VITE_X_FIRST_PICK_EVENT_ID, { conversion_id: expect.stringMatching(/^[a-f0-9]{64}$/) }]);
+      // A duplicate API completion and a reload cannot emit the same saved pick again.
+      await page.evaluate(async () => {
+        const modulePath = "/src/lib/xPixel.ts";
+        const { trackXFirstPick } = await import(modulePath);
+        await Promise.all([trackXFirstPick({ id: "saved-pick-1", first_pick_submitted: true }), trackXFirstPick({ id: "saved-pick-1", first_pick_submitted: true })]);
+      });
+      expect(await events()).toHaveLength(1);
+      await page.reload();
+      await expect(page.getByRole("button", { name: "Privacy settings", exact: true })).toBeVisible();
+      await page.evaluate(async () => {
+        const modulePath = "/src/lib/xPixel.ts";
+        await (await import(modulePath)).trackXFirstPick({ id: "saved-pick-1", first_pick_submitted: true });
+      });
+      expect(await events()).toHaveLength(0);
+    } else expect(await events()).toHaveLength(0);
+    expect(calls.picks).toBe(1);
+  });
 }
 
 for (const creative of ["whiteboard", "original", "proveit", "future-creative"]) {
@@ -315,4 +378,114 @@ test("automatic continuation waits for successful profile resolution", async ({ 
   await page.locator("form").getByRole("button", { name: "Continue", exact: true }).click();
   await page.waitForURL("**/make-pick");
   expect(calls.joins).toHaveLength(1);
+});
+
+for (const decision of [null, "rejected"] as const) {
+  test(`${decision || "no decision"}: mobile paid invite, OTP, join and first pick work without advertising`, async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 600 });
+    const calls = await setup(page, "FCCLMS", "2026-10-23T17:30:00Z", decision);
+    await page.goto(paidPath("whiteboard"));
+    const join = joinButton(page);
+    await expect(join).toBeVisible();
+    const box = (await join.boundingBox())!;
+    expect(box.y + box.height).toBeLessThan(600);
+    expect(await join.evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      return element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+    })).toBe(true);
+    if (decision === "rejected") {
+      await page.getByRole("button", { name: "Privacy settings", exact: true }).click();
+      await page.getByRole("button", { name: "Reject advertising", exact: true }).click();
+    }
+    await join.click();
+    await page.waitForURL("**/login?next=**");
+    expect(await page.evaluate(key => JSON.parse(sessionStorage.getItem(key)!).code, intentKey)).toBe("FCCLMS");
+    await signIn(page);
+    await page.waitForURL("**/make-pick");
+    expect(calls.joins).toHaveLength(1);
+    expect(calls.joins[0]).toMatchObject({ join_code: "FCCLMS", firstAttribution: null, joinAttribution: null });
+    await page.getByTestId("team-select-btn").filter({ has: page.getByText("Arsenal", { exact: true }) }).click();
+    await page.getByRole("button", { name: "Submit pick: Arsenal", exact: true }).click();
+    await expect(page.locator(".pick-success-card")).toContainText("Pick locked in!");
+    expect(calls.picks).toBe(1);
+    expect(calls.advertisingRequests).toEqual([]);
+    expect(await page.evaluate(() => (window as any).__events)).toEqual([]);
+    const stored = await page.evaluate(() => ({
+      first: localStorage.getItem("fcc_attribution_first_touch_v1"),
+      join: localStorage.getItem("fcc_attribution_join_touch_v1"),
+      funnel: sessionStorage.getItem("fcc_invite_attribution_v1"),
+    }));
+    expect(stored).toEqual({ first: null, join: null, funnel: null });
+  });
+}
+
+test("accept on an open invitation starts current-view reporting and preserves consented UTMs through the full flow", async ({ page }) => {
+  const calls = await setup(page, "FCCLMS", "2026-10-23T17:30:00Z", null);
+  await page.goto(paidPath("whiteboard"));
+  await expect(joinButton(page)).toBeVisible();
+  expect(calls.advertisingRequests).toEqual([]);
+  expect(await page.evaluate(() => (window as any).__events)).toEqual([]);
+  await page.getByRole("button", { name: "Accept advertising", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__events.map((event: any) => event.event))).toEqual(["league_landing_view"]);
+  await joinButton(page).click();
+  await page.waitForURL("**/login?next=**");
+  await signIn(page);
+  await page.waitForURL("**/make-pick");
+  await page.getByTestId("team-select-btn").filter({ has: page.getByText("Arsenal", { exact: true }) }).click();
+  await page.getByRole("button", { name: "Submit pick: Arsenal", exact: true }).click();
+  await expect(page.locator(".pick-success-card")).toContainText("Pick locked in!");
+  expect(calls.joins[0].joinAttribution).toMatchObject({ source: "twitter", medium: "paid", content: "whiteboard" });
+  const events = await page.evaluate(() => (window as any).__events);
+  expect(events.filter((event: any) => event.event === "join_clicked")).toHaveLength(1);
+  expect(events.filter((event: any) => event.event === "league_joined")).toHaveLength(1);
+  expect(events.filter((event: any) => event.event === "first_pick_submitted")).toHaveLength(1);
+  for (const event of events) expect(event.properties).toMatchObject({ invite_code: "FCCLMS", utm_source: "twitter", utm_content: "whiteboard" });
+  expect(calls.advertisingRequests.filter(url => url.includes("uwt.js"))).toHaveLength(1);
+  expect(calls.advertisingRequests.filter(url => url.includes("cloud.umami.is/script.js"))).toHaveLength(1);
+});
+
+test("logged-in player can withdraw and submit a first pick without further tracking", async ({ page }) => {
+  const calls = await setup(page);
+  await startJoin(page);
+  await signIn(page);
+  await page.waitForURL("**/make-pick");
+  const before = calls.advertisingRequests.length;
+  await page.getByRole("button", { name: "Privacy settings", exact: true }).click();
+  await Promise.all([
+    page.waitForEvent("load"),
+    page.getByRole("button", { name: "Reject advertising and reload", exact: true }).click(),
+  ]);
+  await expect(page.getByTestId("team-select-btn").filter({ has: page.getByText("Arsenal", { exact: true }) })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("active_league_id"))).toBe("acquisition-league");
+  await page.getByTestId("team-select-btn").filter({ has: page.getByText("Arsenal", { exact: true }) }).click();
+  await page.getByRole("button", { name: "Submit pick: Arsenal", exact: true }).click();
+  await expect(page.locator(".pick-success-card")).toContainText("Pick locked in!");
+  expect(calls.picks).toBe(1);
+  expect(calls.advertisingRequests).toHaveLength(before);
+  expect(await page.evaluate(() => (window as any).__events)).toEqual([]);
+});
+
+test("only consented landing events wait for a delayed Umami SDK; pre-consent clicks are not replayed", async ({ page }) => {
+  await setup(page, "FCCLMS", "2026-10-23T17:30:00Z", null, false);
+  let release!: () => void;
+  const ready = new Promise<void>(resolve => { release = resolve; });
+  let requested = false;
+  await page.route("https://cloud.umami.is/script.js", async route => {
+    requested = true;
+    await ready;
+    await route.fulfill({ contentType: "application/javascript", body: `
+      window.umami = { track: function(event, properties) { window.__events.push({event,properties}); }};
+    ` });
+  });
+  await page.goto(paidPath("whiteboard"));
+  await expect(joinButton(page)).toBeVisible();
+  expect(requested).toBe(false);
+  await page.getByRole("button", { name: "Accept advertising", exact: true }).click();
+  await expect.poll(() => requested).toBe(true);
+  expect(await page.evaluate(() => (window as any).__events)).toEqual([]);
+  release();
+  await expect.poll(() => page.evaluate(() => (window as any).__events.map((event: any) => event.event))).toEqual(["league_landing_view"]);
+  await page.getByRole("button", { name: "Privacy settings", exact: true }).click();
+  await page.getByRole("button", { name: "Accept advertising", exact: true }).click();
+  expect(await page.evaluate(() => (window as any).__events.map((event: any) => event.event))).toEqual(["league_landing_view"]);
 });

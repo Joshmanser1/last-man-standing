@@ -1,3 +1,6 @@
+import { readAdvertisingConsent } from "./advertisingConsent";
+import { trackConsentedEvent } from "./umamiTracking";
+
 type FunnelEvent =
   | "league_landing_view"
   | "join_clicked"
@@ -19,6 +22,7 @@ type InviteAttribution = {
   ref?: string;
   leagueId?: string;
   tracked?: Partial<Record<FunnelEvent, true>>;
+  consentedAt?: number;
 };
 
 declare global {
@@ -46,17 +50,18 @@ function clean(value: string | null) {
 
 function isTrackingSuppressed() {
   if (typeof window === "undefined") return true;
-  return (
-    localStorage.getItem("dev_switcher") === "1" ||
-    !!localStorage.getItem("test_user_override")
-  );
+  try {
+    return localStorage.getItem("dev_switcher") === "1" || !!localStorage.getItem("test_user_override");
+  } catch { return true; }
 }
 
 function readAttribution(): InviteAttribution | null {
   if (typeof window === "undefined") return null;
+  const consent = readAdvertisingConsent();
+  if (consent?.choice !== "accepted") return null;
   try {
     const value = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? "null");
-    return value && typeof value.inviteCode === "string" ? value : null;
+    return value?.consentedAt === consent.updatedAt && typeof value.inviteCode === "string" ? value : null;
   } catch {
     return null;
   }
@@ -64,7 +69,9 @@ function readAttribution(): InviteAttribution | null {
 
 function writeAttribution(value: InviteAttribution) {
   if (typeof window === "undefined") return;
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+  const consent = readAdvertisingConsent();
+  if (consent?.choice !== "accepted") return;
+  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ ...value, consentedAt: consent.updatedAt })); } catch { /* Optional tracking only. */ }
 }
 
 function sameAttribution(a: InviteAttribution, b: InviteAttribution) {
@@ -76,6 +83,7 @@ function sameAttribution(a: InviteAttribution, b: InviteAttribution) {
 
 export function captureInviteAttribution(search: string): InviteAttribution | null {
   if (typeof window === "undefined") return null;
+  if (readAdvertisingConsent()?.choice !== "accepted") return null;
 
   const params = new URLSearchParams(search);
   const inviteCode = clean(params.get("code"))?.toUpperCase();
@@ -123,13 +131,7 @@ export function inviteEventProperties(
 
 export function trackFunnelEvent(event: FunnelEvent, properties: EventProperties = {}) {
   if (isTrackingSuppressed()) return false;
-  try {
-    if (typeof window.umami?.track !== "function") return false;
-    window.umami.track(event, properties);
-    return true;
-  } catch {
-    return false;
-  }
+  return trackConsentedEvent(event, properties);
 }
 
 export function trackInviteEventOnce(

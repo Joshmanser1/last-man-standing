@@ -95,6 +95,7 @@ export function PrivateLeagueJoin() {
     }
 
     let active = true;
+    let consentListener: (() => void) | undefined;
 
     const loadPreview = async () => {
       setLoadingPreview(true);
@@ -126,10 +127,10 @@ export function PrivateLeagueJoin() {
 
         const loadedPreview = body.league as LeaguePreview;
         setPreview(loadedPreview);
-        if (landingTrackedForCode.current !== trimmed) {
-          landingTrackedForCode.current = trimmed;
+        const trackLanding = () => {
+          if (!active || landingTrackedForCode.current === trimmed) return;
           const attribution = captureInviteAttribution(window.location.search);
-          trackFunnelEvent(
+          const tracked = trackFunnelEvent(
             "league_landing_view",
             inviteEventProperties(attribution, {
               managed: !!loadedPreview.managed_theme,
@@ -142,7 +143,11 @@ export function PrivateLeagueJoin() {
                 : {}),
             })
           );
-        }
+          if (tracked) landingTrackedForCode.current = trimmed;
+        };
+        trackLanding();
+        consentListener = trackLanding;
+        window.addEventListener("fcc:advertising-consent", consentListener);
         const path = `${window.location.pathname}${window.location.search}${window.location.hash}`;
         const resumeUserId = consumePrivateJoin(location.state?.pendingPrivateJoin, path, trimmed);
         if (resumeUserId) void joinLeague(loadedPreview, trimmed, resumeUserId);
@@ -159,6 +164,7 @@ export function PrivateLeagueJoin() {
     void loadPreview();
     return () => {
       active = false;
+      if (consentListener) window.removeEventListener("fcc:advertising-consent", consentListener);
     };
   }, [code]);
 

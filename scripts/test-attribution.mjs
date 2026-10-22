@@ -36,7 +36,9 @@ async function bundle(entryPoint, requireImpl = () => ({})) {
 }
 
 const stored = new Map();
-globalThis.window = {};
+globalThis.window = { location: new URL('https://fcc.example/private/join') };
+globalThis.document = { referrer: '' };
+globalThis.sessionStorage = { getItem: () => null };
 globalThis.localStorage = {
   getItem: key => stored.get(key) ?? null,
   setItem: (key, value) => stored.set(key, value),
@@ -45,8 +47,14 @@ globalThis.localStorage = {
 };
 
 const attribution = await bundle("src/lib/attribution.ts");
+const consent = await bundle("src/lib/advertisingConsent.ts");
 const oocfm = "?utm_source=oocfm&utm_medium=creator&utm_campaign=oocfm_lms_1&utm_content=launch";
 const the44 = "?code=THE44&utm_source=the44&utm_medium=creator&utm_campaign=the44_lms_1&utm_content=launch";
+
+attribution.captureAttribution("/", oocfm);
+assert.deepEqual(attribution.getAttributionForJoin("OOCFM"), { firstAttribution: null, joinAttribution: null });
+assert.equal(stored.size, 0, "no campaign storage before consent");
+assert.equal(consent.saveAdvertisingConsent("accepted"), true);
 
 attribution.captureAttribution("/", oocfm);
 let result = attribution.getAttributionForJoin("OOCFM");
