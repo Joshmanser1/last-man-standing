@@ -1,4 +1,5 @@
-import { reminderCandidates, resultCandidates, type LeagueEmailSnapshot } from "./eligibility.js";
+import { parseResultEmailStartAt, reminderCandidates, resultCandidates, type LeagueEmailSnapshot } from "./eligibility.js";
+import { marketingPreferenceState } from "../../src/lib/marketingConsent.js";
 import type { CandidateDiscovery, ServiceEmailRepository } from "./serviceEmailProcessor.js";
 import type { DeliveryClaim, ServiceEmailCandidate } from "./types.js";
 
@@ -26,16 +27,17 @@ async function loadPages<T>(
   }
 }
 
-export function createSupabaseServiceEmailRepository(supabase: any): ServiceEmailRepository {
+export function createSupabaseServiceEmailRepository(supabase: any, options: { resultsStartAt?: string } = {}): ServiceEmailRepository {
+  const resultsStartAt = parseResultEmailStartAt(options.resultsStartAt);
   async function loadSnapshot(leagueId: string): Promise<LeagueEmailSnapshot | null> {
     const leagueResult: { data: LeagueEmailSnapshot["league"] | null; error: QueryError } = await supabase.from("leagues")
-      .select("id,name,current_round,status").eq("id", leagueId).is("deleted_at", null)
+      .select("id,name,current_round,status,is_test").eq("id", leagueId).is("deleted_at", null)
       .maybeSingle();
     const { data: league, error: leagueError } = leagueResult;
     if (leagueError) {
       throw new Error(`League snapshot lookup failed: ${leagueError.message ?? "query failed"}`);
     }
-    if (!league) return null;
+    if (!league || league.is_test === true) return null;
     const [rounds, memberships, picks, teams] = await Promise.all([
       loadPages<LeagueEmailSnapshot["rounds"][number]>("Round snapshot lookup failed", (from, to) =>
         supabase.from("rounds").select("id,league_id,round_number,status,pick_deadline_utc,finalized_at").eq("league_id", leagueId).order("round_number").range(from, to)),
@@ -56,8 +58,8 @@ export function createSupabaseServiceEmailRepository(supabase: any): ServiceEmai
       loadPages<{ id: string; league_id: string }>("Reminder round discovery failed", (from, to) => supabase.from("rounds").select("id,league_id").eq("status", "upcoming")
         .is("finalized_at", null).gte("pick_deadline_utc", reminderStart).lte("pick_deadline_utc", reminderEnd)
         .order("id").range(from, to)),
-      loadPages<{ id: string; league_id: string }>("Finalized round discovery failed", (from, to) => supabase.from("rounds").select("id,league_id").eq("status", "completed")
-        .not("finalized_at", "is", null).order("id").range(from, to)),
+      resultsStartAt ? loadPages<{ id: string; league_id: string }>("Finalized round discovery failed", (from, to) => supabase.from("rounds").select("id,league_id").eq("status", "completed")
+        .not("finalized_at", "is", null).gte("pick_deadline_utc", resultsStartAt).order("id").range(from, to)) : Promise.resolve([]),
     ]);
     const snapshots = new Map<string, Promise<LeagueEmailSnapshot | null>>();
     const snapshot = (leagueId: string) => {
@@ -74,7 +76,7 @@ export function createSupabaseServiceEmailRepository(supabase: any): ServiceEmai
     for (const round of finalizedRounds) {
       const leagueSnapshot = await snapshot(round.league_id);
       if (!leagueSnapshot) continue;
-      const result = resultCandidates(leagueSnapshot, round.id, now);
+      const result = resultCandidates(leagueSnapshot, round.id, now, resultsStartAt ?? undefined);
       if (result.zeroSurvivors) zeroSurvivorRoundsSkipped++;
       else {
         candidates.push(...result.candidates);
@@ -93,6 +95,13 @@ export function createSupabaseServiceEmailRepository(supabase: any): ServiceEmai
       const email = typeof user?.email === "string" ? user.email.trim() : "";
       return user?.email_confirmed_at && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
     },
+    async allowsMarketing(playerId, verifiedEmail) {
+      const { data, error } = await supabase.from("marketing_preferences")
+        .select("user_id,marketing_opt_in,consented_email,updated_at,latest_event_id")
+        .eq("user_id", playerId).maybeSingle();
+      if (error) return false;
+      return marketingPreferenceState(data, verifiedEmail).eligible;
+    },
     async claim(candidate) {
       const { data, error } = await supabase.rpc("claim_service_email_delivery", {
         p_league_id: candidate.leagueId, p_round_id: candidate.roundId, p_player_id: candidate.playerId,
@@ -110,7 +119,7 @@ export function createSupabaseServiceEmailRepository(supabase: any): ServiceEmai
         return !!round && Date.parse(round.pick_deadline_utc) > now.getTime()
           && reminderCandidates(snapshot, candidate.roundId).some(entry => entry.playerId === candidate.playerId);
       }
-      const result = resultCandidates(snapshot, candidate.roundId, now);
+      const result = resultCandidates(snapshot, candidate.roundId, now, resultsStartAt ?? undefined);
       const refreshed = result.candidates.find(entry =>
         entry.playerId === candidate.playerId && entry.outcome === candidate.outcome);
       candidate.nextRound = refreshed?.nextRound ?? null;

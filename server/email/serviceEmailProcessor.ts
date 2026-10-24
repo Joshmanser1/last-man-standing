@@ -6,6 +6,7 @@ export type CandidateDiscovery = { candidates: ServiceEmailCandidate[]; zeroSurv
 export type ServiceEmailRepository = {
   discover(now: Date): Promise<CandidateDiscovery>;
   resolveAuthEmail(playerId: string): Promise<string | null>;
+  allowsMarketing(playerId: string, verifiedEmail: string): Promise<boolean>;
   claim(candidate: ServiceEmailCandidate): Promise<DeliveryClaim | null>;
   recheck(candidate: ServiceEmailCandidate, now: Date): Promise<boolean>;
   complete(claim: DeliveryClaim, providerMessageId: string): Promise<void>;
@@ -41,6 +42,7 @@ export async function processServiceEmails(input: {
     try { email = await input.repository.resolveAuthEmail(candidate.playerId); }
     catch { summary.failed++; continue; }
     if (!email) { summary.skipped++; summary.missingAuthEmail++; continue; }
+    const verifiedEmail = email;
     email = canonicalEmail(email);
     if (allowlist.size > 0 && !allowlist.has(email)) {
       summary.skipped++; summary.pilotBlocked++; continue;
@@ -55,7 +57,12 @@ export async function processServiceEmails(input: {
         summary.skipped++; summary.ineligibleAfterClaim++;
         continue;
       }
-      const rendered = renderServiceEmail(candidate, input.appOrigin);
+      // Promotional content is optional; an unavailable preference must never
+      // block the essential competition notification or imply consent.
+      let includeTelegram = false;
+      try { includeTelegram = await input.repository.allowsMarketing(candidate.playerId, verifiedEmail); }
+      catch { /* Fail closed for promotion only. */ }
+      const rendered = renderServiceEmail(candidate, input.appOrigin, { includeTelegram });
       const sent = await input.transport.send({ to: email, ...rendered, idempotencyKey: deliveryKey(candidate) });
       await input.repository.complete(claim, sent.id);
       if (candidate.eventType === "pick_reminder") summary.remindersSent++;

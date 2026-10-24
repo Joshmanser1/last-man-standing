@@ -68,7 +68,9 @@ async function runConfiguredServiceEmails(supabase: any, now: Date): Promise<Ser
   try {
     const summary = await processServiceEmails({
       enabled, appOrigin, pilotAllowlist: process.env.SERVICE_EMAIL_PILOT_ALLOWLIST,
-      now, repository: createSupabaseServiceEmailRepository(supabase),
+      now, repository: createSupabaseServiceEmailRepository(supabase, {
+        resultsStartAt: process.env.SERVICE_EMAIL_RESULTS_START_AT,
+      }),
       transport: createResendTransport({ apiKey, from, replyTo }),
     });
     return { status: summary.failed > 0 ? 207 : 200, body: summary };

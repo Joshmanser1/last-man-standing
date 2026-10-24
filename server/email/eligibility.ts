@@ -1,7 +1,7 @@
 import type { ServiceEmailCandidate, ServiceEmailOutcome } from "./types.js";
 
 export type LeagueEmailSnapshot = {
-  league: { id: string; name: string; current_round: number; status?: string | null };
+  league: { id: string; name: string; current_round: number; status?: string | null; is_test?: boolean | null };
   rounds: Array<{ id: string; league_id: string; round_number: number; status: string; pick_deadline_utc: string; finalized_at?: string | null }>;
   memberships: Array<{ player_id: string; is_active: boolean; joined_at?: string | null }>;
   picks: Array<{ round_id: string; player_id: string; team_id?: string | null; status: string; reason?: string | null }>;
@@ -23,6 +23,7 @@ function enteredRound(snapshot: LeagueEmailSnapshot, playerId: string, round: Le
 }
 
 export function reminderCandidates(snapshot: LeagueEmailSnapshot, roundId: string): ServiceEmailCandidate[] {
+  if (snapshot.league.is_test === true) return [];
   const round = snapshot.rounds.find(entry => entry.id === roundId);
   if (!round || round.round_number !== snapshot.league.current_round || round.status !== "upcoming" || round.finalized_at) return [];
   return snapshot.memberships
@@ -36,9 +37,24 @@ export function reminderCandidates(snapshot: LeagueEmailSnapshot, roundId: strin
     }));
 }
 
-export function resultCandidates(snapshot: LeagueEmailSnapshot, roundId: string, now: Date = new Date()) {
+// Require an explicit UTC instant, never a deployment-time default or a local date.
+export function parseResultEmailStartAt(value?: string): string | null {
+  const input = value?.trim();
+  if (!input || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(input)) return null;
+  const timestamp = Date.parse(input);
+  if (!Number.isFinite(timestamp)) return null;
+  const canonical = new Date(timestamp).toISOString();
+  return canonical === (input.includes(".") ? input : input.replace("Z", ".000Z")) ? canonical : null;
+}
+
+export function resultCandidates(snapshot: LeagueEmailSnapshot, roundId: string, now: Date = new Date(), resultsStartAt?: string) {
+  if (snapshot.league.is_test === true) return { candidates: [], zeroSurvivors: false, ambiguousMissedPicks: 0 };
   const round = snapshot.rounds.find(entry => entry.id === roundId);
   if (!round?.finalized_at || round.status !== "completed") return { candidates: [], zeroSurvivors: false, ambiguousMissedPicks: 0 };
+  const cutoff = parseResultEmailStartAt(resultsStartAt);
+  if (!cutoff || !(Date.parse(round.pick_deadline_utc) >= Date.parse(cutoff))) {
+    return { candidates: [], zeroSurvivors: false, ambiguousMissedPicks: 0 };
+  }
   const roundPicks = snapshot.picks.filter(pick => pick.round_id === round.id);
   const survivors = roundPicks.filter(pick => pick.status === "through").length;
   if (survivors === 0) return { candidates: [], zeroSurvivors: true, ambiguousMissedPicks: 0 };
@@ -71,7 +87,8 @@ export function resultCandidates(snapshot: LeagueEmailSnapshot, roundId: string,
       teamName: pick?.team_id ? teamNames.get(pick.team_id) ?? "Your team" : null,
       survivorsRemaining: survivors,
       nextRound: outcome === "through" && nextRound
-        ? { roundNumber: nextRound.round_number, deadlineUtc: nextRound.pick_deadline_utc }
+        ? { roundNumber: nextRound.round_number, deadlineUtc: nextRound.pick_deadline_utc,
+          alreadyPicked: snapshot.picks.some(entry => entry.round_id === nextRound.id && entry.player_id === member.player_id) }
         : null,
     });
   }

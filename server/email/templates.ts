@@ -17,22 +17,24 @@ function formatDeadline(value: string) {
 
 function shell(input: {
   origin: string; leagueName: string; roundNumber: number; status: string;
-  bodyHtml: string; bodyText: string; cta: string; url: string;
+  bodyHtml: string; bodyText: string; cta: string; url: string; telegram?: boolean;
 }) {
-  const { origin, leagueName, roundNumber, status, bodyHtml, bodyText, cta, url } = input;
+  const { origin, leagueName, roundNumber, status, bodyHtml, bodyText, cta, url, telegram } = input;
   const logo = `${cleanOrigin(origin)}/fcc-logo.png`;
+  const telegramHtml = telegram ? `<tr><td style="padding:18px 28px;border-top:1px solid #eef5f2;text-align:center;font-size:14px;line-height:1.5"><h2 style="margin:0 0 8px;font-size:15px;color:#162d27">Don't miss an FCC update!</h2><p style="margin:0 0 8px">Join our Telegram channel for competition updates, results and reminders.</p><a href="https://t.me/FCCCompetitions" style="display:inline-block;padding:8px 0;color:#167a58;font-weight:700;text-decoration:underline">Join FCC on Telegram &rarr;</a><p style="margin:8px 0 0;font-size:12px"><a href="${escapeHtml(cleanOrigin(origin))}/email-preferences" style="color:#167a58;text-decoration:underline">Manage promotional email preferences</a></p></td></tr>\n` : "";
+  const telegramText = telegram ? `Don't miss an FCC update!\n\nJoin our Telegram channel for competition updates, results and reminders.\n\nJoin FCC on Telegram → https://t.me/FCCCompetitions\n\nManage promotional email preferences: ${cleanOrigin(origin)}/email-preferences\n\n` : "";
   const html = `<!doctype html><html><body style="margin:0;background:#10201c;color:#10201c;font-family:Arial,sans-serif">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#10201c;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#fff;border-radius:18px;overflow:hidden">
 <tr><td style="background:#162d27;padding:26px 28px;text-align:center"><img src="${escapeHtml(logo)}" width="64" height="64" alt="Fantasy Command Centre" style="display:block;margin:0 auto 14px"><div style="color:#a7f3d0;font-size:12px;font-weight:700;letter-spacing:1.8px">${escapeHtml(leagueName.toUpperCase())} · ROUND ${roundNumber}</div><h1 style="color:#fff;font-size:32px;line-height:1.1;margin:12px 0 0">${escapeHtml(status)}</h1></td></tr>
 <tr><td style="padding:30px 28px;text-align:center;font-size:17px;line-height:1.55">${bodyHtml}<p style="margin:28px 0"><a href="${escapeHtml(url)}" style="display:inline-block;background:#16a36a;color:#fff;text-decoration:none;font-weight:800;letter-spacing:.4px;padding:14px 24px;border-radius:9px">${escapeHtml(cta)}</a></p></td></tr>
-<tr><td style="background:#eef5f2;padding:18px 28px;text-align:center;color:#53645e;font-size:12px;line-height:1.5">You're receiving this email because you're taking part in this competition on Fantasy Command Centre.<br><a href="${escapeHtml(cleanOrigin(origin))}" style="color:#167a58">fantasycommandcentre.co.uk</a></td></tr>
+${telegramHtml}<tr><td style="background:#eef5f2;padding:18px 28px;text-align:center;color:#53645e;font-size:12px;line-height:1.5">You're receiving this email because you're taking part in this competition on Fantasy Command Centre.<br><a href="${escapeHtml(cleanOrigin(origin))}" style="color:#167a58">fantasycommandcentre.co.uk</a></td></tr>
 </table></td></tr></table></body></html>`;
-  const text = `${leagueName} · Round ${roundNumber}\n\n${status}\n\n${bodyText}\n\n${cta}: ${url}\n\nYou're receiving this email because you're taking part in this competition on Fantasy Command Centre.\n${cleanOrigin(origin)}`;
+  const text = `${leagueName} · Round ${roundNumber}\n\n${status}\n\n${bodyText}\n\n${cta}: ${url}\n\n${telegramText}You're receiving this email because you're taking part in this competition on Fantasy Command Centre.\n${cleanOrigin(origin)}`;
   return { html, text };
 }
 
-export function renderServiceEmail(candidate: ServiceEmailCandidate, origin: string) {
+export function renderServiceEmail(candidate: ServiceEmailCandidate, origin: string, options: { includeTelegram?: boolean } = {}) {
   const league = candidate.leagueName;
   const team = candidate.teamName ?? "Your team";
   const remaining = candidate.survivorsRemaining ?? 0;
@@ -44,7 +46,7 @@ export function renderServiceEmail(candidate: ServiceEmailCandidate, origin: str
       subject: `Your ${league} pick is due tomorrow ⚽`,
       ...shell({ origin, leagueName: league, roundNumber: candidate.roundNumber, status: "PICK REQUIRED",
         bodyHtml: `<p>Your Round ${candidate.roundNumber} pick is still waiting.</p><p>Make your selection before <strong>${escapeHtml(deadline)}</strong>.</p><p><strong>One team. One win. Survive.</strong></p>`,
-        bodyText, cta: "MAKE MY PICK", url }),
+        bodyText, cta: "MAKE MY PICK", url, telegram: options.includeTelegram === true }),
     };
   }
   if (candidate.outcome === "through") {
@@ -57,11 +59,15 @@ export function renderServiceEmail(candidate: ServiceEmailCandidate, origin: str
       }).format(date)} · ${new Intl.DateTimeFormat("en-GB", {
         hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/London",
       }).format(date)}`;
+      const pickStatusHtml = nextRound.alreadyPicked ? "<p>Your next-round pick is already submitted.</p>" : "";
+      const pickStatusText = nextRound.alreadyPicked ? "\n\nYour next-round pick is already submitted." : "";
       return { subject: "You're through! 🟢", ...shell({ origin, leagueName: league,
         roundNumber: candidate.roundNumber, status: "YOU'RE THROUGH ✅",
-        bodyHtml: `<p><strong>${escapeHtml(team.toUpperCase())} WON. YOU SURVIVED.</strong></p><p>Round ${candidate.roundNumber} is complete.</p><p>${remaining} players remain.</p><p><strong>Round ${nextRound.roundNumber}</strong><br>Next deadline<br><strong>${escapeHtml(deadline)}</strong></p>`,
-        bodyText: `${team.toUpperCase()} WON. YOU SURVIVED.\n\nRound ${candidate.roundNumber} is complete.\n\n${remaining} players remain.\n\nRound ${nextRound.roundNumber}\nNext deadline\n${deadline}`,
-        cta: "MAKE YOUR PICK", url: `${cleanOrigin(origin)}/make-pick` }) };
+        bodyHtml: `<p><strong>${escapeHtml(team.toUpperCase())} WON. YOU SURVIVED.</strong></p><p>Round ${candidate.roundNumber} is complete.</p><p>${remaining} players remain.</p><p><strong>Round ${nextRound.roundNumber}</strong><br>Next deadline<br><strong>${escapeHtml(deadline)}</strong></p>${pickStatusHtml}`,
+        bodyText: `${team.toUpperCase()} WON. YOU SURVIVED.\n\nRound ${candidate.roundNumber} is complete.\n\n${remaining} players remain.\n\nRound ${nextRound.roundNumber}\nNext deadline\n${deadline}${pickStatusText}`,
+        cta: nextRound.alreadyPicked ? "VIEW COMPETITION" : "MAKE YOUR PICK",
+        url: nextRound.alreadyPicked ? competitionUrl(origin, candidate.leagueId) : pickUrl(origin, candidate.leagueId),
+        telegram: !nextRound.alreadyPicked && options.includeTelegram === true }) };
     }
     const url = competitionUrl(origin, candidate.leagueId);
     const bodyText = `${team.toUpperCase()} WON. YOU SURVIVED.\n\nYou're through Round ${candidate.roundNumber} of ${league}.\n\n${remaining} players remain.\n\nWe'll let you know when it's time to make your next pick.`;

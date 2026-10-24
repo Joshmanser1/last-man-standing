@@ -16,7 +16,7 @@ export type ServiceEmailCandidate = {
   deadlineUtc: string;
   teamName: string | null;
   survivorsRemaining: number | null;
-  nextRound?: { roundNumber: number; deadlineUtc: string } | null;
+  nextRound?: { roundNumber: number; deadlineUtc: string; alreadyPicked?: boolean } | null;
 };
 
 export type DeliveryClaim = { id: string; claimToken: string; attemptCount: number };
