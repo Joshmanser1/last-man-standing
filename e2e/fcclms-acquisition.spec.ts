@@ -13,11 +13,17 @@ const theme = {
   primaryColour: "#0f766e", secondaryColour: "#0f172a", tagline: "One team. One win. Survive and go again.",
 };
 const paidPath = (creative: string) => `/private/join?code=FCCLMS&utm_source=twitter&utm_medium=paid&utm_campaign=fcc_100_oct26&utm_content=${creative}`;
+const markLeagueId = "e2894278-99e2-484d-bbb4-27f3dd86fd74";
+const markTheme = {
+  enabled: true, hostName: "Mark FPL", displayName: "Mark FPL v2", hostLogoUrl: "/favicon.png",
+  primaryColour: "#210747", secondaryColour: "#F7E600",
+};
+const markPath = "/private/join?code=MARKV2&utm_source=twitter&utm_medium=creator&utm_campaign=mark_fpl_rollover_oct26&utm_content=mark_fpl_post";
 
 async function setup(page: Page, code = "FCCLMS", deadline: string | null = "2026-10-23T17:30:00Z", advertising: "accepted" | "rejected" | null = "accepted", mockUmami = true) {
   await page.clock.setFixedTime(new Date("2026-10-21T12:00:00Z"));
   let authenticated = false;
-  const league = { id: "acquisition-league", name: code === "FCCLMS" ? "FCC £100 Last Man Standing" : "Other Club", join_code: code, current_round: 1, status: "active", is_public: false, managed_theme: theme };
+  const league = { id: code === "MARKV2" ? markLeagueId : "acquisition-league", name: code === "MARKV2" ? "Mark FPL v2" : code === "FCCLMS" ? "FCC £100 Last Man Standing" : "Other Club", join_code: code, current_round: 1, status: "active", is_public: false, managed_theme: code === "MARKV2" ? markTheme : theme };
   const round = { id: "round-1", league_id: league.id, round_number: 1, status: "upcoming", pick_deadline_utc: deadline };
   const teams = [{ id: "arsenal", name: "Arsenal", code: "ARS", league_id: league.id }, { id: "everton", name: "Everton", code: "EVE", league_id: league.id }];
   const members = [{ player_id: user.id, league_id: league.id, is_active: true, display_name: "Test Entrant", joined_at: "2026-10-01T12:00:00Z" }];
@@ -43,6 +49,7 @@ async function setup(page: Page, code = "FCCLMS", deadline: string | null = "202
     return route.abort();
   });
   await page.route("**/j/*", route => {
+    if (code === "MARKV2") return route.fulfill({ status: 302, headers: { Location: markPath } });
     const creative = new URL(route.request().url()).pathname.split("/").pop()!.replace("fcc-paid-", "");
     return route.fulfill({ status: 302, headers: { Location: paidPath(creative) } });
   });
@@ -199,6 +206,105 @@ test("FCCLMS missing deadline is not replaced with a hardcoded date", async ({ p
   await setup(page, "FCCLMS", null);
   await page.goto("/private/join?code=FCCLMS");
   await expect(page.getByText("First picks lock: To be confirmed")).toBeVisible();
+});
+
+for (const width of [360, 375]) {
+  test(`MARKV2 ${width}px: branded rollover, explicit OTP join and first pick preserve creator attribution`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 667 });
+    const calls = await setup(page, "MARKV2", "2027-01-08T18:30:00Z");
+    // Exercise a completely new FCC profile as well as an existing player.
+    let profile: Record<string, unknown> | null = width === 360 ? null : { id: user.id, display_name: "Test Entrant" };
+    await page.route("**/rest/v1/profiles**", route => {
+      if (route.request().method() === "POST") profile = route.request().postDataJSON();
+      return route.fulfill({ json: profile });
+    });
+    await page.goto("/j/mark-fpl-rollover");
+    await expect(page.getByRole("heading", { name: "£50 Rollover", exact: true })).toBeVisible();
+    await expect(page.getByText("Mark FPL v2", { exact: true })).toBeVisible();
+    await expect(page.getByText("Free Entry · Starts FPL GW9", { exact: true })).toBeVisible();
+    await expect(page.getByText("Pick a Premier League team to win each round. Survive and progress.", { exact: true })).toBeVisible();
+    await expect(page.getByText("91 entered the last competition. After five rounds, nobody won. We're going again.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("img", { name: "Mark FPL logo" })).toHaveAttribute("src", markTheme.hostLogoUrl);
+    await expect(page.getByText(/Friday 8 January.*6:30 pm UK time/)).toBeVisible();
+    const cta = page.getByRole("button", { name: "Join Mark's £50 LMS", exact: true });
+    await expect(cta).toHaveCSS("background-color", "rgb(247, 230, 0)");
+    await expect(cta).toHaveCSS("color", "rgb(33, 7, 71)");
+    const box = (await cta.boundingBox())!;
+    expect(box.y + box.height).toBeLessThan(667);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(calls.joins).toHaveLength(0);
+    await cta.click();
+    await page.waitForURL("**/login?next=**");
+    expect(new URL(page.url()).searchParams.get("next")).toBe(markPath);
+    await expect(page.getByRole("heading", { name: "Join Mark's £50 LMS" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);
+    await signIn(page);
+    await page.waitForURL("**/make-pick");
+    expect(calls.joins).toHaveLength(1);
+    expect(profile?.display_name).toBe("Test Entrant");
+    expect(calls.joins[0]).toMatchObject({ join_code: "MARKV2", preserve_existing_membership: true, joinAttribution: {
+      source: "twitter", medium: "creator", campaign: "mark_fpl_rollover_oct26", content: "mark_fpl_post", joinCode: "MARKV2",
+    } });
+    expect(await page.evaluate(() => localStorage.getItem("active_league_id"))).toBe(markLeagueId);
+    await page.getByTestId("team-select-btn").filter({ has: page.getByText("Arsenal", { exact: true }) }).click();
+    await page.getByRole("button", { name: "Submit pick: Arsenal", exact: true }).click();
+    await expect(page.locator(".pick-success-card")).toContainText("Pick locked in!");
+    expect(calls.picks).toBe(1);
+    const events = await page.evaluate(() => (window as any).__events);
+    for (const event of ["join_clicked", "league_joined", "first_pick_submitted"]) {
+      expect(events.filter((item: any) => item.event === event)).toHaveLength(1);
+    }
+    for (const event of events) expect(event.properties).toMatchObject({ invite_code: "MARKV2", utm_source: "twitter", utm_medium: "creator", utm_campaign: "mark_fpl_rollover_oct26", utm_content: "mark_fpl_post" });
+    expect(calls.previews.every(code => code === "MARKV2")).toBe(true);
+  });
+}
+
+test("MARKV2 returning signed-in player explicitly joins; existing membership is preserved", async ({ page }) => {
+  const calls = await setup(page, "MARKV2");
+  calls.controls.existingActive = true;
+  await page.goto(`/login?next=${encodeURIComponent(markPath)}`);
+  await signIn(page);
+  await page.waitForURL(`**${markPath}`);
+  expect(calls.joins).toHaveLength(0);
+  await page.getByRole("button", { name: "Join Mark's £50 LMS", exact: true }).click();
+  await page.waitForURL("**/make-pick");
+  expect(calls.joins).toHaveLength(1);
+  expect(calls.joins[0]).toMatchObject({ join_code: "MARKV2", preserve_existing_membership: true });
+  expect(await page.evaluate(() => (window as any).__events.filter((item: any) => item.event === "league_joined"))).toEqual([]);
+});
+
+test("MARKV2 missing deadline stays unconfirmed; direct lowercase invite works without campaign parameters", async ({ page }) => {
+  await setup(page, "MARKV2", null);
+  await page.goto("/private/join?code=markv2");
+  await expect(page.getByRole("heading", { name: "£50 Rollover" })).toBeVisible();
+  await expect(page.getByText("First picks lock: To be confirmed")).toBeVisible();
+});
+
+for (const decision of [null, "rejected"] as const) {
+  test(`MARKV2 ${decision || "no decision"}: joining and first pick work without advertising`, async ({ page }) => {
+    const calls = await setup(page, "MARKV2", undefined, decision);
+    await page.goto(markPath);
+    await page.getByRole("button", { name: "Join Mark's £50 LMS", exact: true }).click();
+    await page.waitForURL("**/login?next=**");
+    await signIn(page);
+    await page.waitForURL("**/make-pick");
+    expect(calls.joins).toHaveLength(1);
+    expect(calls.joins[0]).toMatchObject({ join_code: "MARKV2", firstAttribution: null, joinAttribution: null });
+    await page.getByTestId("team-select-btn").filter({ has: page.getByText("Arsenal", { exact: true }) }).click();
+    await page.getByRole("button", { name: "Submit pick: Arsenal", exact: true }).click();
+    await expect(page.locator(".pick-success-card")).toContainText("Pick locked in!");
+    expect(calls.picks).toBe(1);
+    expect(calls.advertisingRequests).toEqual([]);
+    expect(await page.evaluate(() => (window as any).__events)).toEqual([]);
+  });
+}
+
+test("other creator invitations retain their own copy and CTA", async ({ page }) => {
+  await setup(page, "OTHER");
+  await page.goto("/private/join?code=OTHER&utm_campaign=mark_fpl_rollover_oct26");
+  await expect(page.getByRole("button", { name: "JOIN FANTASY COMMAND CENTRE'S LEAGUE", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "£50 Rollover" })).toHaveCount(0);
+  await expect(page.getByText(/91 entered the last competition/)).toHaveCount(0);
 });
 
 test("existing signed-in FCCLMS visitor retains the explicit join flow", async ({ page }) => {

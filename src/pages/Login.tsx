@@ -33,13 +33,13 @@ function normalizeOtp(value: string) {
   return value.replace(/\D/g, "").slice(0, 6);
 }
 
-function isFccLmsInvite(search: string) {
+function isCompetitionInvite(search: string, code: string) {
   const next = getNextParamRedirect(search);
   if (!next) return false;
   try {
     const url = new URL(next, window.location.origin);
     return url.origin === window.location.origin && url.pathname === "/private/join" &&
-      url.searchParams.get("code")?.trim().toUpperCase() === "FCCLMS";
+      url.searchParams.get("code")?.trim().toUpperCase() === code;
   } catch {
     return false;
   }
@@ -85,7 +85,9 @@ export function Login() {
   const [checking, setChecking] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const [hasSession, setHasSession] = useState<boolean | null>(null);
-  const isFccLms = isFccLmsInvite(location.search);
+  const isFccLms = isCompetitionInvite(location.search, "FCCLMS");
+  const isMarkV2 = isCompetitionInvite(location.search, "MARKV2");
+  const isCompetitionLanding = isFccLms || isMarkV2;
 
   const didPostAuthNavigate = useRef(false);
   const resolvingProfile = useRef(false);
@@ -327,13 +329,13 @@ export function Login() {
           </span>
         </div>
 
-        <h1 className="text-3xl font-bold text-center mb-2">{isFccLms ? "Join the £100 Last Man Standing" : "Login"}</h1>
-        {isFccLms && <p className="mb-3 text-center text-sm font-semibold text-emerald-200">Free entry. No card required.</p>}
+        <h1 className="text-3xl font-bold text-center mb-2">{isMarkV2 ? "Join Mark's £50 LMS" : isFccLms ? "Join the £100 Last Man Standing" : "Login"}</h1>
+        {isCompetitionLanding && <p className={`mb-3 text-center text-sm font-semibold ${isMarkV2 ? "text-[#F7E600]" : "text-emerald-200"}`}>Free entry. No card required.</p>}
         <p className="text-sm text-slate-300/80 text-center mb-6">
           {stage === "verify"
             ? `We've sent a six-digit code to ${formEmail.trim()}.`
             : stage === "profile" ? "Choose your display name to finish signing in."
-            : isFccLms ? "Enter your email and we'll send you a sign-in code. Then you can make your first pick."
+            : isCompetitionLanding ? "Enter your email and we'll send you a sign-in code. Then you can make your first pick."
             : "Use your email to receive a six-digit sign-in code."}
         </p>
 
@@ -445,7 +447,7 @@ export function Login() {
           </form>
         )}
 
-        {!(isFccLms && hasSession === false) && <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        {!(isCompetitionLanding && hasSession === false) && <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
           <button
             className="btn btn-ghost border-white/10 text-slate-100 hover:bg-white/10"
             onClick={continueIfSignedIn}

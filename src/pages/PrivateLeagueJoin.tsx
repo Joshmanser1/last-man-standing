@@ -291,14 +291,16 @@ export function PrivateLeagueJoin() {
   }
 
   const theme = preview?.managed_theme ?? null;
-  const primary = isHexColour(theme?.primaryColour, "#0f766e");
-  const secondary = isHexColour(theme?.secondaryColour, "#0f172a");
-  const title = theme?.displayName || preview?.name || "Private league";
   // Scope by the successfully resolved invite code, never by a tracking slug.
   const isFccLms = !!preview && code.trim().toUpperCase() === "FCCLMS";
-  const ctaLabel = isFccLms ? "PLAY FREE — MAKE YOUR PICK" : theme?.hostName ? `JOIN ${theme.hostName.toUpperCase()}'S LEAGUE` : "JOIN LEAGUE";
+  const isMarkV2 = !!preview && code.trim().toUpperCase() === "MARKV2";
+  const isConversionLanding = isFccLms || isMarkV2;
+  const primary = isMarkV2 ? "#210747" : isHexColour(theme?.primaryColour, "#0f766e");
+  const secondary = isMarkV2 ? "#F7E600" : isHexColour(theme?.secondaryColour, "#0f172a");
+  const title = isMarkV2 ? "£50 Rollover" : theme?.displayName || preview?.name || "Private league";
+  const ctaLabel = isMarkV2 ? "Join Mark's £50 LMS" : isFccLms ? "PLAY FREE — MAKE YOUR PICK" : theme?.hostName ? `JOIN ${theme.hostName.toUpperCase()}'S LEAGUE` : "JOIN LEAGUE";
   const joinForm = (
-    <form onSubmit={handleSubmit} className={isFccLms ? "mt-4 space-y-3" : "mt-6 space-y-3"}>
+    <form onSubmit={handleSubmit} className={isConversionLanding ? "mt-4 space-y-3" : "mt-6 space-y-3"}>
       {profileRequired && (
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <label className="label text-slate-900">Choose your display name</label>
@@ -313,7 +315,7 @@ export function PrivateLeagueJoin() {
           />
         </div>
       )}
-      <button type="submit" className="btn w-full border-0 bg-emerald-500 font-bold text-slate-950 hover:bg-emerald-400" disabled={joining}>
+      <button type="submit" className={`btn w-full border-0 font-bold ${isMarkV2 ? "text-[#210747] hover:brightness-105" : "bg-emerald-500 text-slate-950 hover:bg-emerald-400"}`} style={isMarkV2 ? { backgroundColor: secondary } : undefined} disabled={joining}>
         {joining ? "Joining..." : ctaLabel}
       </button>
       {error && <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
@@ -344,9 +346,9 @@ export function PrivateLeagueJoin() {
         <>
           <section
             className="overflow-hidden rounded-3xl border border-slate-200 shadow-sm"
-            style={{ background: `linear-gradient(145deg, ${primary} 0%, ${secondary} 100%)` }}
+            style={{ background: `linear-gradient(145deg, ${primary} 0%, ${isMarkV2 ? "#120426" : secondary} 100%)` }}
           >
-            <div className={`bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.22),_transparent_40%)] px-5 text-white sm:px-8 sm:py-8 ${isFccLms ? "py-4" : "py-6"}`}>
+            <div className={`bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.22),_transparent_40%)] px-5 text-white sm:px-8 sm:py-8 ${isConversionLanding ? "py-4" : "py-6"}`}>
               <div className="flex min-w-0 items-start gap-3">
                 {theme?.hostLogoUrl ? (
                   <img src={theme.hostLogoUrl} alt={`${theme.hostName} logo`} className="h-14 w-14 flex-none rounded-2xl border border-white/25 bg-white/10 object-cover" />
@@ -358,11 +360,12 @@ export function PrivateLeagueJoin() {
                   <p className="truncate text-lg font-bold tracking-wide">{theme?.hostName || "Fantasy Command Centre"}</p>
                 </div>
               </div>
-              <h1 className={`${isFccLms ? "mt-4" : "mt-7"} text-3xl font-bold uppercase leading-tight tracking-[0.04em] sm:text-4xl`}>{title}</h1>
-              {isFccLms ? (
+              <h1 className={`${isConversionLanding ? "mt-4" : "mt-7"} text-3xl font-bold uppercase leading-tight tracking-[0.04em] sm:text-4xl`}>{title}</h1>
+              {isMarkV2 && <p className="mt-1 text-sm font-semibold text-white/85">{theme?.displayName || preview.name}</p>}
+              {isConversionLanding ? (
                 <>
-                  <p className="mt-2 text-xs font-bold uppercase tracking-wide text-emerald-100">FREE TO ENTER · NO CARD REQUIRED</p>
-                  <p className="mt-2 text-sm text-white/85">Think you know Premier League football?</p>
+                  <p className={`mt-2 text-xs font-bold uppercase tracking-wide ${isMarkV2 ? "text-[#F7E600]" : "text-emerald-100"}`}>{isMarkV2 ? "Free Entry · Starts FPL GW9" : "FREE TO ENTER · NO CARD REQUIRED"}</p>
+                  <p className="mt-2 text-sm text-white/85">{isMarkV2 ? "Pick a Premier League team to win each round. Survive and progress." : "Think you know Premier League football?"}</p>
                   {joinForm}
                   <p className="mt-3 text-sm text-white/85">
                     {preview.current_round === 1 ? "First picks lock:" : "Picks lock:"}{" "}
@@ -377,6 +380,7 @@ export function PrivateLeagueJoin() {
 
           <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             {isFccLms && <p className="mb-4 text-sm leading-6 text-slate-600">{theme?.tagline || "One team. One win. Survive and go again."}</p>}
+            {isMarkV2 && <p className="mb-4 text-sm leading-6 text-slate-600">91 entered the last competition. After five rounds, nobody won. We're going again.</p>}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current round</p><p className="mt-1 text-xl font-bold text-slate-900">Round {preview.current_round}</p></div>
               <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pick deadline</p><p className="mt-1 text-sm font-semibold text-slate-900">{formatDeadline(preview.pick_deadline_utc)}</p></div>
@@ -391,7 +395,7 @@ export function PrivateLeagueJoin() {
               <h2 className="text-base font-bold text-slate-900">Last Man Standing</h2>
               <ul className="mt-2 space-y-1 text-sm leading-6 text-slate-600"><li>Pick one Premier League team each round.</li><li>Win and you survive.</li><li>Draw, lose or miss your pick and you're out.</li><li>You can't reuse a team.</li></ul>
             </div>
-            {!isFccLms && joinForm}
+            {!isConversionLanding && joinForm}
           </section>
         </>
       )}
