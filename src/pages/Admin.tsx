@@ -1263,7 +1263,7 @@ export function Admin() {
 
   if (!selectedLeagueId || !league) {
     return (
-      <div data-testid="admin-page" className="min-h-screen grid place-items-center p-6">
+      <div data-testid="admin-page" className="admin-page min-h-screen grid place-items-center p-6">
         <CreateGamePanel
           onCreated={(lg) => {
             handleFounderLeagueCreated(lg);
@@ -1280,7 +1280,7 @@ export function Admin() {
   }
 
   return (
-    <div data-testid="admin-page" className="min-h-screen flex items-start justify-center p-4">
+    <div data-testid="admin-page" className="admin-page min-h-screen flex items-start justify-center p-4">
       <div className="w-full max-w-5xl bg-white rounded-2xl shadow-lg p-6 sm:p-8">
         {/* Top bar: game selector + create */}
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between mb-6">
