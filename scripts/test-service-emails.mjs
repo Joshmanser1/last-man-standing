@@ -8,11 +8,13 @@ async function load(entry) {
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
 }
 const { processServiceEmails } = await load('server/email/serviceEmailProcessor.ts');
-const { reminderCandidates, resultCandidates: evaluateResults, parseResultEmailStartAt } = await load('server/email/eligibility.ts');
+const { reminderCandidates, resultCandidates: evaluateResults, parseResultEmailStartAt,
+  approvedResultEmailExceptionRoundIds, parseResultEmailExceptionRoundIds } = await load('server/email/eligibility.ts');
 const { createSupabaseServiceEmailRepository } = await load('server/email/supabaseServiceEmailRepository.ts');
 const { renderServiceEmail } = await load('server/email/templates.ts');
 const { activateLeagueFromSearch } = await load('src/lib/leagueRoute.ts');
 const { tickHandler } = await load('api/tick.ts');
+const { markRolloverLeagueId, markRolloverRoundId, markRolloverJoinUrl } = await load('server/email/types.ts');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const now = new Date('2026-09-28T12:00:00Z');
 const resultsStartAt='2026-09-28T00:00:00Z';
@@ -46,7 +48,7 @@ function harness(candidates, options={}) {
     async discover(){ return {candidates,zeroSurvivorRoundsSkipped:options.zeroRounds??0,
       ambiguousMissedPickResultsSkipped:options.ambiguousMissedPicks??0}; },
     async resolveAuthEmail(playerId){ if(options.authError)throw Error('auth unavailable'); return options.missingEmail ? null : `${playerId.slice(-2)}@example.test`; },
-    async allowsMarketing(){ if(options.marketingError)throw Error('preferences unavailable'); return options.marketing === true; },
+    async allowsMarketing(playerId){ if(options.marketingError)throw Error('preferences unavailable'); return typeof options.marketing==='function'?options.marketing(playerId):options.marketing === true; },
     async claim(candidate){
       const key=[candidate.leagueId,candidate.roundId,candidate.playerId,candidate.eventType].join(':');
       const existing=state.get(key); if(existing==='sent'||existing==='processing')return null;
@@ -182,11 +184,12 @@ const emailDatabase={from(table){
     if(table==='rounds'&&columns==='id,league_id') return {data:emailSnapshot.rounds.filter(round=>
       round.status===filters.get('status')
       && (!filters.has('gte:pick_deadline_utc')||Date.parse(round.pick_deadline_utc)>=Date.parse(filters.get('gte:pick_deadline_utc')))
+      && (!filters.has('in:id')||filters.get('in:id').includes(round.id))
       && (!filters.has('lte:pick_deadline_utc')||Date.parse(round.pick_deadline_utc)<=Date.parse(filters.get('lte:pick_deadline_utc')))),error:null};
     return {data:emailSnapshot[table],error:null};
   };
   const query={select(value){columns=value;return query;},eq(key,value){filters.set(key,value);return query;},
-    is(){return query;},not(){return query;},gte(key,value){filters.set(`gte:${key}`,value);return query;},lte(key,value){filters.set(`lte:${key}`,value);return query;},order(){return query;},range(){return query;},
+    is(){return query;},not(){return query;},in(key,value){filters.set(`in:${key}`,value);return query;},gte(key,value){filters.set(`gte:${key}`,value);return query;},lte(key,value){filters.set(`lte:${key}`,value);return query;},order(){return query;},range(){return query;},
     maybeSingle(){return Promise.resolve(result());},then(resolve,reject){return Promise.resolve(result()).then(resolve,reject);}};
   return query;
 }};
@@ -225,6 +228,136 @@ h=harness([resultCandidate()],{recheck:candidate=>emailRepository.recheck(candid
 summary=await h.run();
 assert.equal(summary.resultsSent,0,'changed persisted deadline is checked immediately before sending');
 assert.equal(h.claims,1); assert.equal(h.state.size,0,'blocked result claim is released');
+assert.deepEqual(approvedResultEmailExceptionRoundIds,[
+  '12bcb92e-4649-4006-9d14-489a8bf4eb10',
+  'a21ee081-fe55-410a-b6f3-60b3fb234eef',
+  'e9ee31fd-0135-454f-b86d-d12e59fd145f',
+  '64f222d4-e4c2-4c4d-9e82-3e38d4a2dccb',
+]);
+const excludedRoundId='ef648874-e568-4b9c-8550-0fdb4fef8252';
+assert.equal(parseResultEmailExceptionRoundIds(`${excludedRoundId},invalid,${id(2)}`).size,0);
+assert.equal(parseResultEmailExceptionRoundIds().size,0);
+for(const exceptionId of approvedResultEmailExceptionRoundIds) {
+  const historicalCutoff='2026-10-25T00:00:00Z';
+  const exceptionRound={...finalRound,id:exceptionId,pick_deadline_utc:'2026-10-23T17:30:00Z'};
+  emailSnapshot={...cutoffSnapshot,rounds:[exceptionRound],picks:cutoffSnapshot.picks.map(pick=>({...pick,round_id:exceptionId}))};
+  const exceptionConfig=`invalid,${excludedRoundId}, ${exceptionId.toUpperCase()},${exceptionId}`;
+  assert.deepEqual([...parseResultEmailExceptionRoundIds(exceptionConfig)],[exceptionId]);
+  const exceptionRepository=createSupabaseServiceEmailRepository(emailDatabase,{
+    resultsStartAt:historicalCutoff,resultsExceptionRoundIds:exceptionConfig,
+  });
+  const discovered=(await exceptionRepository.discover(now)).candidates;
+  assert.equal(discovered.length,1,'an approved finalised pre-cutoff round is discovered');
+  assert.equal(discovered[0].eventType,'round_result');
+  assert.equal(await exceptionRepository.recheck(discovered[0],now),true);
+  const withoutException=createSupabaseServiceEmailRepository(emailDatabase,{resultsStartAt:historicalCutoff});
+  assert.equal((await withoutException.discover(now)).candidates.length,0,'exceptions are opt-in');
+  assert.equal(await withoutException.recheck(discovered[0],now),false,'removal blocks the pre-send recheck');
+  h=harness(discovered,{recheck:candidate=>exceptionRepository.recheck(candidate,now),marketing:false});
+  assert.equal((await h.run()).resultsSent,1);
+  assert.doesNotMatch(h.sent[0].html+h.sent[0].text,/FCCCompetitions/);
+  await h.run(); assert.equal(h.sent.length,1,'exception results retain deduplication');
+  h=harness(discovered,{recheck:candidate=>exceptionRepository.recheck(candidate,now),marketingError:true});
+  await h.run(); assert.doesNotMatch(h.sent[0].html+h.sent[0].text,/FCCCompetitions/);
+  for(const invalidCutoff of [undefined,'invalid']) {
+    const invalidRepository=createSupabaseServiceEmailRepository(emailDatabase,{
+      resultsStartAt:invalidCutoff,resultsExceptionRoundIds:exceptionId,
+    });
+    assert.equal((await invalidRepository.discover(now)).candidates.length,0,'exceptions require a valid cutoff');
+    assert.equal(await invalidRepository.recheck(discovered[0],now),false);
+  }
+  emailSnapshot={...emailSnapshot,rounds:[{...exceptionRound,status:'locked',finalized_at:null}]};
+  assert.equal((await exceptionRepository.discover(now)).candidates.length,0,'locked exceptions cannot send results');
+  assert.equal(await exceptionRepository.recheck(discovered[0],now),false);
+  emailSnapshot={...emailSnapshot,rounds:[{...exceptionRound,finalized_at:null}]};
+  assert.equal(await exceptionRepository.recheck(discovered[0],now),false,'finalisation timestamp is required');
+  emailSnapshot={...emailSnapshot,rounds:[exceptionRound],picks:emailSnapshot.picks.map(pick=>({...pick,status:'eliminated',reason:'loss'}))};
+  assert.equal((await exceptionRepository.discover(now)).candidates.length,0,'zero survivors still suppress exception results');
+  emailSnapshot={...emailSnapshot,picks:cutoffSnapshot.picks.map(pick=>({...pick,round_id:exceptionId})),
+    rounds:[{...exceptionRound,pick_deadline_utc:historicalCutoff}]};
+  assert.equal((await exceptionRepository.discover(now)).candidates.length,1,'normal and exception discovery deduplicate the same round');
+  emailSnapshot={...emailSnapshot,rounds:[exceptionRound],league:{...emailSnapshot.league,is_test:true}};
+  assert.equal((await exceptionRepository.discover(now)).candidates.length,0,'test competitions stay excluded');
+  assert.equal(await exceptionRepository.recheck(discovered[0],now),false);
+}
+emailSnapshot={...cutoffSnapshot,rounds:[{...finalRound,id:excludedRoundId,pick_deadline_utc:'2026-10-23T17:30:00Z'}],
+  picks:cutoffSnapshot.picks.map(pick=>({...pick,round_id:excludedRoundId}))};
+const approvedExceptions=new Set(approvedResultEmailExceptionRoundIds);
+assert.equal(evaluateResults(emailSnapshot,excludedRoundId,now,'2026-10-25T00:00:00Z',
+  new Set([...approvedExceptions,excludedRoundId])).candidates.length,0,'POF123 cannot bypass the cutoff even through direct evaluation');
+const excludedRepository=createSupabaseServiceEmailRepository(emailDatabase,{
+  resultsStartAt:'2026-10-25T00:00:00Z',resultsExceptionRoundIds:[...approvedExceptions,excludedRoundId].join(','),
+});
+assert.equal((await excludedRepository.discover(now)).candidates.length,0,'POF123 stays out of discovery');
+assert.equal(await excludedRepository.recheck({...resultCandidate(),roundId:excludedRoundId},now),false);
+const markRounds=Array.from({length:5},(_,index)=>({
+  id:index===4?markRolloverRoundId:id(201+index),league_id:markRolloverLeagueId,round_number:index+1,
+  status:'completed',pick_deadline_utc:index===4?'2026-10-23T17:30:00Z':'2026-09-12T12:30:00Z',
+  finalized_at:index===0?null:'2026-10-25T21:00:00Z',
+}));
+const markMembers=Array.from({length:91},(_,index)=>({...member(id(1000+index)),is_active:false}));
+const markPicks=markMembers.map((entry,index)=>({
+  player_id:entry.player_id,round_id:markRounds[index%5].id,team_id:index%3===2?null:id(20),
+  status:index%3===2?'no-pick':'eliminated',reason:['loss','draw','no-pick'][index%3],
+}));
+const markSnapshot=snapshot({league:{id:markRolloverLeagueId,name:'Mark (FPL)',status:'active',current_round:5},
+  rounds:markRounds,memberships:markMembers,picks:markPicks});
+emailSnapshot=markSnapshot;
+const markRepository=createSupabaseServiceEmailRepository(emailDatabase,{
+  resultsStartAt:'2026-10-25T00:00:00Z',resultsExceptionRoundIds:approvedResultEmailExceptionRoundIds.join(','),
+});
+const markCandidates=(await markRepository.discover(now)).candidates;
+assert.equal(markCandidates.length,91,'the final zero-survivor notice reaches original members, including earlier eliminations');
+assert.ok(markCandidates.every(candidate=>candidate.roundId===markRolloverRoundId&&candidate.resultVariant==='mark_rollover'));
+const consentingPlayers=new Set(markMembers.slice(0,7).map(entry=>entry.player_id));
+h=harness(markCandidates,{marketing:playerId=>consentingPlayers.has(playerId),recheck:candidate=>markRepository.recheck(candidate,now)});
+assert.equal((await h.run()).resultsSent,91);
+assert.equal(h.sent.filter(message=>message.text.includes(markRolloverJoinUrl)).length,7);
+for(const [index,message] of h.sent.entries()) {
+  assert.match(message.text,new RegExp(`eliminated in Round ${index%5+1}`));
+  assert.match(message.text,/91 entered.*five rounds/);
+  assert.match(message.text,/Nobody won the £50 prize/);
+  assert.match(message.text,/£50 has rolled over into Mark FPL v2/);
+  assert.match(message.text,/beginning GW9 on 31 October/);
+  assert.match(message.text,/Your original entry does not transfer/);
+  assert.match(message.text,/join the new league separately/);
+  assert.doesNotMatch(message.text+message.html,/FCCCompetitions|YOU SURVIVED|You're through|YOU WON/);
+  assert.equal(message.idempotencyKey,`fcc-round_result-${markRolloverLeagueId}-${markRolloverRoundId}-${markMembers[index].player_id}`);
+  if(index<7) {
+    assert.match(message.text,/JOIN MARK FPL v2/);
+    assert.match(message.text,/Manage promotional email preferences/);
+  } else {
+    assert.doesNotMatch(message.text+message.html,/\/j\/mark-fpl-rollover|JOIN MARK FPL v2/);
+    assert.match(message.text,/VIEW ORIGINAL RESULTS/);
+    assert.ok(message.text.includes(`view=eliminations&league_id=${markRolloverLeagueId}`));
+  }
+}
+await h.run();assert.equal(h.sent.length,91,'competition-ending emails retain the existing round-result delivery keys');
+h=harness([markCandidates[0]],{marketingError:true,recheck:candidate=>markRepository.recheck(candidate,now)});
+assert.equal((await h.run()).resultsSent,1);
+assert.doesNotMatch(h.sent[0].text+h.sent[0].html,/\/j\/mark-fpl-rollover|FCCCompetitions/);
+assert.equal(await markRepository.recheck(markCandidates[0],now),true,'legacy completed-round outcomes remain usable without rewriting history');
+emailSnapshot={...markSnapshot,rounds:markRounds.map(round=>round.id===markRolloverRoundId?{...round,status:'locked'}:round)};
+assert.equal((await markRepository.discover(now)).candidates.length,0);
+assert.equal(await markRepository.recheck(markCandidates[0],now),false);
+emailSnapshot={...markSnapshot,rounds:markRounds.map(round=>round.id===markRolloverRoundId?{...round,finalized_at:null}:round)};
+assert.equal((await markRepository.discover(now)).candidates.length,0);
+emailSnapshot={...markSnapshot,picks:[...markPicks,{round_id:markRolloverRoundId,player_id:id(999),status:'pending',reason:null}]};
+assert.equal((await markRepository.discover(now)).candidates.length,0,'pending outcomes prevent a no-winner assertion');
+emailSnapshot={...markSnapshot,picks:markPicks.filter(pick=>pick.round_id!==markRolloverRoundId)};
+assert.equal((await markRepository.discover(now)).candidates.length,0,'an empty terminal round is not evidence of a rollover');
+emailSnapshot={...markSnapshot,picks:markPicks.map((pick,index)=>index===4?{...pick,status:'through',reason:null}:pick)};
+assert.ok((await markRepository.discover(now)).candidates.every(candidate=>candidate.resultVariant!=='mark_rollover'));
+assert.equal(await markRepository.recheck(markCandidates[0],now),false,'a surviving player cancels rollover eligibility');
+emailSnapshot={...markSnapshot,picks:markPicks.map((pick,index)=>index===0?{...pick,round_id:markRounds[1].id}:pick)};
+assert.equal(await markRepository.recheck(markCandidates[0],now),false,'changed individual elimination round is rechecked');
+emailSnapshot={...markSnapshot,memberships:[...markMembers,{...member(id(999)),joined_at:'2026-10-24T00:00:00Z'}],
+  picks:[...markPicks,{round_id:markRounds[0].id,player_id:id(999),status:'eliminated',reason:'loss'}]};
+assert.equal((await markRepository.discover(now)).candidates.length,91,'late memberships cannot expand the original audience');
+emailSnapshot={...markSnapshot,picks:markPicks.filter(pick=>pick.player_id!==markMembers[0].player_id)};
+assert.equal((await markRepository.discover(now)).candidates.length,90,'unknown historical outcomes are not invented');
+assert.throws(()=>renderServiceEmail({...markCandidates[0],leagueId:id(1)},origin),/Invalid Mark rollover/);
+assert.throws(()=>renderServiceEmail({...markCandidates[0],outcome:'through'},origin),/Invalid Mark rollover/);
 emailSnapshot=snapshot();
 const reminderOnlyRepository=createSupabaseServiceEmailRepository(emailDatabase);
 const reminderOnlyCandidates=(await reminderOnlyRepository.discover(now)).candidates;
@@ -395,6 +528,20 @@ try {
   assert.equal(response.statusCode,200); assert.equal(response.body.ok,true);
   assert.deepEqual(events,['lifecycle','tick:ok','email'],'normal tick completes lifecycle before email processing');
   assert.deepEqual(response.body.service_emails,emailSummary);
+  assert.equal(response.body.service_email_status,200);
+  let finishEmails;
+  const pendingEmails=new Promise(resolve=>{finishEmails=resolve;});
+  let emailStageStarted;
+  const emailStageReady=new Promise(resolve=>{emailStageStarted=resolve;});
+  const pendingResponse=tickResponse();
+  const pendingTick=tickHandler({method:'GET',headers:{authorization:'Bearer tick-secret'},query:{}},pendingResponse,{
+    ...dependencies,async runServiceEmails(){emailStageStarted();return pendingEmails;},
+  });
+  await emailStageReady;
+  assert.equal(pendingResponse.body,null,'acknowledgement waits for the email stage');
+  finishEmails({status:200,body:emailSummary});
+  await pendingTick;
+  assert.equal(pendingResponse.body.service_email_status,200);
 
   events=[]; response=tickResponse();
   const emailOnlyDependencies={createClient:()=>({from(){throw Error('email-only touched competition state');}}),
@@ -419,6 +566,15 @@ try {
   assert.equal(response.statusCode,200); assert.equal(response.body.ok,true);
   assert.deepEqual(events,['lifecycle','tick:ok','email']);
   assert.deepEqual(response.body.service_emails,{error:'Service email processing failed.'});
+  assert.equal(response.body.service_email_status,502);
+  for(const emailStatus of [207,502,503]) {
+    response=tickResponse();
+    await tickHandler({method:'GET',headers:{authorization:'Bearer tick-secret'},query:{}},response,{
+      ...dependencies,async runServiceEmails(){return {status:emailStatus,body:{error:'email failure'}};},
+    });
+    assert.equal(response.statusCode,200,'lifecycle success remains independent of email status');
+    assert.equal(response.body.service_email_status,emailStatus,'email status is visible in the acknowledgement');
+  }
 } finally {
   for (const [key,value] of Object.entries(savedTickEnv)) {
     if (value === undefined) delete process.env[key]; else process.env[key]=value;
@@ -445,6 +601,40 @@ try {
   await assert.rejects(claim(),/permission denied/);
   await db.exec('reset role');
 } finally { await db.close(); }
+
+const timeoutDb=new PGlite();
+try {
+  await timeoutDb.exec(`create role anon; create role authenticated; create role service_role; create schema vault; create schema net; create schema cron;
+    create table vault.decrypted_secrets(name text,decrypted_secret text);
+    create table vault.secrets(id uuid,name text);
+    insert into vault.secrets values('${id(8001)}','fcc_tick_url'),('${id(8002)}','fcc_tick_cron_secret');
+    create table cron.job(jobid bigint,jobname text,schedule text,active boolean,username text,command text);
+    insert into cron.job values(1,'fcc-global-lms-tick','*/15 * * * *',true,'postgres','select public.invoke_fcc_global_tick();');
+    create table net._http_response(id bigint,created timestamptz,status_code int,timed_out boolean,error_msg text);
+    insert into vault.decrypted_secrets values ('fcc_tick_url','https://example.test/api/tick'),('fcc_tick_cron_secret','test-secret');
+    create function net.http_get(url text,headers jsonb,timeout_milliseconds integer) returns bigint language sql as
+      'select case when url = ''https://example.test/api/tick'' and headers->>''Authorization'' = ''Bearer test-secret''
+        then timeout_milliseconds::bigint else -1::bigint end';
+    create function public.invoke_fcc_global_tick() returns bigint language sql as 'select 10000::bigint';
+    revoke all on function public.invoke_fcc_global_tick() from public,anon,authenticated;
+    grant execute on function public.invoke_fcc_global_tick() to service_role;`);
+  const beforeTimeout=await timeoutDb.query("select oid,proowner,proacl from pg_proc where oid='public.invoke_fcc_global_tick()'::regprocedure");
+  const beforeCron=await timeoutDb.query('select * from cron.job');
+  const beforeVault=await timeoutDb.query('select * from vault.secrets order by name');
+  await timeoutDb.exec(await readFile('sql/2026-10-25-fcc-tick-http-timeout.sql','utf8'));
+  assert.deepEqual((await timeoutDb.query("select oid,proowner,proacl from pg_proc where oid='public.invoke_fcc_global_tick()'::regprocedure")).rows,
+    beforeTimeout.rows,'timeout replacement preserves function identity, owner and exact ACL');
+  assert.deepEqual((await timeoutDb.query('select * from cron.job')).rows,beforeCron.rows,'cron schedule and job are untouched');
+  assert.deepEqual((await timeoutDb.query('select * from vault.secrets order by name')).rows,beforeVault.rows,'Vault secrets are untouched');
+  await timeoutDb.exec(await readFile('sql/2026-10-25-fcc-tick-deployment-checks.sql','utf8'));
+  assert.equal(Number((await timeoutDb.query('select public.invoke_fcc_global_tick() as timeout')).rows[0].timeout),310000);
+  await timeoutDb.exec('set role anon');
+  await assert.rejects(timeoutDb.query('select public.invoke_fcc_global_tick()'),/permission denied/);
+  await timeoutDb.exec('reset role; delete from vault.decrypted_secrets');
+  assert.equal((await timeoutDb.query('select public.invoke_fcc_global_tick() as request')).rows[0].request,null);
+  const vercel=JSON.parse(await readFile('vercel.json','utf8'));
+  assert.equal(vercel.functions['api/tick.ts'].maxDuration,300);
+} finally { await timeoutDb.close(); }
 
 // Validate the SELECT-only production preview against disposable tables and
 // compare historical/post-cutoff outcomes, without credentials or network calls.
@@ -478,5 +668,71 @@ try {
   await previewDb.exec('update leagues set is_test=true');
   assert.equal((await previewDb.query(previewSql)).rows.length,0,'preview excludes test competitions');
 } finally { await previewDb.close(); }
+
+const weekendDb=new PGlite();
+try {
+  await weekendDb.exec(`create schema auth;
+    create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);
+    create table leagues(id uuid primary key,status text,current_round int,is_test boolean,deleted_at timestamptz);
+    create table rounds(id uuid primary key,league_id uuid,round_number int,status text,pick_deadline_utc timestamptz,finalized_at timestamptz);
+    create table memberships(league_id uuid,player_id uuid,joined_at timestamptz);
+    create table picks(round_id uuid,player_id uuid,status text,reason text);
+    create table marketing_preferences(user_id uuid,marketing_opt_in boolean,consented_email text);
+    create table service_email_deliveries(id uuid,league_id uuid,round_id uuid,player_id uuid,event_type text,status text,attempt_count int,claimed_at timestamptz);
+    insert into leagues values('${markRolloverLeagueId}','active',5,false,null);`);
+  for(const round of markRounds) await weekendDb.query('insert into rounds values($1,$2,$3,$4,$5,$6)',
+    [round.id,round.league_id,round.round_number,round.status,round.pick_deadline_utc,round.finalized_at]);
+  for(const [index,entry] of markMembers.entries()) {
+    const email=`player${index}@example.test`;
+    await weekendDb.query('insert into auth.users values($1,$2,now())',[entry.player_id,email]);
+    await weekendDb.query('insert into memberships values($1,$2,$3)',[markRolloverLeagueId,entry.player_id,entry.joined_at]);
+    await weekendDb.query('insert into marketing_preferences values($1,$2,$3)',[entry.player_id,index<7,email]);
+    const pick=markPicks[index];
+    await weekendDb.query('insert into picks values($1,$2,$3,$4)',[pick.round_id,pick.player_id,pick.status,pick.reason]);
+  }
+  for(const [index,leagueId] of ['f6f3e1be-8c00-4174-8172-2d078fb09cb3','088ee7c0-660e-4b68-ab6f-a75032ff9cc2','a0a73aa0-d9c6-43e9-bbe3-03ae90312ee2'].entries()) {
+    const roundId=approvedResultEmailExceptionRoundIds[index+1],roundNumber=[2,3,1][index];
+    await weekendDb.query('insert into leagues values($1,$2,$3,false,null)',[leagueId,'active',roundNumber]);
+    await weekendDb.query('insert into rounds values($1,$2,$3,$4,$5,now())',[roundId,leagueId,roundNumber,'completed','2026-10-23T17:30:00Z']);
+    const playerId=id(3000+index);
+    await weekendDb.query('insert into auth.users values($1,$2,now())',[playerId,`other${index}@example.test`]);
+    await weekendDb.query('insert into memberships values($1,$2,null)',[leagueId,playerId]);
+    await weekendDb.query('insert into picks values($1,$2,$3,null)',[roundId,playerId,'through']);
+  }
+  const sql=await readFile('sql/2026-10-25-weekend-result-email-preview.sql','utf8');
+  const runPreview=async()=>{
+    const results=await weekendDb.exec(sql);
+    return {states:results.find(result=>result.rows.some(row=>'persisted_picks' in row)).rows,
+      recipients:results.find(result=>result.rows.some(row=>'email_type' in row))?.rows??[]};
+  };
+  let preview=await runPreview();
+  assert.equal(preview.states.length,4);
+  assert.equal(preview.recipients.length,94);
+  let markRows=preview.recipients.filter(row=>row.competition==='MARKPL');
+  assert.equal(markRows.length,91);
+  assert.equal(markRows.filter(row=>row.includes_mark_join_invitation).length,7);
+  assert.ok(markRows.every(row=>row.template==='mark_rollover'&&!row.includes_telegram&&Number(row.claimable_recipients)===91));
+  assert.ok(markRows.filter(row=>!row.marketing_permitted).every(row=>!row.primary_cta_destination.includes('mark-fpl-rollover')));
+  assert.ok(markRows.filter(row=>row.marketing_permitted).every(row=>row.primary_cta_destination===markRolloverJoinUrl));
+  assert.ok(preview.recipients.filter(row=>row.competition!=='MARKPL').every(row=>row.template==='standard_result'));
+  for(const row of markRows) {
+    const index=markMembers.findIndex(entry=>entry.player_id===row.player_id);
+    assert.equal(row.individual_outcome_round,index%5+1);
+    assert.equal(row.outcome,markCandidates[index].outcome,'SQL and application outcomes agree');
+  }
+  await weekendDb.query('insert into service_email_deliveries values($1,$2,$3,$4,$5,$6,1,now())',
+    [id(9000),markRolloverLeagueId,markRolloverRoundId,markMembers[0].player_id,'round_result','sent']);
+  preview=await runPreview();markRows=preview.recipients.filter(row=>row.competition==='MARKPL');
+  assert.ok(markRows.every(row=>Number(row.claimable_recipients)===90));
+  assert.equal(markRows.find(row=>row.player_id===markMembers[0].player_id).claimable,false);
+  await weekendDb.query('update auth.users set email=$1 where id=$2',['changed@example.test',markMembers[1].player_id]);
+  preview=await runPreview();
+  assert.equal(preview.recipients.find(row=>row.player_id===markMembers[1].player_id).includes_mark_join_invitation,false);
+  await weekendDb.query('update rounds set status=$1,finalized_at=null where id=$2',['locked',markRolloverRoundId]);
+  preview=await runPreview();assert.equal(preview.recipients.filter(row=>row.competition==='MARKPL').length,0);
+  await weekendDb.query('update rounds set status=$1,finalized_at=now() where id=$2',['completed',markRolloverRoundId]);
+  await weekendDb.query('update picks set status=$1,reason=null where round_id=$2 and player_id=$3',['pending',markRolloverRoundId,markMembers[4].player_id]);
+  preview=await runPreview();assert.equal(preview.recipients.filter(row=>row.competition==='MARKPL').length,0);
+} finally { await weekendDb.close(); }
 
 console.log('PASS: service email eligibility, templates, switches, allowlist, recheck, retries, deduplication and atomic ledger claims');

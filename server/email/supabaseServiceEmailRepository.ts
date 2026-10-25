@@ -1,4 +1,4 @@
-import { parseResultEmailStartAt, reminderCandidates, resultCandidates, type LeagueEmailSnapshot } from "./eligibility.js";
+import { parseResultEmailStartAt, parseResultEmailExceptionRoundIds, reminderCandidates, resultCandidates, type LeagueEmailSnapshot } from "./eligibility.js";
 import { marketingPreferenceState } from "../../src/lib/marketingConsent.js";
 import type { CandidateDiscovery, ServiceEmailRepository } from "./serviceEmailProcessor.js";
 import type { DeliveryClaim, ServiceEmailCandidate } from "./types.js";
@@ -27,8 +27,11 @@ async function loadPages<T>(
   }
 }
 
-export function createSupabaseServiceEmailRepository(supabase: any, options: { resultsStartAt?: string } = {}): ServiceEmailRepository {
+export function createSupabaseServiceEmailRepository(supabase: any, options: {
+  resultsStartAt?: string; resultsExceptionRoundIds?: string;
+} = {}): ServiceEmailRepository {
   const resultsStartAt = parseResultEmailStartAt(options.resultsStartAt);
+  const exceptionRoundIds = parseResultEmailExceptionRoundIds(options.resultsExceptionRoundIds);
   async function loadSnapshot(leagueId: string): Promise<LeagueEmailSnapshot | null> {
     const leagueResult: { data: LeagueEmailSnapshot["league"] | null; error: QueryError } = await supabase.from("leagues")
       .select("id,name,current_round,status,is_test").eq("id", leagueId).is("deleted_at", null)
@@ -54,12 +57,16 @@ export function createSupabaseServiceEmailRepository(supabase: any, options: { r
   async function discover(now: Date): Promise<CandidateDiscovery> {
     const reminderStart = new Date(now.getTime() + 20 * 60 * 60 * 1000).toISOString();
     const reminderEnd = new Date(now.getTime() + 28 * 60 * 60 * 1000).toISOString();
-    const [reminderRounds, finalizedRounds] = await Promise.all([
+    const [reminderRounds, finalizedRounds, exceptionRounds] = await Promise.all([
       loadPages<{ id: string; league_id: string }>("Reminder round discovery failed", (from, to) => supabase.from("rounds").select("id,league_id").eq("status", "upcoming")
         .is("finalized_at", null).gte("pick_deadline_utc", reminderStart).lte("pick_deadline_utc", reminderEnd)
         .order("id").range(from, to)),
       resultsStartAt ? loadPages<{ id: string; league_id: string }>("Finalized round discovery failed", (from, to) => supabase.from("rounds").select("id,league_id").eq("status", "completed")
         .not("finalized_at", "is", null).gte("pick_deadline_utc", resultsStartAt).order("id").range(from, to)) : Promise.resolve([]),
+      resultsStartAt && exceptionRoundIds.size > 0
+        ? loadPages<{ id: string; league_id: string }>("Exception round discovery failed", (from, to) => supabase.from("rounds").select("id,league_id").eq("status", "completed")
+          .not("finalized_at", "is", null).in("id", [...exceptionRoundIds]).order("id").range(from, to))
+        : Promise.resolve([]),
     ]);
     const snapshots = new Map<string, Promise<LeagueEmailSnapshot | null>>();
     const snapshot = (leagueId: string) => {
@@ -73,10 +80,11 @@ export function createSupabaseServiceEmailRepository(supabase: any, options: { r
     }
     let zeroSurvivorRoundsSkipped = 0;
     let ambiguousMissedPickResultsSkipped = 0;
-    for (const round of finalizedRounds) {
+    const resultRounds = new Map([...finalizedRounds, ...exceptionRounds].map(round => [round.id, round]));
+    for (const round of resultRounds.values()) {
       const leagueSnapshot = await snapshot(round.league_id);
       if (!leagueSnapshot) continue;
-      const result = resultCandidates(leagueSnapshot, round.id, now, resultsStartAt ?? undefined);
+      const result = resultCandidates(leagueSnapshot, round.id, now, resultsStartAt ?? undefined, exceptionRoundIds);
       if (result.zeroSurvivors) zeroSurvivorRoundsSkipped++;
       else {
         candidates.push(...result.candidates);
@@ -119,10 +127,13 @@ export function createSupabaseServiceEmailRepository(supabase: any, options: { r
         return !!round && Date.parse(round.pick_deadline_utc) > now.getTime()
           && reminderCandidates(snapshot, candidate.roundId).some(entry => entry.playerId === candidate.playerId);
       }
-      const result = resultCandidates(snapshot, candidate.roundId, now, resultsStartAt ?? undefined);
+      const result = resultCandidates(snapshot, candidate.roundId, now, resultsStartAt ?? undefined, exceptionRoundIds);
       const refreshed = result.candidates.find(entry =>
-        entry.playerId === candidate.playerId && entry.outcome === candidate.outcome);
+        entry.playerId === candidate.playerId && entry.outcome === candidate.outcome
+        && entry.resultVariant === candidate.resultVariant
+        && entry.eliminationRoundNumber === candidate.eliminationRoundNumber);
       candidate.nextRound = refreshed?.nextRound ?? null;
+      if (refreshed) candidate.teamName = refreshed.teamName;
       return !result.zeroSurvivors && !!refreshed;
     },
     async complete(claim, providerMessageId) {

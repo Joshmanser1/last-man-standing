@@ -62,7 +62,9 @@ export async function processServiceEmails(input: {
       let includeTelegram = false;
       try { includeTelegram = await input.repository.allowsMarketing(candidate.playerId, verifiedEmail); }
       catch { /* Fail closed for promotion only. */ }
-      const rendered = renderServiceEmail(candidate, input.appOrigin, { includeTelegram });
+      const rendered = renderServiceEmail(candidate, input.appOrigin, {
+        includeTelegram, includeRolloverInvitation: includeTelegram,
+      });
       const sent = await input.transport.send({ to: email, ...rendered, idempotencyKey: deliveryKey(candidate) });
       await input.repository.complete(claim, sent.id);
       if (candidate.eventType === "pick_reminder") summary.remindersSent++;

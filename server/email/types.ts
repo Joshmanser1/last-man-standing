@@ -16,8 +16,14 @@ export type ServiceEmailCandidate = {
   deadlineUtc: string;
   teamName: string | null;
   survivorsRemaining: number | null;
+  resultVariant?: "mark_rollover";
+  eliminationRoundNumber?: number;
   nextRound?: { roundNumber: number; deadlineUtc: string; alreadyPicked?: boolean } | null;
 };
+
+export const markRolloverLeagueId = "b457c805-f460-497c-8ed5-a7864d61f822";
+export const markRolloverRoundId = "12bcb92e-4649-4006-9d14-489a8bf4eb10";
+export const markRolloverJoinUrl = "https://lms.fantasycommandcentre.co.uk/j/mark-fpl-rollover";
 
 export type DeliveryClaim = { id: string; claimToken: string; attemptCount: number };
 export type OutboundEmail = { to: string; subject: string; html: string; text: string; idempotencyKey: string };

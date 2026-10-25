@@ -1,4 +1,5 @@
 import type { ServiceEmailCandidate } from "./types.js";
+import { markRolloverLeagueId, markRolloverRoundId, markRolloverJoinUrl } from "./types.js";
 
 const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, character => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
@@ -17,10 +18,14 @@ function formatDeadline(value: string) {
 
 function shell(input: {
   origin: string; leagueName: string; roundNumber: number; status: string;
-  bodyHtml: string; bodyText: string; cta: string; url: string; telegram?: boolean;
+  bodyHtml: string; bodyText: string; cta: string; url: string; telegram?: boolean; rolloverInvitation?: boolean;
 }) {
   const { origin, leagueName, roundNumber, status, bodyHtml, bodyText, cta, url, telegram } = input;
   const logo = `${cleanOrigin(origin)}/fcc-logo.png`;
+  const preferencesUrl = `${cleanOrigin(origin)}/email-preferences`;
+  const preferencesHtml = input.rolloverInvitation
+    ? `<p style="font-size:12px"><a href="${escapeHtml(preferencesUrl)}">Manage promotional email preferences</a></p>` : "";
+  const preferencesText = input.rolloverInvitation ? `\nManage promotional email preferences: ${preferencesUrl}\n` : "";
   const telegramHtml = telegram ? `<tr><td style="padding:18px 28px;border-top:1px solid #eef5f2;text-align:center;font-size:14px;line-height:1.5"><h2 style="margin:0 0 8px;font-size:15px;color:#162d27">Don't miss an FCC update!</h2><p style="margin:0 0 8px">Join our Telegram channel for competition updates, results and reminders.</p><a href="https://t.me/FCCCompetitions" style="display:inline-block;padding:8px 0;color:#167a58;font-weight:700;text-decoration:underline">Join FCC on Telegram &rarr;</a><p style="margin:8px 0 0;font-size:12px"><a href="${escapeHtml(cleanOrigin(origin))}/email-preferences" style="color:#167a58;text-decoration:underline">Manage promotional email preferences</a></p></td></tr>\n` : "";
   const telegramText = telegram ? `Don't miss an FCC update!\n\nJoin our Telegram channel for competition updates, results and reminders.\n\nJoin FCC on Telegram → https://t.me/FCCCompetitions\n\nManage promotional email preferences: ${cleanOrigin(origin)}/email-preferences\n\n` : "";
   const html = `<!doctype html><html><body style="margin:0;background:#10201c;color:#10201c;font-family:Arial,sans-serif">
@@ -28,16 +33,42 @@ function shell(input: {
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#fff;border-radius:18px;overflow:hidden">
 <tr><td style="background:#162d27;padding:26px 28px;text-align:center"><img src="${escapeHtml(logo)}" width="64" height="64" alt="Fantasy Command Centre" style="display:block;margin:0 auto 14px"><div style="color:#a7f3d0;font-size:12px;font-weight:700;letter-spacing:1.8px">${escapeHtml(leagueName.toUpperCase())} · ROUND ${roundNumber}</div><h1 style="color:#fff;font-size:32px;line-height:1.1;margin:12px 0 0">${escapeHtml(status)}</h1></td></tr>
 <tr><td style="padding:30px 28px;text-align:center;font-size:17px;line-height:1.55">${bodyHtml}<p style="margin:28px 0"><a href="${escapeHtml(url)}" style="display:inline-block;background:#16a36a;color:#fff;text-decoration:none;font-weight:800;letter-spacing:.4px;padding:14px 24px;border-radius:9px">${escapeHtml(cta)}</a></p></td></tr>
-${telegramHtml}<tr><td style="background:#eef5f2;padding:18px 28px;text-align:center;color:#53645e;font-size:12px;line-height:1.5">You're receiving this email because you're taking part in this competition on Fantasy Command Centre.<br><a href="${escapeHtml(cleanOrigin(origin))}" style="color:#167a58">fantasycommandcentre.co.uk</a></td></tr>
+${telegramHtml}<tr><td style="background:#eef5f2;padding:18px 28px;text-align:center;color:#53645e;font-size:12px;line-height:1.5">You're receiving this email because you're taking part in this competition on Fantasy Command Centre.${preferencesHtml}<br><a href="${escapeHtml(cleanOrigin(origin))}" style="color:#167a58">fantasycommandcentre.co.uk</a></td></tr>
 </table></td></tr></table></body></html>`;
   const text = `${leagueName} · Round ${roundNumber}\n\n${status}\n\n${bodyText}\n\n${cta}: ${url}\n\n${telegramText}You're receiving this email because you're taking part in this competition on Fantasy Command Centre.\n${cleanOrigin(origin)}`;
-  return { html, text };
+  return { html, text: text + preferencesText, primaryCta: { label: cta, url }, includesTelegram: telegram === true };
 }
 
-export function renderServiceEmail(candidate: ServiceEmailCandidate, origin: string, options: { includeTelegram?: boolean } = {}) {
+export function renderServiceEmail(candidate: ServiceEmailCandidate, origin: string, options: {
+  includeTelegram?: boolean; includeRolloverInvitation?: boolean;
+} = {}) {
   const league = candidate.leagueName;
   const team = candidate.teamName ?? "Your team";
   const remaining = candidate.survivorsRemaining ?? 0;
+  if (candidate.resultVariant === "mark_rollover") {
+    const eliminationRound = candidate.eliminationRoundNumber ?? 0;
+    if (candidate.eventType !== "round_result" || candidate.leagueId !== markRolloverLeagueId
+      || candidate.roundId !== markRolloverRoundId || candidate.roundNumber !== 5 || remaining !== 0
+      || !Number.isInteger(eliminationRound) || eliminationRound < 1 || eliminationRound > 5
+      || !["eliminated_loss", "eliminated_draw", "eliminated_no_pick"].includes(candidate.outcome ?? "")) {
+      throw new Error("Invalid Mark rollover result");
+    }
+    const individual = candidate.outcome === "eliminated_no_pick"
+      ? `You were eliminated in Round ${eliminationRound} because no pick was submitted.`
+      : `You were eliminated in Round ${eliminationRound} after ${team} ${candidate.outcome === "eliminated_draw" ? "drew" : "lost"}.`;
+    const paragraphs = [individual,
+      "91 entered the original competition, which lasted five rounds. Nobody won the £50 prize.",
+      "The £50 has rolled over into Mark FPL v2.",
+      "Mark FPL v2 has been created for the restart, beginning GW9 on 31 October. Your original entry does not transfer. You must join the new league separately to participate."];
+    const invitation = options.includeRolloverInvitation === true;
+    return { subject: "Mark's competition ended — £50 prize rollover", ...shell({
+      origin, leagueName: league, roundNumber: candidate.roundNumber, status: "COMPETITION ENDED",
+      bodyHtml: paragraphs.map(paragraph => `<p>${escapeHtml(paragraph)}</p>`).join(""),
+      bodyText: paragraphs.join("\n\n"), cta: invitation ? "JOIN MARK FPL v2" : "VIEW ORIGINAL RESULTS",
+      url: invitation ? markRolloverJoinUrl : resultsUrl(origin, candidate.leagueId),
+      rolloverInvitation: invitation,
+    }) };
+  }
   if (candidate.eventType === "pick_reminder") {
     const url = pickUrl(origin, candidate.leagueId);
     const deadline = formatDeadline(candidate.deadlineUtc);

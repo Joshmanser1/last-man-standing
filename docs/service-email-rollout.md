@@ -23,6 +23,11 @@ results for rounds already past their deadline at initial activation. Upcoming
 pick reminders retain their existing 20–28-hour window and recipient checks.
 No delivery ledger entries are created to pretend historical emails were sent.
 
+The separately approved four-round weekend exception is documented in
+`docs/scheduled-tick-reliability.md`. It requires explicit exception configuration,
+keeps this fixed cutoff for every other round, and must remain inactive until the
+finalised recipient counts have been reviewed. POF123 is excluded.
+
 ## Recipient presentation and promotion
 
 Survivors with no next-round pick get a league-specific pick link. Survivors who

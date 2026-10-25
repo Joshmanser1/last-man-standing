@@ -17,6 +17,7 @@ type TickResponse = {
   actions: TickAction[];
   processed_leagues: number;
   service_emails?: ServiceEmailSummary | { error: string };
+  service_email_status?: number;
   error?: string;
 };
 
@@ -70,6 +71,7 @@ async function runConfiguredServiceEmails(supabase: any, now: Date): Promise<Ser
       enabled, appOrigin, pilotAllowlist: process.env.SERVICE_EMAIL_PILOT_ALLOWLIST,
       now, repository: createSupabaseServiceEmailRepository(supabase, {
         resultsStartAt: process.env.SERVICE_EMAIL_RESULTS_START_AT,
+        resultsExceptionRoundIds: process.env.SERVICE_EMAIL_RESULTS_EXCEPTION_ROUND_IDS,
       }),
       transport: createResendTransport({ apiKey, from, replyTo }),
     });
@@ -85,6 +87,24 @@ const defaultDependencies: TickDependencies = {
   runLeagueLifecycle,
   runServiceEmails: runConfiguredServiceEmails,
 };
+
+async function runServiceEmailStage(
+  dependencies: TickDependencies, supabase: any, now: Date, tickRunId: string | null
+): Promise<ServiceEmailRun> {
+  const started = Date.now();
+  console.log("tick service emails started", { tick_run_id: tickRunId });
+  let result: ServiceEmailRun;
+  try {
+    result = await dependencies.runServiceEmails(supabase, now);
+  } catch (error) {
+    console.error("Service email processor failed", error);
+    result = { status: 502, body: { error: "Service email processing failed." } };
+  }
+  console.log("tick service emails completed", {
+    tick_run_id: tickRunId, duration_ms: Date.now() - started, status: result.status, summary: result.body,
+  });
+  return result;
+}
 
 function getBearerToken(req: Req): string | null {
   const authHeader =
@@ -155,13 +175,8 @@ export async function tickHandler(req: Req, res: Res, dependencies: TickDependen
     });
 
     if (emailOnly) {
-      try {
-        const serviceEmails = await dependencies.runServiceEmails(supabase, now);
-        return sendJson(res, serviceEmails.status, serviceEmails.body);
-      } catch (error) {
-        console.error("Service email processor failed", error);
-        return sendJson(res, 502, { error: "Service email processing failed." });
-      }
+      const serviceEmails = await runServiceEmailStage(dependencies, supabase, now, null);
+      return sendJson(res, serviceEmails.status, serviceEmails.body);
     }
 
     const bucketMs = 5 * 60 * 1000;
@@ -221,17 +236,13 @@ export async function tickHandler(req: Req, res: Res, dependencies: TickDependen
     if (leagueFailed) throw new Error("One or more leagues failed; see league tick runs");
     const report = await supabase.from("tick_runs").update({ status: "ok", completed_at: new Date().toISOString() }).eq("id", tickRunId);
     if (report.error) throw new Error(report.error.message);
-    let serviceEmails: ServiceEmailSummary | { error: string };
-    try {
-      serviceEmails = (await dependencies.runServiceEmails(supabase, now)).body;
-    } catch (emailError) {
-      console.error("Service email processor failed", emailError);
-      serviceEmails = { error: "Service email processing failed." };
-    }
+    console.log("tick lifecycle completed", { tick_run_id: tickRunId, duration_ms: Date.now() - started });
+    const serviceEmails = await runServiceEmailStage(dependencies, supabase, now, tickRunId);
     return sendJson(res, 200, {
       ok: true, env_check: envCheck, db_connection_check: dbConnectionCheck,
       round_count: countResult.count ?? 0, timestamp, duration_ms: Date.now() - started,
-      actions, processed_leagues: processedLeagues, service_emails: serviceEmails,
+      actions, processed_leagues: processedLeagues, service_emails: serviceEmails.body,
+      service_email_status: serviceEmails.status,
     });
   } catch (error: any) {
     if (supabase && tickRunId) {
