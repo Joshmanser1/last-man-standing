@@ -29,6 +29,9 @@ export type DeliveryClaim = { id: string; claimToken: string; attemptCount: numb
 export type OutboundEmail = { to: string; subject: string; html: string; text: string; idempotencyKey: string };
 
 export type ServiceEmailSummary = {
+  deferred?: number;
+  expiredReminders?: number;
+  providerBlockedUntil?: string;
   disabled: boolean;
   remindersSent: number;
   resultsSent: number;

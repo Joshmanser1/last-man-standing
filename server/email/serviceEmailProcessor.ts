@@ -1,16 +1,18 @@
 import { renderServiceEmail } from "./templates.js";
 import type { DeliveryClaim, ServiceEmailCandidate, ServiceEmailSummary } from "./types.js";
 import type { ServiceEmailTransport } from "./resendTransport.js";
+import { deliveryFailure, reminderInWindow, type DeliveryFailure } from "./retryPolicy.js";
 
 export type CandidateDiscovery = { candidates: ServiceEmailCandidate[]; zeroSurvivorRoundsSkipped: number; ambiguousMissedPickResultsSkipped: number };
 export type ServiceEmailRepository = {
+  prepareRetries(): Promise<{ blockedUntil: string | null; expired: number }>;
   discover(now: Date): Promise<CandidateDiscovery>;
   resolveAuthEmail(playerId: string): Promise<string | null>;
   allowsMarketing(playerId: string, verifiedEmail: string): Promise<boolean>;
   claim(candidate: ServiceEmailCandidate): Promise<DeliveryClaim | null>;
   recheck(candidate: ServiceEmailCandidate, now: Date): Promise<boolean>;
   complete(claim: DeliveryClaim, providerMessageId: string): Promise<void>;
-  fail(claim: DeliveryClaim, error: string): Promise<void>;
+  fail(claim: DeliveryClaim, error: string, failure: DeliveryFailure): Promise<void>;
   release(claim: DeliveryClaim): Promise<void>;
 };
 
@@ -25,6 +27,7 @@ const deliveryKey = (candidate: ServiceEmailCandidate) =>
 export async function processServiceEmails(input: {
   enabled: boolean; appOrigin: string; pilotAllowlist?: string; now: Date;
   repository: ServiceEmailRepository; transport: ServiceEmailTransport;
+  clock?: () => Date;
 }): Promise<ServiceEmailSummary> {
   const summary: ServiceEmailSummary = {
     disabled: !input.enabled, remindersSent: 0, resultsSent: 0, skipped: 0, failed: 0,
@@ -32,6 +35,13 @@ export async function processServiceEmails(input: {
     ambiguousMissedPickResultsSkipped: 0,
   };
   if (!input.enabled) return summary;
+  const currentTime = input.clock ?? (() => new Date());
+  const retryState = await input.repository.prepareRetries();
+  summary.expiredReminders = retryState.expired;
+  if (retryState.blockedUntil && Date.parse(retryState.blockedUntil) > currentTime().getTime()) {
+    summary.providerBlockedUntil = retryState.blockedUntil;
+    return summary;
+  }
   const allowlist = parsePilotAllowlist(input.pilotAllowlist);
   const discovery = await input.repository.discover(input.now);
   summary.zeroSurvivorRoundsSkipped = discovery.zeroSurvivorRoundsSkipped;
@@ -49,11 +59,17 @@ export async function processServiceEmails(input: {
     }
 
     let claim: DeliveryClaim | null = null;
+    let providerMessageId: string | undefined;
     try {
       claim = await input.repository.claim(candidate);
       if (!claim) { summary.skipped++; continue; }
-      if (!(await input.repository.recheck(candidate, input.now))) {
-        await input.repository.release(claim);
+      if (!(await input.repository.recheck(candidate, currentTime()))) {
+        if (candidate.eventType === "pick_reminder" && Date.parse(candidate.deadlineUtc) < currentTime().getTime() + 20 * 60 * 60_000) {
+          await input.repository.fail(claim, "Pick reminder window expired", {
+            status: null, code: "reminder_expired", retryAfter: null, kind: "permanent", nextAttemptAt: null,
+          });
+          summary.expiredReminders++;
+        } else await input.repository.release(claim);
         summary.skipped++; summary.ineligibleAfterClaim++;
         continue;
       }
@@ -65,15 +81,31 @@ export async function processServiceEmails(input: {
       const rendered = renderServiceEmail(candidate, input.appOrigin, {
         includeTelegram, includeRolloverInvitation: includeTelegram,
       });
+      if (candidate.eventType === "pick_reminder" && !reminderInWindow(candidate.deadlineUtc, currentTime())) {
+        await input.repository.fail(claim, "Pick reminder window expired", {
+          status: null, code: "reminder_expired", retryAfter: null, kind: "permanent", nextAttemptAt: null,
+        });
+        summary.expiredReminders++;
+        continue;
+      }
       const sent = await input.transport.send({ to: email, ...rendered, idempotencyKey: deliveryKey(candidate) });
+      providerMessageId = sent.id;
       await input.repository.complete(claim, sent.id);
       if (candidate.eventType === "pick_reminder") summary.remindersSent++;
       else summary.resultsSent++;
     } catch (error) {
       summary.failed++;
+      const failure = providerMessageId ? { ...deliveryFailure(error, claim?.attemptCount ?? 1, currentTime()),
+        kind: "accepted" as const, nextAttemptAt: null, providerMessageId } :
+        deliveryFailure(error, claim?.attemptCount ?? 1, currentTime());
       if (claim) {
-        try { await input.repository.fail(claim, error instanceof Error ? error.message : String(error)); }
+        try { await input.repository.fail(claim, error instanceof Error ? error.message : String(error), failure); }
         catch { /* A stale processing claim can be reclaimed; the provider key remains idempotent. */ }
+      }
+      if (failure.kind === "capacity") {
+        summary.deferred = (summary.deferred ?? 0) + 1;
+        summary.providerBlockedUntil = failure.nextAttemptAt ?? undefined;
+        break;
       }
     }
   }

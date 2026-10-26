@@ -12,7 +12,7 @@
     "test:e2e:ui": "playwright test --ui",
     "tick:local": "node scripts/tick-local.mjs",
     "test:marketing": "node scripts/test-marketing-consent.mjs",
-    "test:service-emails": "node scripts/test-service-emails.mjs"
+    "test:service-emails": "node scripts/test-service-emails.mjs && node scripts/test-service-email-retries.mjs"
   },
   "dependencies": {
     "@sentry/react": "^10.27.0",

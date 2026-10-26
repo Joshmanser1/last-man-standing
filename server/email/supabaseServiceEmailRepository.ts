@@ -2,6 +2,7 @@ import { parseResultEmailStartAt, parseResultEmailExceptionRoundIds, reminderCan
 import { marketingPreferenceState } from "../../src/lib/marketingConsent.js";
 import type { CandidateDiscovery, ServiceEmailRepository } from "./serviceEmailProcessor.js";
 import type { DeliveryClaim, ServiceEmailCandidate } from "./types.js";
+import { reminderInWindow } from "./retryPolicy.js";
 
 type QueryError = { message?: string | null } | null;
 
@@ -95,6 +96,11 @@ export function createSupabaseServiceEmailRepository(supabase: any, options: {
   }
 
   return {
+    async prepareRetries() {
+      const data = await requireData<{ blocked_until: string | null; expired: number }>(
+        supabase.rpc("prepare_service_email_retries"), "Retry preparation failed");
+      return { blockedUntil: data.blocked_until, expired: data.expired };
+    },
     discover,
     async resolveAuthEmail(playerId) {
       const { data, error } = await supabase.auth.admin.getUserById(playerId);
@@ -124,7 +130,8 @@ export function createSupabaseServiceEmailRepository(supabase: any, options: {
       if (!snapshot) return false;
       if (candidate.eventType === "pick_reminder") {
         const round = snapshot.rounds.find(entry => entry.id === candidate.roundId);
-        return !!round && Date.parse(round.pick_deadline_utc) > now.getTime()
+        if (round) candidate.deadlineUtc = round.pick_deadline_utc;
+        return !!round && reminderInWindow(round.pick_deadline_utc, now)
           && reminderCandidates(snapshot, candidate.roundId).some(entry => entry.playerId === candidate.playerId);
       }
       const result = resultCandidates(snapshot, candidate.roundId, now, resultsStartAt ?? undefined, exceptionRoundIds);
@@ -142,11 +149,11 @@ export function createSupabaseServiceEmailRepository(supabase: any, options: {
       });
       if (error || data !== true) throw new Error(error?.message ?? "Delivery completion claim was lost");
     },
-    async fail(claim, message) {
-      const { error } = await supabase.rpc("fail_service_email_delivery", {
-        p_delivery_id: claim.id, p_claim_token: claim.claimToken, p_error: message,
+    async fail(claim, message, failure) {
+      const { data, error } = await supabase.rpc("record_service_email_failure", {
+        p_delivery_id: claim.id, p_claim_token: claim.claimToken, p_error: message, p_failure: failure,
       });
-      if (error) throw new Error(error.message);
+      if (error || data !== true) throw new Error(error?.message ?? "Delivery failure claim was lost");
     },
     async release(claim) {
       const { error } = await supabase.rpc("release_service_email_delivery", {

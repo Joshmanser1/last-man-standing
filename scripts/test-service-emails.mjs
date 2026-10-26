@@ -45,6 +45,7 @@ function harness(candidates, options={}) {
   const state = new Map(), sent=[];
   let claims=0, recheck=options.recheck ?? (()=>true), failOnce=options.failOnce ?? false;
   const repository = {
+    async prepareRetries(){ return {blockedUntil:null,expired:0}; },
     async discover(){ return {candidates,zeroSurvivorRoundsSkipped:options.zeroRounds??0,
       ambiguousMissedPickResultsSkipped:options.ambiguousMissedPicks??0}; },
     async resolveAuthEmail(playerId){ if(options.authError)throw Error('auth unavailable'); return options.missingEmail ? null : `${playerId.slice(-2)}@example.test`; },
@@ -60,7 +61,7 @@ function harness(candidates, options={}) {
     async release(claim){ state.delete(claim.id); },
   };
   const transport={async send(message){ sent.push(message); if(failOnce){failOnce=false;throw Error('provider down');} return{id:'msg-'+sent.length}; }};
-  const run=(extra={})=>processServiceEmails({enabled:true,appOrigin:'https://lms.fantasycommandcentre.co.uk',now,pilotAllowlist:'',repository,transport,...extra});
+  const run=(extra={})=>processServiceEmails({enabled:true,appOrigin:'https://lms.fantasycommandcentre.co.uk',now,clock:()=>now,pilotAllowlist:'',repository,transport,...extra});
   return {run,sent,state,get claims(){return claims;},setRecheck(value){recheck=value;}};
 }
 
