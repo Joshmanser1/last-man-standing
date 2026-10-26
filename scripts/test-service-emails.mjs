@@ -142,8 +142,35 @@ for(const message of h.sent.slice(0,2)) {
   assertTelegramSection(message,'MAKE YOUR PICK');
 }
 assert.doesNotMatch(h.sent[2].text,/MAKE YOUR PICK|Next deadline/);
-assert.doesNotMatch(h.sent[2].html+h.sent[2].text,/FCCCompetitions/);
+assertTelegramSection(h.sent[2],'VIEW RESULTS');
 await h.run(); assert.equal(h.sent.length,3,'next-round presentation does not affect deduplication');
+
+const normalResultVariants=[
+  ...['through','eliminated_loss','eliminated_draw','eliminated_no_pick'].map(outcome=>resultCandidate(outcome)),
+  survivorCandidates[0],
+  {...survivorCandidates[0],nextRound:{...survivorCandidates[0].nextRound,alreadyPicked:true}},
+  {...resultCandidate(),survivorsRemaining:1},
+];
+for(const candidate of normalResultVariants) {
+  const baseline=renderServiceEmail(candidate,origin);
+  for(const consent of [{marketing:true},{marketing:false},{marketingError:true},{}]) {
+    h=harness([candidate],consent);
+    assert.equal((await h.run()).resultsSent,1,'consent only controls promotion, not result delivery');
+    const message=h.sent[0];
+    assert.deepEqual(message.primaryCta,baseline.primaryCta,'primary result CTAs are unchanged');
+    assert.equal(message.subject,baseline.subject);
+    assert.equal(message.idempotencyKey,`fcc-round_result-${candidate.leagueId}-${candidate.roundId}-${candidate.playerId}`);
+    if(consent.marketing===true) {
+      assertTelegramSection(message,baseline.primaryCta.label);
+      assert.equal(message.includesTelegram,true);
+      assert.match(message.text,/Manage promotional email preferences/);
+    } else {
+      assert.doesNotMatch(message.html+message.text,/FCCCompetitions/);
+      assert.equal(message.includesTelegram,false);
+    }
+    await h.run(); assert.equal(h.sent.length,1,'Telegram does not change delivery deduplication');
+  }
+}
 
 // Elimination variants remain byte-for-byte unchanged, even with next-round data.
 for(const outcome of ['eliminated_loss','eliminated_draw','eliminated_no_pick']) {
@@ -720,6 +747,34 @@ try {
     assert.equal(row.individual_outcome_round,index%5+1);
     assert.equal(row.outcome,markCandidates[index].outcome,'SQL and application outcomes agree');
   }
+  for(const [index,leagueId] of ['f6f3e1be-8c00-4174-8172-2d078fb09cb3','088ee7c0-660e-4b68-ab6f-a75032ff9cc2','a0a73aa0-d9c6-43e9-bbe3-03ae90312ee2'].entries()) {
+    await weekendDb.query('insert into marketing_preferences values($1,true,$2)',[id(3000+index),`other${index}@example.test`]);
+    for(const [outcomeIndex,outcome] of ['eliminated_loss','eliminated_draw','eliminated_no_pick'].entries()) {
+      const playerId=id(4000+index*3+outcomeIndex),email=`result${index}-${outcomeIndex}@example.test`;
+      await weekendDb.query('insert into auth.users values($1,$2,now())',[playerId,email]);
+      await weekendDb.query('insert into memberships values($1,$2,null)',[leagueId,playerId]);
+      await weekendDb.query('insert into marketing_preferences values($1,true,$2)',[playerId,email]);
+      await weekendDb.query('insert into picks values($1,$2,$3,$4)',[approvedResultEmailExceptionRoundIds[index+1],playerId,
+        outcome==='eliminated_no_pick'?'no-pick':'eliminated',outcome==='eliminated_no_pick'?'no-pick':outcome==='eliminated_draw'?'draw':'loss']);
+    }
+  }
+  preview=await runPreview();
+  let normalRows=preview.recipients.filter(row=>row.competition!=='MARKPL');
+  assert.equal(normalRows.length,12);
+  assert.ok(normalRows.every(row=>row.marketing_permitted&&row.includes_telegram),'SQL includes every consented normal result outcome');
+  for(const row of normalRows) {
+    const rendered=renderServiceEmail({...resultCandidate(row.outcome),leagueId:row.primary_cta_destination.split('league_id=')[1]},origin,{includeTelegram:true});
+    assert.equal(row.includes_telegram,rendered.includesTelegram,'preview agrees with rendered Telegram sections');
+    assert.equal(row.primary_cta_destination,rendered.primaryCta.url);
+  }
+  await weekendDb.query('update marketing_preferences set marketing_opt_in=false where user_id=$1',[id(4000)]);
+  await weekendDb.query('update marketing_preferences set consented_email=$1 where user_id=$2',['old@example.test',id(4001)]);
+  await weekendDb.query('delete from marketing_preferences where user_id=$1',[id(4002)]);
+  preview=await runPreview();normalRows=preview.recipients.filter(row=>row.competition!=='MARKPL');
+  assert.equal(normalRows.filter(row=>row.includes_telegram).length,9);
+  assert.ok(normalRows.filter(row=>[id(4000),id(4001),id(4002)].includes(row.player_id)).every(row=>!row.includes_telegram),
+    'SQL suppresses promotion for refused, changed-email and missing consent');
+  assert.ok(preview.recipients.filter(row=>row.competition==='MARKPL').every(row=>!row.includes_telegram),'MARKPL stays excluded');
   await weekendDb.query('insert into service_email_deliveries values($1,$2,$3,$4,$5,$6,1,now())',
     [id(9000),markRolloverLeagueId,markRolloverRoundId,markMembers[0].player_id,'round_result','sent']);
   preview=await runPreview();markRows=preview.recipients.filter(row=>row.competition==='MARKPL');

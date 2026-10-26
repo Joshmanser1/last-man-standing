@@ -108,7 +108,7 @@ select competition, id as delivery_round_id, player_id, verified_email,
   outcome, source_round_number as individual_outcome_round, source_finalized_at,
   marketing_permitted, delivery_status, attempt_count, claimable,
   mark_rollover and marketing_permitted as includes_mark_join_invitation,
-  not mark_rollover and marketing_permitted and needs_next_pick as includes_telegram,
+  not mark_rollover and marketing_permitted as includes_telegram,
   case when mark_rollover and marketing_permitted then 'JOIN MARK FPL v2'
     when mark_rollover then 'VIEW ORIGINAL RESULTS'
     when outcome = 'through' and needs_next_pick then 'MAKE YOUR PICK'

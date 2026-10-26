@@ -98,13 +98,13 @@ export function renderServiceEmail(candidate: ServiceEmailCandidate, origin: str
         bodyText: `${team.toUpperCase()} WON. YOU SURVIVED.\n\nRound ${candidate.roundNumber} is complete.\n\n${remaining} players remain.\n\nRound ${nextRound.roundNumber}\nNext deadline\n${deadline}${pickStatusText}`,
         cta: nextRound.alreadyPicked ? "VIEW COMPETITION" : "MAKE YOUR PICK",
         url: nextRound.alreadyPicked ? competitionUrl(origin, candidate.leagueId) : pickUrl(origin, candidate.leagueId),
-        telegram: !nextRound.alreadyPicked && options.includeTelegram === true }) };
+        telegram: options.includeTelegram === true }) };
     }
     const url = competitionUrl(origin, candidate.leagueId);
     const bodyText = `${team.toUpperCase()} WON. YOU SURVIVED.\n\nYou're through Round ${candidate.roundNumber} of ${league}.\n\n${remaining} players remain.\n\nWe'll let you know when it's time to make your next pick.`;
     return { subject: "You're through! 🟢", ...shell({ origin, leagueName: league, roundNumber: candidate.roundNumber,
       status: "THROUGH", bodyHtml: `<p><strong>${escapeHtml(team.toUpperCase())} WON. YOU SURVIVED.</strong></p><p>You're through Round ${candidate.roundNumber} of ${escapeHtml(league)}.</p><p>${remaining} players remain.</p><p>We'll let you know when it's time to make your next pick.</p>`,
-      bodyText, cta: "VIEW COMPETITION", url }) };
+      bodyText, cta: "VIEW COMPETITION", url, telegram: options.includeTelegram === true }) };
   }
   const missed = candidate.outcome === "eliminated_no_pick";
   const url = resultsUrl(origin, candidate.leagueId);
@@ -115,5 +115,6 @@ export function renderServiceEmail(candidate: ServiceEmailCandidate, origin: str
     : `Your run in ${league} ends in Round ${candidate.roundNumber}.`;
   return { subject: `You're out of ${league}`, ...shell({ origin, leagueName: league, roundNumber: candidate.roundNumber,
     status: "ELIMINATED", bodyHtml: `<p><strong>${escapeHtml(lead)}</strong></p><p>${escapeHtml(explanation)}</p><p>${remaining} players remain.</p>`,
-    bodyText: `${lead}\n\n${explanation}\n\n${remaining} players remain.`, cta: "VIEW RESULTS", url }) };
+    bodyText: `${lead}\n\n${explanation}\n\n${remaining} players remain.`, cta: "VIEW RESULTS", url,
+    telegram: options.includeTelegram === true }) };
 }
